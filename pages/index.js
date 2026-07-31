@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   LayoutGrid,
@@ -399,7 +400,7 @@ function CadastroPerfil({ onSalvar }) {
   return (
     <div
       className="mx-auto max-w-md flex flex-col items-center justify-center px-6"
-      style={{ background: C.canvas, minHeight: 640 }}
+      style={{ background: C.canvas, minHeight: "100vh", boxShadow: "0 0 60px rgba(0,0,0,0.15)" }}
     >
       <div
         className="rounded-full flex items-center justify-center mb-4"
@@ -727,7 +728,8 @@ export default function GacCeasaApp() {
         className="mx-auto max-w-md flex flex-col"
         style={{
           background: C.canvas,
-          minHeight: 640,
+          minHeight: "100vh",
+          boxShadow: "0 0 60px rgba(0,0,0,0.15)",
           fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         }}
       >
@@ -753,7 +755,8 @@ export default function GacCeasaApp() {
         className="mx-auto max-w-md flex flex-col"
         style={{
           background: C.canvas,
-          minHeight: 640,
+          minHeight: "100vh",
+          boxShadow: "0 0 60px rgba(0,0,0,0.15)",
           fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         }}
       >
@@ -779,7 +782,8 @@ export default function GacCeasaApp() {
       className="mx-auto max-w-md flex flex-col"
       style={{
         background: C.canvas,
-        minHeight: 640,
+        minHeight: "100vh",
+        boxShadow: "0 0 60px rgba(0,0,0,0.15)",
         fontFamily:
           "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       }}
