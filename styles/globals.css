@@ -7,4 +7,9 @@ body {
   padding: 0;
   margin: 0;
   background: #e8e0c9;
+  min-height: 100vh;
+}
+
+#__next {
+  min-height: 100vh;
 }
