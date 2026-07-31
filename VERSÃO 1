@@ -1,8 +1,20 @@
+
+# Não preencha este arquivo — ele é só um exemplo do que configurar
+# no painel da Vercel (Settings → Environment Variables).
+
+# ID da sua planilha Google (está na URL, entre /d/ e /edit)
+GOOGLE_SHEET_ID=
+
+# E-mail da conta de serviço do Google Cloud (termina em .iam.gserviceaccount.com)
+GOOGLE_SERVICE_ACCOUNT_EMAIL=
+
+# Chave privada da conta de serviço (vem do arquivo JSON que o Google gera,
+# campo "private_key" — cole exatamente como está, com as quebras de linha \n)
+GOOGLE_PRIVATE_KEY=
 node_modules/
 .next/
 .env.local
 .vercel
-
 {
   "name": "gac-ceasa-manager",
   "version": "1.0.0",
@@ -20,16 +32,3 @@ node_modules/
     "googleapis": "137.1.0"
   }
 }
-
-# Não preencha este arquivo — ele é só um exemplo do que configurar
-# no painel da Vercel (Settings → Environment Variables).
-
-# ID da sua planilha Google (está na URL, entre /d/ e /edit)
-GOOGLE_SHEET_ID=
-
-# E-mail da conta de serviço do Google Cloud (termina em .iam.gserviceaccount.com)
-GOOGLE_SERVICE_ACCOUNT_EMAIL=
-
-# Chave privada da conta de serviço (vem do arquivo JSON que o Google gera,
-# campo "private_key" — cole exatamente como está, com as quebras de linha \n)
-GOOGLE_PRIVATE_KEY=
