@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   LayoutGrid,
@@ -399,7 +398,7 @@ function CadastroPerfil({ onSalvar }) {
 
   return (
     <div
-      className="mx-auto max-w-md flex flex-col items-center justify-center px-6"
+      className="mx-auto max-w-md lg:max-w-2xl flex flex-col items-center justify-center px-6"
       style={{ background: C.canvas, minHeight: "100vh", boxShadow: "0 0 60px rgba(0,0,0,0.15)" }}
     >
       <div
@@ -535,26 +534,38 @@ export default function GacCeasaApp() {
   const persistCadastros = useCallback(async (next) => {
     setCadastros(next);
     try {
-      await fetch("/api/dados", {
+      const res = await fetch("/api/dados", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "cadastros", data: next }),
       });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || !json.ok) {
+        setErroCarregamento(
+          (json && json.erro) || `Falha ao salvar na planilha (HTTP ${res.status})`
+        );
+      }
     } catch (e) {
-      /* ignore write failure, keep local state */
+      setErroCarregamento((e && e.message) || String(e));
     }
   }, []);
 
   const persistTransacoes = useCallback(async (next) => {
     setTransacoes(next);
     try {
-      await fetch("/api/dados", {
+      const res = await fetch("/api/dados", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "transacoes", data: next }),
       });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || !json.ok) {
+        setErroCarregamento(
+          (json && json.erro) || `Falha ao salvar na planilha (HTTP ${res.status})`
+        );
+      }
     } catch (e) {
-      /* ignore write failure, keep local state */
+      setErroCarregamento((e && e.message) || String(e));
     }
   }, []);
 
@@ -691,7 +702,7 @@ export default function GacCeasaApp() {
   }
 
   const bannerErro = erroCarregamento ? (
-    <div className="px-4 pt-3 mx-auto max-w-md">
+    <div className="px-4 pt-3 mx-auto max-w-md lg:max-w-2xl">
       <Card style={{ background: C.rustSoft, borderColor: C.rust }}>
         <div className="text-xs font-bold mb-1" style={{ color: C.rust }}>
           Não conseguiu buscar dados da planilha
@@ -725,7 +736,7 @@ export default function GacCeasaApp() {
   if (perfil.funcao === "conferente") {
     return (
       <div
-        className="mx-auto max-w-md flex flex-col"
+        className="mx-auto max-w-md lg:max-w-2xl flex flex-col"
         style={{
           background: C.canvas,
           minHeight: "100vh",
@@ -752,7 +763,7 @@ export default function GacCeasaApp() {
   if (perfil.funcao === "entregador") {
     return (
       <div
-        className="mx-auto max-w-md flex flex-col"
+        className="mx-auto max-w-md lg:max-w-2xl flex flex-col"
         style={{
           background: C.canvas,
           minHeight: "100vh",
@@ -779,7 +790,7 @@ export default function GacCeasaApp() {
   /* ---------------- acesso completo: Comprador/Vendedor ---------------- */
   return (
     <div
-      className="mx-auto max-w-md flex flex-col"
+      className="mx-auto max-w-md lg:max-w-2xl flex flex-col"
       style={{
         background: C.canvas,
         minHeight: "100vh",
@@ -887,7 +898,7 @@ export default function GacCeasaApp() {
 
       {/* Bottom nav */}
       <nav
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md flex border-t"
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md lg:max-w-2xl flex border-t"
         style={{ background: C.green900, borderColor: C.green700 }}
       >
         <NavButton
@@ -952,9 +963,7 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const produtoresPendentes = contaProdutores.filter((p) => p.pendente);
 
   return (
-    <div>
-      <div className="grid grid-cols-2 gap-3">
-        <CrateTag label="Faturamento Hoje" value={fmtMoney(dashboard.faturamentoHoje)} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <CrateTag label="Compras Hoje" value={fmtMoney(dashboard.comprasHoje)} tone="green" />
         <CrateTag label="Lucro Bruto Hoje" value={fmtMoney(dashboard.lucroHoje)} />
         <CrateTag
