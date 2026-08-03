@@ -6,9 +6,26 @@ import { google } from "googleapis";
 const TABELAS_CADASTROS = ["produtos", "clientes", "produtores", "compradoresVendedores"];
 const TABELAS_TRANSACOES = ["compras", "vendas", "recebimentos", "pagamentos", "perdas"];
 
+function normalizarChavePrivada(bruta) {
+  let key = (bruta || "").trim();
+  // remove aspas envolvendo o valor inteiro, se coladas por engano
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1);
+  }
+  key = key
+    .replace(/\\n/g, "\n") // \n literais (comum ao copiar do JSON)
+    .replace(/\r\n/g, "\n") // quebras de linha estilo Windows
+    .replace(/\r/g, "\n")
+    .trim();
+  return key;
+}
+
 function getAuth() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const email = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
+  const key = normalizarChavePrivada(process.env.GOOGLE_PRIVATE_KEY);
   return new google.auth.JWT(email, null, key, [
     "https://www.googleapis.com/auth/spreadsheets",
   ]);
@@ -63,6 +80,18 @@ export default async function handler(req, res) {
       ok: false,
       erro:
         "Variáveis de ambiente não configuradas (GOOGLE_SHEET_ID, GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY). Configure em Vercel → Settings → Environment Variables.",
+    });
+  }
+
+  const chaveNormalizada = normalizarChavePrivada(process.env.GOOGLE_PRIVATE_KEY);
+  if (
+    !chaveNormalizada.includes("-----BEGIN PRIVATE KEY-----") ||
+    !chaveNormalizada.includes("-----END PRIVATE KEY-----")
+  ) {
+    return res.status(500).json({
+      ok: false,
+      erro:
+        "GOOGLE_PRIVATE_KEY não está no formato esperado (falta -----BEGIN/END PRIVATE KEY-----). Recopie o valor do arquivo JSON da conta de serviço, sem aspas ao redor.",
     });
   }
 
