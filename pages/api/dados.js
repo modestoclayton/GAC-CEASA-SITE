@@ -36,15 +36,22 @@ function getAuth() {
 
 async function garantirAbas(sheets, spreadsheetId, nomesNecessarios) {
   const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" });
-  const existentes = new Set((meta.data.sheets || []).map((s) => s.properties.title));
+  const existentes = new Set((meta.data.sheets || []).map((s) => (s.properties.title || "").trim()));
   const faltando = nomesNecessarios.filter((n) => !existentes.has(n));
   if (faltando.length === 0) return;
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: faltando.map((titulo) => ({ addSheet: { properties: { title: titulo } } })),
-    },
-  });
+  try {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: faltando.map((titulo) => ({ addSheet: { properties: { title: titulo } } })),
+      },
+    });
+  } catch (e) {
+    // se já existir (nome com diferença de maiúscula/espaço, ou corrida entre
+    // requisições), não trava o resto — segue em frente
+    const msg = (e && e.message) || String(e);
+    if (!msg.toLowerCase().includes("already exists")) throw e;
+  }
 }
 
 async function lerTabela(sheets, spreadsheetId, nome) {
