@@ -19,7 +19,10 @@ function normalizarChavePrivada(bruta) {
     .replace(/\\n/g, "\n") // \n literais (comum ao copiar do JSON)
     .replace(/\r\n/g, "\n") // quebras de linha estilo Windows
     .replace(/\r/g, "\n")
+    .replace(/-----END PRIVATE KEY-----\s*\/n/g, "-----END PRIVATE KEY-----") // lixo "/n" (barra) colado sem querer
+    .replace(/-----BEGIN PRIVATE KEY-----\s*\/n/g, "-----BEGIN PRIVATE KEY-----\n")
     .trim();
+  if (!key.endsWith("\n")) key += "\n";
   return key;
 }
 
