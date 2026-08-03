@@ -963,7 +963,9 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const produtoresPendentes = contaProdutores.filter((p) => p.pendente);
 
   return (
+    <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <CrateTag label="Faturamento Hoje" value={fmtMoney(dashboard.faturamentoHoje)} />
         <CrateTag label="Compras Hoje" value={fmtMoney(dashboard.comprasHoje)} tone="green" />
         <CrateTag label="Lucro Bruto Hoje" value={fmtMoney(dashboard.lucroHoje)} />
         <CrateTag
