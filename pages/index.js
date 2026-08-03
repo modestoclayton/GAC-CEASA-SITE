@@ -2272,8 +2272,86 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
 /* ---------------------------------------------------------------------- */
 /* Gerenciar Acesso — lista de Compradores/Vendedores autorizados         */
 /* ---------------------------------------------------------------------- */
+function DiagnosticoPlanilha({ cadastros, persistCadastros }) {
+  const [rodando, setRodando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+
+  const rodarTeste = async () => {
+    setRodando(true);
+    setResultado(null);
+    const linhas = [];
+    const marcador = "DIAG_" + Date.now();
+
+    try {
+      linhas.push("1) Enviando gravação de teste...");
+      const resPost = await fetch("/api/dados", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "cadastros",
+          data: { ...cadastros, produtos: [...cadastros.produtos, { id: marcador, nome: marcador }] },
+        }),
+      });
+      const jsonPost = await resPost.json().catch(() => null);
+      linhas.push(`   Status HTTP: ${resPost.status}`);
+      linhas.push(`   Resposta: ${JSON.stringify(jsonPost)}`);
+
+      linhas.push("");
+      linhas.push("2) Lendo de volta pra conferir se gravou...");
+      const resGet = await fetch("/api/dados");
+      const jsonGet = await resGet.json().catch(() => null);
+      const achou = jsonGet?.cadastros?.produtos?.some((p) => p.id === marcador);
+      linhas.push(`   Status HTTP: ${resGet.status}`);
+      linhas.push(`   Marcador de teste encontrado na leitura? ${achou ? "SIM ✅" : "NÃO ❌"}`);
+
+      if (achou) {
+        linhas.push("");
+        linhas.push("Tudo funcionando! A gravação chegou na planilha.");
+      } else {
+        linhas.push("");
+        linhas.push(
+          "A gravação NÃO chegou na planilha. O problema está na escrita (aba errada, permissão da conta de serviço, ou nome da aba não bate)."
+        );
+      }
+    } catch (e) {
+      linhas.push(`ERRO durante o teste: ${(e && e.message) || String(e)}`);
+    }
+
+    setResultado(linhas.join("\n"));
+    setRodando(false);
+  };
+
+  return (
+    <div>
+      <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
+        Testa se o app consegue escrever e reler da planilha, sem depender de
+        cadastrar nada de verdade.
+      </p>
+      <button
+        onClick={rodarTeste}
+        disabled={rodando}
+        className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm mb-3"
+        style={{ background: C.amber500, color: C.green900, fontFamily: displayFont, fontWeight: 800 }}
+      >
+        {rodando ? "Testando…" : "Testar Gravação na Planilha"}
+      </button>
+      {resultado && (
+        <Card>
+          <pre
+            className="text-xs whitespace-pre-wrap"
+            style={{ fontFamily: monoFont, color: C.ink }}
+          >
+            {resultado}
+          </pre>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function GerenciarAcessoView({ cadastros, persistCadastros, showToast }) {
   const [novoNome, setNovoNome] = useState("");
+  const [abaAtiva, setAbaAtiva] = useState("acesso");
   const lista = cadastros.compradoresVendedores || [];
 
   const adicionar = async () => {
@@ -2299,51 +2377,82 @@ function GerenciarAcessoView({ cadastros, persistCadastros, showToast }) {
 
   return (
     <div>
-      <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
-        Só nomes cadastrados aqui conseguem entrar como Comprador/Vendedor
-        (acesso completo ao app). Conferente e Entregador não precisam estar
-        nessa lista.
-      </p>
-      <Card className="mb-3">
-        <Field label="Adicionar nome autorizado">
-          <div className="flex gap-2">
-            <TextInput
-              placeholder="Ex: Marcos"
-              value={novoNome}
-              onChange={(e) => setNovoNome(e.target.value)}
-            />
-            <button
-              className="px-3 rounded-lg font-bold text-sm flex-shrink-0"
-              style={{ background: C.amber500, color: C.green900 }}
-              onClick={adicionar}
-            >
-              + Add
-            </button>
-          </div>
-        </Field>
-      </Card>
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {[
+          { id: "acesso", label: "Acesso", icon: Shield },
+          { id: "diagnostico", label: "Diagnóstico", icon: AlertTriangle },
+        ].map((v) => (
+          <button
+            key={v.id}
+            onClick={() => setAbaAtiva(v.id)}
+            className="flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
+            style={{
+              background: abaAtiva === v.id ? C.green700 : "#fff",
+              color: abaAtiva === v.id ? "#fff" : C.green900,
+              border: `1px solid ${abaAtiva === v.id ? C.green700 : C.line}`,
+              fontFamily: displayFont,
+              fontWeight: 800,
+            }}
+          >
+            <v.icon size={16} />
+            {v.label}
+          </button>
+        ))}
+      </div>
 
-      {lista.length === 0 ? (
-        <Card>
-          <p className="text-sm" style={{ color: C.inkSoft }}>
-            Nenhum nome cadastrado ainda — o próximo que entrar como
-            Comprador/Vendedor vira o primeiro autorizado automaticamente.
+      {abaAtiva === "diagnostico" && (
+        <DiagnosticoPlanilha cadastros={cadastros} persistCadastros={persistCadastros} />
+      )}
+
+      {abaAtiva === "acesso" && (
+        <>
+          <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
+            Só nomes cadastrados aqui conseguem entrar como Comprador/Vendedor
+            (acesso completo ao app). Conferente e Entregador não precisam estar
+            nessa lista.
           </p>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {lista.map((nome) => (
-            <Card key={nome} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users size={16} style={{ color: C.green700 }} />
-                <span className="font-bold text-sm">{nome}</span>
+          <Card className="mb-3">
+            <Field label="Adicionar nome autorizado">
+              <div className="flex gap-2">
+                <TextInput
+                  placeholder="Ex: Marcos"
+                  value={novoNome}
+                  onChange={(e) => setNovoNome(e.target.value)}
+                />
+                <button
+                  className="px-3 rounded-lg font-bold text-sm flex-shrink-0"
+                  style={{ background: C.amber500, color: C.green900 }}
+                  onClick={adicionar}
+                >
+                  + Add
+                </button>
               </div>
-              <button onClick={() => remover(nome)} style={{ color: C.rust }}>
-                <Trash2 size={16} />
-              </button>
+            </Field>
+          </Card>
+
+          {lista.length === 0 ? (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>
+                Nenhum nome cadastrado ainda — o próximo que entrar como
+                Comprador/Vendedor vira o primeiro autorizado automaticamente.
+              </p>
             </Card>
-          ))}
-        </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {lista.map((nome) => (
+                <Card key={nome} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users size={16} style={{ color: C.green700 }} />
+                    <span className="font-bold text-sm">{nome}</span>
+                  </div>
+                  <button onClick={() => remover(nome)} style={{ color: C.rust }}>
+                    <Trash2 size={16} />
+                  </button>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
