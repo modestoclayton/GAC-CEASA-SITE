@@ -75,6 +75,24 @@ async function escreverTabela(sheets, spreadsheetId, nome, registros) {
 export default async function handler(req, res) {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 
+  if (req.query && req.query.debug === "key") {
+    const bruta = process.env.GOOGLE_PRIVATE_KEY || "";
+    const normalizada = normalizarChavePrivada(bruta);
+    return res.status(200).json({
+      tamanho_bruto: bruta.length,
+      comeca_com_aspas: bruta.startsWith('"'),
+      termina_com_aspas: bruta.endsWith('"'),
+      contem_barra_n_literal: bruta.includes("\\n"),
+      contem_quebra_real: bruta.includes("\n"),
+      primeiros_40_brutos: bruta.slice(0, 40),
+      ultimos_40_brutos: bruta.slice(-40),
+      tamanho_normalizado: normalizada.length,
+      primeiros_40_normalizados: normalizada.slice(0, 40),
+      ultimos_40_normalizados: normalizada.slice(-40),
+      linhas_normalizadas: normalizada.split("\n").length,
+    });
+  }
+
   if (!spreadsheetId || !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
     return res.status(500).json({
       ok: false,
