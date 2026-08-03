@@ -34,6 +34,19 @@ function getAuth() {
   ]);
 }
 
+async function garantirAbas(sheets, spreadsheetId, nomesNecessarios) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" });
+  const existentes = new Set((meta.data.sheets || []).map((s) => s.properties.title));
+  const faltando = nomesNecessarios.filter((n) => !existentes.has(n));
+  if (faltando.length === 0) return;
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: faltando.map((titulo) => ({ addSheet: { properties: { title: titulo } } })),
+    },
+  });
+}
+
 async function lerTabela(sheets, spreadsheetId, nome) {
   try {
     const res = await sheets.spreadsheets.values.get({
@@ -119,6 +132,7 @@ export default async function handler(req, res) {
   try {
     const auth = getAuth();
     const sheets = google.sheets({ version: "v4", auth });
+    await garantirAbas(sheets, spreadsheetId, [...TABELAS_CADASTROS, ...TABELAS_TRANSACOES]);
 
     if (req.method === "GET") {
       const cadastros = {};
