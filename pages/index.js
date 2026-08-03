@@ -2000,7 +2000,7 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
   const [view, setView] = useState("estoque");
   const [q, setQ] = useState("");
   const filtered = estoquePorProduto.filter((p) =>
-    p.nome.toLowerCase().includes(q.toLowerCase())
+    (p.nome || "").toLowerCase().includes(q.toLowerCase())
   );
 
   return (
