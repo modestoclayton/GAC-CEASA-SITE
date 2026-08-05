@@ -6,8 +6,9 @@ html,
 body {
   padding: 0;
   margin: 0;
-  background: #e8e0c9;
+  background: #0b2417;
   min-height: 100vh;
+  color: #f3f1e8;
 }
 
 #__next {
