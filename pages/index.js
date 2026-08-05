@@ -379,6 +379,138 @@ const FUNCOES = [
   },
 ];
 
+/* ---------------------------------------------------------------------- */
+/* Recibo / Pedido — tela dedicada pra imprimir ou salvar como PDF        */
+/* (Ctrl+P no navegador → "Salvar como PDF" — funciona sem internet)      */
+/* ---------------------------------------------------------------------- */
+function ReciboView({ tipo, item, cadastros, onFechar }) {
+  const isVenda = tipo === "venda";
+  const parte = isVenda
+    ? cadastros.clientes.find((c) => c.id === item.clienteId)
+    : cadastros.produtores.find((p) => p.id === item.produtorId);
+
+  const valorUnit = isVenda ? item.precoUnit : item.valorUnit;
+  const titulo = isVenda ? "Pedido de Venda" : "Pedido de Compra";
+  const rotuloParte = isVenda ? "Cliente" : "Produtor";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto"
+      style={{ background: "#F4F2EA" }}
+    >
+      <div className="mx-auto max-w-md py-6 px-6" style={{ color: "#1C1B18" }}>
+        <div className="flex items-center justify-between mb-6 print:hidden">
+          <button
+            onClick={onFechar}
+            className="text-sm font-bold flex items-center gap-1"
+            style={{ color: "#1F4A30" }}
+          >
+            <X size={16} /> Fechar
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 rounded-xl font-bold text-sm text-white"
+            style={{ background: "#1F4A30" }}
+          >
+            Imprimir / Salvar PDF
+          </button>
+        </div>
+
+        <div className="border-b-2 pb-4 mb-4" style={{ borderColor: "#1F4A30" }}>
+          <div className="text-xs uppercase tracking-widest font-bold" style={{ color: "#6E6650" }}>
+            GAC CEASA Manager
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
+            {titulo}
+          </div>
+          <div className="text-xs mt-1" style={{ color: "#6E6650" }}>
+            Emitido em {fmtDate(todayISO())}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
+            {rotuloParte}
+          </div>
+          <div className="text-lg font-bold">{parte ? parte.nome : "—"}</div>
+          {parte && parte.cidade && (
+            <div className="text-sm" style={{ color: "#6E6650" }}>
+              {parte.cidade}
+            </div>
+          )}
+          {parte && parte.telefone && (
+            <div className="text-sm" style={{ color: "#6E6650" }}>
+              Tel: {parte.telefone}
+            </div>
+          )}
+        </div>
+
+        <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ borderBottom: "2px solid #1F4A30" }}>
+              <th className="text-left py-2">Produto</th>
+              <th className="text-right py-2">Qtd.</th>
+              <th className="text-right py-2">Valor Unit.</th>
+              <th className="text-right py-2">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ borderBottom: "1px solid #D8CBA0" }}>
+              <td className="py-2">{item.produto}</td>
+              <td className="text-right py-2">{item.quantidade}</td>
+              <td className="text-right py-2">{fmtMoney(valorUnit)}</td>
+              <td className="text-right py-2 font-bold">{fmtMoney(item.valorTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="flex justify-end mb-6">
+          <div className="text-right">
+            <div className="text-xs uppercase font-bold" style={{ color: "#6E6650" }}>
+              Total do Pedido
+            </div>
+            <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
+              {fmtMoney(item.valorTotal)}
+            </div>
+          </div>
+        </div>
+
+        {isVenda && (
+          <div className="mb-4 text-sm">
+            <span className="font-bold">Status do pagamento: </span>
+            {item.status || "—"}
+          </div>
+        )}
+
+        {isVenda && item.entrega && (
+          <div className="mb-6 p-3 rounded-lg" style={{ background: "#EDEAE0" }}>
+            <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
+              Dados de Entrega
+            </div>
+            <div className="text-sm">Placa: {item.entrega.placa || "—"}</div>
+            <div className="text-sm">Local: {item.entrega.localEntrega || "—"}</div>
+            <div className="text-sm">Carregador: {item.entrega.carregador || "—"}</div>
+            <div className="text-sm">Telefone: {item.entrega.telefone || "—"}</div>
+          </div>
+        )}
+
+        <div className="text-xs text-center mt-8 pt-4 border-t" style={{ color: "#6E6650", borderColor: "#D8CBA0" }}>
+          Documento gerado pelo GAC CEASA Manager — {fmtDate(todayISO())}
+        </div>
+      </div>
+
+      <style jsx global>{`
+        @media print {
+          nav,
+          header {
+            display: none !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function CadastroPerfil({ onSalvar }) {
   const [nome, setNome] = useState("");
   const [funcao, setFuncao] = useState("gestor");
@@ -492,6 +624,7 @@ export default function GacCeasaApp() {
   const [cadastros, setCadastros] = useState(SEED_CADASTROS);
   const [transacoes, setTransacoes] = useState(SEED_TRANSACOES);
   const [toast, setToast] = useState(null);
+  const [recibo, setRecibo] = useState(null); // { tipo: 'venda'|'compra', item } | null
   const [perfil, setPerfil] = useState(null); // { nome, funcao } | null
   const [erroCarregamento, setErroCarregamento] = useState(null);
 
@@ -731,6 +864,18 @@ export default function GacCeasaApp() {
     );
   }
 
+  /* ---------------- recibo/pedido em modo impressão ---------------- */
+  if (recibo) {
+    return (
+      <ReciboView
+        tipo={recibo.tipo}
+        item={recibo.item}
+        cadastros={cadastros}
+        onFechar={() => setRecibo(null)}
+      />
+    );
+  }
+
   /* ---------------- acesso restrito: Conferente ---------------- */
   if (perfil.funcao === "conferente") {
     return (
@@ -751,6 +896,7 @@ export default function GacCeasaApp() {
             transacoes={transacoes}
             persistTransacoes={persistTransacoes}
             showToast={showToast}
+            setRecibo={setRecibo}
           />
         </main>
         {toast && <ToastBanner toast={toast} />}
@@ -779,6 +925,7 @@ export default function GacCeasaApp() {
             persistTransacoes={persistTransacoes}
             showToast={showToast}
             soMeuNome={perfil.nome}
+            setRecibo={setRecibo}
           />
         </main>
         {toast && <ToastBanner toast={toast} />}
@@ -867,6 +1014,7 @@ export default function GacCeasaApp() {
             persistCadastros={persistCadastros}
             persistTransacoes={persistTransacoes}
             showToast={showToast}
+            setRecibo={setRecibo}
           />
         )}
         {tab === "estoque" && (
@@ -1076,7 +1224,7 @@ const TIPOS = [
   { id: "conferencia", label: "Conferência Compras", icon: ClipboardCheck },
 ];
 
-function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast }) {
+function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
   const [tipo, setTipo] = useState("compra");
 
   return (
@@ -1108,6 +1256,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
           persistCadastros={persistCadastros}
           persistTransacoes={persistTransacoes}
           showToast={showToast}
+          setRecibo={setRecibo}
         />
       )}
       {tipo === "venda" && (
@@ -1117,6 +1266,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
           persistCadastros={persistCadastros}
           persistTransacoes={persistTransacoes}
           showToast={showToast}
+          setRecibo={setRecibo}
         />
       )}
       {tipo === "recebimento" && (
@@ -1141,6 +1291,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
           transacoes={transacoes}
           persistTransacoes={persistTransacoes}
           showToast={showToast}
+          setRecibo={setRecibo}
         />
       )}
       {tipo === "conferencia" && (
@@ -1149,6 +1300,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
           transacoes={transacoes}
           persistTransacoes={persistTransacoes}
           showToast={showToast}
+          setRecibo={setRecibo}
         />
       )}
     </div>
@@ -1294,11 +1446,12 @@ function QuickAddCliente({ onAdd, standalone = false }) {
   );
 }
 
-function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast }) {
+function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
   const [produtorId, setProdutorId] = useState(cadastros.produtores[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
   const [valorUnit, setValorUnit] = useState("");
+  const [ultimaCompra, setUltimaCompra] = useState(null);
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   const addProdutor = async (nome) => {
@@ -1339,6 +1492,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     await persistTransacoes({ ...transacoes, compras: [nova, ...transacoes.compras] });
     setQuantidade("");
     setValorUnit("");
+    setUltimaCompra(nova);
     showToast("Compra registrada");
   };
 
@@ -1390,11 +1544,20 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       <PrimaryButton onClick={salvar} icon={ArrowDownCircle}>
         Registrar Compra
       </PrimaryButton>
+      {ultimaCompra && setRecibo && (
+        <button
+          onClick={() => setRecibo({ tipo: "compra", item: ultimaCompra })}
+          className="w-full text-center text-xs font-bold mt-3"
+          style={{ color: C.amber500 }}
+        >
+          Imprimir pedido desta compra
+        </button>
+      )}
     </Card>
   );
 }
 
-function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast }) {
+function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
   const [clienteId, setClienteId] = useState(cadastros.clientes[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
@@ -1436,12 +1599,15 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   };
 
   if (entregaVendaId) {
+    const vendaSalva = transacoes.vendas.find((v) => v.id === entregaVendaId);
     return (
       <EntregaVendaForm
         vendaId={entregaVendaId}
+        venda={vendaSalva}
         transacoes={transacoes}
         persistTransacoes={persistTransacoes}
         showToast={showToast}
+        setRecibo={setRecibo}
         onDone={() => setEntregaVendaId(null)}
       />
     );
@@ -1504,7 +1670,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   );
 }
 
-function EntregaVendaForm({ vendaId, initial, transacoes, persistTransacoes, showToast, onDone }) {
+function EntregaVendaForm({ vendaId, initial, venda, transacoes, persistTransacoes, showToast, setRecibo, onDone }) {
   const [placa, setPlaca] = useState(initial?.placa || "");
   const [localEntrega, setLocalEntrega] = useState(initial?.localEntrega || "");
   const [carregador, setCarregador] = useState(initial?.carregador || "");
@@ -1582,6 +1748,15 @@ function EntregaVendaForm({ vendaId, initial, transacoes, persistTransacoes, sho
           Salvar Entrega
         </PrimaryButton>
       </div>
+      {venda && setRecibo && (
+        <button
+          onClick={() => setRecibo({ tipo: "venda", item: venda })}
+          className="w-full text-center text-xs font-bold mt-3"
+          style={{ color: C.amber500 }}
+        >
+          Imprimir pedido desta venda
+        </button>
+      )}
       <button
         onClick={onDone}
         className="w-full text-center text-xs font-bold mt-3"
@@ -1690,7 +1865,7 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
 /* ---------------------------------------------------------------------- */
 /* Entregas Tab (pós-venda)                                               */
 /* ---------------------------------------------------------------------- */
-function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMeuNome }) {
+function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMeuNome, setRecibo }) {
   const clienteNome = (id) => cadastros.clientes.find((c) => c.id === id)?.nome || "—";
   const [editandoId, setEditandoId] = useState(null);
 
@@ -1753,6 +1928,15 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
           >
             Editar dados
           </button>
+          {setRecibo && (
+            <button
+              onClick={() => setRecibo({ tipo: "venda", item: v })}
+              className="text-xs font-bold mt-1.5 ml-3"
+              style={{ color: C.amber500 }}
+            >
+              Imprimir pedido
+            </button>
+          )}
         </div>
         <button
           onClick={() => toggleConfirmada(v.id, !v.entrega.confirmada)}
@@ -1854,7 +2038,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 /* ---------------------------------------------------------------------- */
 /* Conferência de Compras (cargueiro tica recebimento)                    */
 /* ---------------------------------------------------------------------- */
-function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
+function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast, setRecibo }) {
   const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
   const [conferindoId, setConferindoId] = useState(null);
 
@@ -1946,6 +2130,15 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
               <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>
                 Recebido: {c.quantidadeRecebida} un
               </div>
+            )}
+            {setRecibo && (
+              <button
+                onClick={() => setRecibo({ tipo: "compra", item: c })}
+                className="text-xs font-bold mt-1.5"
+                style={{ color: C.amber500 }}
+              >
+                Imprimir pedido
+              </button>
             )}
           </div>
           <button
