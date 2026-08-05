@@ -20,32 +20,37 @@ import {
   Users,
   Shield,
   Trash2,
+  TrendingUp,
+  TrendingDown,
+  ShoppingCart,
+  Menu,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
-/* Design tokens — "market ledger" identity for a CEASA yard app          */
+/* Design tokens — dark modern identity, same green/amber palette         */
 /* ---------------------------------------------------------------------- */
 const C = {
-  canvas: "#E8E0C9", // kraft tag paper
-  card: "#FBF8EF",
-  cardAlt: "#F3EDDA",
-  ink: "#241F16",
-  inkSoft: "#6E6650",
-  green900: "#122A1E",
-  green800: "#173824",
-  green700: "#1F4A30",
-  green600: "#2B6640",
-  amber500: "#D9861C",
-  amber600: "#B76F13",
-  amberSoft: "#F6E3C4",
-  rust: "#A63B2E",
-  rustSoft: "#F1DAD2",
-  twine: "#C3AF80",
-  line: "#D8CBA0",
+  canvas: "#0B2417", // deep green base
+  canvasGlow: "#173A26", // gradient highlight
+  card: "#12301F",
+  cardAlt: "#1B4230",
+  ink: "#F3F1E8",
+  inkSoft: "#9FB8A9",
+  green900: "#081C11",
+  green800: "#123324",
+  green700: "#1E4A30",
+  green600: "#276642",
+  amber500: "#E0A526",
+  amber600: "#C48A16",
+  amberSoft: "#3A2E12",
+  rust: "#E0632E",
+  rustSoft: "#3A1C12",
+  twine: "#2A4C39",
+  line: "#254A36",
 };
 
 const displayFont =
-  "Impact, Haettenschweiler, 'Arial Narrow Bold', 'Arial Narrow', sans-serif";
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
 const monoFont =
   "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace";
 
@@ -140,50 +145,38 @@ const PERFIL_KEY = "gac-perfil";
 /* ---------------------------------------------------------------------- */
 /* Small UI atoms                                                         */
 /* ---------------------------------------------------------------------- */
-function CrateTag({ label, value, sub, tone = "amber" }) {
-  const bg = tone === "amber" ? C.amber500 : tone === "rust" ? C.rust : C.green600;
-  const fg = "#FBF8EF";
+function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
+  const bg = tone === "amber" ? C.amber500 : tone === "rust" ? C.rust : C.green700;
+  const fg = "#FFFFFF";
   return (
     <div
-      className="relative rounded-md py-3 shadow-sm overflow-hidden"
+      className="relative rounded-2xl p-3.5 overflow-hidden"
       style={{
         background: bg,
         color: fg,
-        clipPath: "polygon(0% 50%, 10px 0%, 100% 0%, 100% 100%, 10px 100%)",
-        paddingLeft: 22,
-        paddingRight: 14,
+        boxShadow: "0 6px 18px rgba(0,0,0,0.28)",
       }}
     >
-      {/* punch hole */}
-      <span
-        className="absolute rounded-full"
-        style={{
-          left: 3,
-          top: "50%",
-          width: 5,
-          height: 5,
-          transform: "translateY(-50%)",
-          background: C.canvas,
-        }}
-      />
-      {/* stitch line */}
-      <span
-        className="absolute"
-        style={{
-          left: 14,
-          top: 4,
-          bottom: 4,
-          borderLeft: "1px dashed rgba(251,248,239,0.35)",
-        }}
-      />
+      {Icon && (
+        <div
+          className="flex items-center justify-center rounded-xl mb-2"
+          style={{
+            width: 30,
+            height: 30,
+            background: "rgba(255,255,255,0.18)",
+          }}
+        >
+          <Icon size={16} strokeWidth={2.25} />
+        </div>
+      )}
       <div
-        className="text-xs uppercase tracking-widest font-bold opacity-90"
-        style={{ fontFamily: displayFont, letterSpacing: 1 }}
+        className="text-xs uppercase tracking-wide font-bold opacity-90 leading-tight"
+        style={{ fontFamily: displayFont }}
       >
         {label}
       </div>
       <div
-        className="text-xl font-bold leading-tight"
+        className="text-lg font-bold leading-tight mt-0.5"
         style={{ fontFamily: monoFont }}
       >
         {value}
@@ -196,11 +189,11 @@ function CrateTag({ label, value, sub, tone = "amber" }) {
 function Card({ children, className = "", ...rest }) {
   return (
     <div
-      className={`rounded-lg border p-4 ${className}`}
+      className={`rounded-2xl border p-4 ${className}`}
       style={{
         background: C.card,
         borderColor: C.line,
-        boxShadow: "0 1px 2px rgba(36,31,22,0.06)",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
       }}
       {...rest}
     >
@@ -213,9 +206,9 @@ function SectionTitle({ children, icon: Icon }) {
   return (
     <div
       className="flex items-center gap-2 mb-2 mt-5 first:mt-0"
-      style={{ color: C.green900 }}
+      style={{ color: C.ink }}
     >
-      {Icon && <Icon size={16} />}
+      {Icon && <Icon size={16} style={{ color: C.amber500 }} />}
       <h2
         className="text-xs uppercase tracking-widest font-bold"
         style={{ fontFamily: displayFont }}
@@ -228,10 +221,10 @@ function SectionTitle({ children, icon: Icon }) {
 
 function Badge({ children, tone = "ok" }) {
   const color =
-    tone === "ok" ? C.green700 : tone === "warn" ? C.amber600 : C.rust;
+    tone === "ok" ? "#6FCF97" : tone === "warn" ? C.amber500 : C.rust;
   return (
     <span
-      className="inline-block px-2 py-0.5 rounded text-xs font-bold whitespace-nowrap uppercase"
+      className="inline-block px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap uppercase"
       style={{
         color,
         border: `1.5px solid ${color}`,
@@ -261,9 +254,9 @@ function Field({ label, children }) {
 
 const inputStyle = {
   width: "100%",
-  background: "#fff",
+  background: C.cardAlt,
   border: `1px solid ${C.line}`,
-  borderRadius: 8,
+  borderRadius: 12,
   padding: "10px 12px",
   fontSize: 15,
   color: C.ink,
@@ -286,13 +279,14 @@ function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="w-full flex items-center justify-center gap-2 rounded-lg py-3 font-bold text-sm active:scale-95 transition-transform"
+      className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm active:scale-95 transition-transform"
       style={{
-        background: disabled ? "#C9C2AF" : C.green700,
-        color: "#fff",
+        background: disabled ? "#3A4A41" : C.amber500,
+        color: disabled ? C.inkSoft : C.green900,
         fontFamily: displayFont,
         fontWeight: 800,
-        letterSpacing: 0.5,
+        letterSpacing: 0.3,
+        boxShadow: disabled ? "none" : "0 4px 14px rgba(224,165,38,0.35)",
       }}
     >
       {Icon && <Icon size={16} />}
@@ -304,21 +298,26 @@ function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
 function PerfilHeader({ perfil, titulo, onTrocar }) {
   return (
     <header
-      className="px-4 pt-5 pb-4 flex items-start gap-3"
-      style={{ background: C.green900, color: "#fff" }}
+      className="px-4 pt-6 pb-5 flex items-start gap-3"
+      style={{
+        background: `linear-gradient(135deg, ${C.canvasGlow} 0%, ${C.green900} 100%)`,
+        color: "#fff",
+        borderBottom: `1px solid ${C.line}`,
+      }}
     >
       <div
-        className="rounded-full flex items-center justify-center flex-shrink-0"
+        className="rounded-2xl flex items-center justify-center flex-shrink-0"
         style={{
-          width: 40,
-          height: 40,
-          border: `2px solid ${C.amber500}`,
-          color: C.amber500,
+          width: 42,
+          height: 42,
+          background: `linear-gradient(135deg, ${C.amber500}, ${C.green600})`,
+          color: "#fff",
           fontFamily: displayFont,
           fontWeight: 800,
           fontSize: 13,
           letterSpacing: 0.5,
           marginTop: 2,
+          boxShadow: `0 0 16px rgba(224,165,38,0.4)`,
         }}
       >
         GAC
@@ -332,7 +331,7 @@ function PerfilHeader({ perfil, titulo, onTrocar }) {
         </div>
         <div
           className="text-2xl font-bold leading-tight"
-          style={{ fontFamily: displayFont, letterSpacing: 0.5 }}
+          style={{ fontFamily: displayFont, letterSpacing: 0.2 }}
         >
           {titulo}
         </div>
@@ -399,7 +398,7 @@ function CadastroPerfil({ onSalvar }) {
   return (
     <div
       className="mx-auto max-w-md lg:max-w-2xl flex flex-col items-center justify-center px-6"
-      style={{ background: C.canvas, minHeight: "100vh", boxShadow: "0 0 60px rgba(0,0,0,0.15)" }}
+      style={{ background: "linear-gradient(160deg, #173A26 0%, #0B2417 55%, #081C11 100%)", minHeight: "100vh", boxShadow: "0 0 60px rgba(0,0,0,0.5)" }}
     >
       <div
         className="rounded-full flex items-center justify-center mb-4"
@@ -417,7 +416,7 @@ function CadastroPerfil({ onSalvar }) {
       </div>
       <div
         className="text-xl font-bold mb-1 text-center"
-        style={{ fontFamily: displayFont, color: C.green900 }}
+        style={{ fontFamily: displayFont, color: C.ink }}
       >
         Quem é você?
       </div>
@@ -446,13 +445,13 @@ function CadastroPerfil({ onSalvar }) {
                   setFuncao(f.id);
                   setErro("");
                 }}
-                className="text-left rounded-lg p-3"
+                className="text-left rounded-xl p-3"
                 style={{
-                  border: `2px solid ${funcao === f.id ? C.green700 : C.line}`,
-                  background: funcao === f.id ? C.cardAlt : "#fff",
+                  border: `2px solid ${funcao === f.id ? C.amber500 : C.line}`,
+                  background: funcao === f.id ? C.cardAlt : "transparent",
                 }}
               >
-                <div className="font-bold text-sm" style={{ color: C.green900 }}>
+                <div className="font-bold text-sm" style={{ color: C.ink }}>
                   {f.label}
                 </div>
                 <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>
@@ -689,9 +688,9 @@ export default function GacCeasaApp() {
     return (
       <div
         className="flex items-center justify-center"
-        style={{ background: C.canvas, minHeight: 520 }}
+        style={{ background: "linear-gradient(160deg, #173A26 0%, #0B2417 55%, #081C11 100%)", minHeight: 520 }}
       >
-        <div className="flex flex-col items-center gap-3" style={{ color: C.green900 }}>
+        <div className="flex flex-col items-center gap-3" style={{ color: C.ink }}>
           <Loader2 className="animate-spin" size={28} />
           <div className="text-sm font-bold" style={{ fontFamily: displayFont }}>
             Carregando GAC CEASA…
@@ -738,7 +737,7 @@ export default function GacCeasaApp() {
       <div
         className="mx-auto max-w-md lg:max-w-2xl flex flex-col"
         style={{
-          background: C.canvas,
+          background: "linear-gradient(160deg, #173A26 0%, #0B2417 55%, #081C11 100%)",
           minHeight: "100vh",
           boxShadow: "0 0 60px rgba(0,0,0,0.15)",
           fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -765,7 +764,7 @@ export default function GacCeasaApp() {
       <div
         className="mx-auto max-w-md lg:max-w-2xl flex flex-col"
         style={{
-          background: C.canvas,
+          background: "linear-gradient(160deg, #173A26 0%, #0B2417 55%, #081C11 100%)",
           minHeight: "100vh",
           boxShadow: "0 0 60px rgba(0,0,0,0.15)",
           fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -792,7 +791,7 @@ export default function GacCeasaApp() {
     <div
       className="mx-auto max-w-md lg:max-w-2xl flex flex-col"
       style={{
-        background: C.canvas,
+        background: "linear-gradient(160deg, #173A26 0%, #0B2417 55%, #081C11 100%)",
         minHeight: "100vh",
         boxShadow: "0 0 60px rgba(0,0,0,0.15)",
         fontFamily:
@@ -802,21 +801,26 @@ export default function GacCeasaApp() {
       {bannerErro}
       {/* Header */}
       <header
-        className="px-4 pt-5 pb-4 flex items-start gap-3"
-        style={{ background: C.green900, color: "#fff" }}
+        className="px-4 pt-6 pb-5 flex items-start gap-3"
+        style={{
+          background: `linear-gradient(135deg, ${C.canvasGlow} 0%, ${C.green900} 100%)`,
+          color: "#fff",
+          borderBottom: `1px solid ${C.line}`,
+        }}
       >
         <div
-          className="rounded-full flex items-center justify-center flex-shrink-0"
+          className="rounded-2xl flex items-center justify-center flex-shrink-0"
           style={{
-            width: 40,
-            height: 40,
-            border: `2px solid ${C.amber500}`,
-            color: C.amber500,
+            width: 42,
+            height: 42,
+            background: `linear-gradient(135deg, ${C.amber500}, ${C.green600})`,
+            color: "#fff",
             fontFamily: displayFont,
             fontWeight: 800,
             fontSize: 13,
             letterSpacing: 0.5,
             marginTop: 2,
+            boxShadow: `0 0 16px rgba(224,165,38,0.4)`,
           }}
         >
           GAC
@@ -898,8 +902,14 @@ export default function GacCeasaApp() {
 
       {/* Bottom nav */}
       <nav
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md lg:max-w-2xl flex border-t"
-        style={{ background: C.green900, borderColor: C.green700 }}
+        className="fixed bottom-3 left-1/2 -translate-x-1/2 max-w-md lg:max-w-2xl flex rounded-2xl border"
+        style={{
+          width: "calc(100% - 24px)",
+          background: "rgba(11,36,23,0.92)",
+          borderColor: C.line,
+          backdropFilter: "blur(8px)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        }}
       >
         <NavButton
           active={tab === "dashboard"}
@@ -934,16 +944,19 @@ function NavButton({ active, icon: Icon, label, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="relative flex-1 flex flex-col items-center gap-1 py-2.5"
-      style={{ color: active ? C.amber500 : "#7E9484" }}
+      className="relative flex-1 flex flex-col items-center gap-1 py-2"
+      style={{ color: active ? C.amber500 : "#5F8270" }}
     >
-      {active && (
-        <span
-          className="absolute top-0 rounded-full"
-          style={{ width: 24, height: 3, background: C.amber500 }}
-        />
-      )}
-      <Icon size={20} strokeWidth={active ? 2.5 : 2} />
+      <span
+        className="flex items-center justify-center rounded-xl transition-colors"
+        style={{
+          width: 40,
+          height: 30,
+          background: active ? "rgba(224,165,38,0.15)" : "transparent",
+        }}
+      >
+        <Icon size={19} strokeWidth={active ? 2.5 : 2} />
+      </span>
       <span
         className="text-xs font-bold uppercase tracking-wide"
         style={{ fontFamily: displayFont, fontWeight: 800 }}
@@ -965,18 +978,33 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   return (
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <CrateTag label="Faturamento Hoje" value={fmtMoney(dashboard.faturamentoHoje)} />
-        <CrateTag label="Compras Hoje" value={fmtMoney(dashboard.comprasHoje)} tone="green" />
-        <CrateTag label="Lucro Bruto Hoje" value={fmtMoney(dashboard.lucroHoje)} />
+        <CrateTag
+          label="Faturamento Hoje"
+          value={fmtMoney(dashboard.faturamentoHoje)}
+          icon={TrendingUp}
+        />
+        <CrateTag
+          label="Compras Hoje"
+          value={fmtMoney(dashboard.comprasHoje)}
+          tone="green"
+          icon={ShoppingCart}
+        />
+        <CrateTag
+          label="Lucro Bruto Hoje"
+          value={fmtMoney(dashboard.lucroHoje)}
+          icon={TrendingUp}
+        />
         <CrateTag
           label="A Receber"
           value={fmtMoney(dashboard.contasReceber)}
           tone={dashboard.contasReceber > 0 ? "rust" : "green"}
+          icon={Wallet}
         />
         <CrateTag
           label="Perda Hoje"
           value={fmtMoney(dashboard.perdaHoje)}
           tone={dashboard.perdaHoje > 0 ? "rust" : "green"}
+          icon={TrendingDown}
         />
       </div>
 
@@ -1060,8 +1088,8 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
             onClick={() => setTipo(t.id)}
             className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
             style={{
-              background: tipo === t.id ? C.green700 : "#fff",
-              color: tipo === t.id ? "#fff" : C.green900,
+              background: tipo === t.id ? C.green700 : C.cardAlt,
+              color: tipo === t.id ? "#fff" : C.ink,
               border: `1px solid ${tipo === t.id ? C.green700 : C.line}`,
               fontFamily: displayFont,
               fontWeight: 800,
@@ -1508,7 +1536,7 @@ function EntregaVendaForm({ vendaId, initial, transacoes, persistTransacoes, sho
         <Truck size={18} style={{ color: C.green700 }} />
         <div
           className="text-sm font-bold uppercase tracking-wide"
-          style={{ color: C.green900, fontFamily: displayFont, fontWeight: 800 }}
+          style={{ color: C.ink, fontFamily: displayFont, fontWeight: 800 }}
         >
           Dados de Entrega
         </div>
@@ -1735,7 +1763,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
             style={{
               width: 30,
               height: 30,
-              background: v.entrega.confirmada ? C.green700 : "#fff",
+              background: v.entrega.confirmada ? C.green700 : C.cardAlt,
               border: `2px solid ${v.entrega.confirmada ? C.green700 : C.line}`,
             }}
           >
@@ -1931,7 +1959,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
               style={{
                 width: 30,
                 height: 30,
-                background: c.entregaConfirmada ? C.green700 : "#fff",
+                background: c.entregaConfirmada ? C.green700 : C.cardAlt,
                 border: `2px solid ${c.entregaConfirmada ? C.green700 : C.line}`,
               }}
             >
@@ -2015,8 +2043,8 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
             onClick={() => setView(v.id)}
             className="flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
             style={{
-              background: view === v.id ? C.green700 : "#fff",
-              color: view === v.id ? "#fff" : C.green900,
+              background: view === v.id ? C.green700 : C.cardAlt,
+              color: view === v.id ? "#fff" : C.ink,
               border: `1px solid ${view === v.id ? C.green700 : C.line}`,
               fontFamily: displayFont,
               fontWeight: 800,
@@ -2149,8 +2177,8 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
   return (
     <div>
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <CrateTag label="Perda Hoje" value={fmtMoney(totalHojeRS)} tone="rust" />
-        <CrateTag label="Perda Total" value={fmtMoney(totalGeralRS)} tone="rust" />
+        <CrateTag label="Perda Hoje" value={fmtMoney(totalHojeRS)} tone="rust" icon={TrendingDown} />
+        <CrateTag label="Perda Total" value={fmtMoney(totalGeralRS)} tone="rust" icon={TrendingDown} />
       </div>
 
       {!aberto ? (
@@ -2389,8 +2417,8 @@ function GerenciarAcessoView({ cadastros, persistCadastros, showToast }) {
             onClick={() => setAbaAtiva(v.id)}
             className="flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
             style={{
-              background: abaAtiva === v.id ? C.green700 : "#fff",
-              color: abaAtiva === v.id ? "#fff" : C.green900,
+              background: abaAtiva === v.id ? C.green700 : C.cardAlt,
+              color: abaAtiva === v.id ? "#fff" : C.ink,
               border: `1px solid ${abaAtiva === v.id ? C.green700 : C.line}`,
               fontFamily: displayFont,
               fontWeight: 800,
@@ -2488,8 +2516,8 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
             onClick={() => setView(v.id)}
             className="flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
             style={{
-              background: view === v.id ? C.green700 : "#fff",
-              color: view === v.id ? "#fff" : C.green900,
+              background: view === v.id ? C.green700 : C.cardAlt,
+              color: view === v.id ? "#fff" : C.ink,
               border: `1px solid ${view === v.id ? C.green700 : C.line}`,
               fontFamily: displayFont,
               fontWeight: 800,
@@ -2504,8 +2532,8 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
         onClick={() => setView("acesso")}
         className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-bold mb-4"
         style={{
-          background: view === "acesso" ? C.green700 : "#fff",
-          color: view === "acesso" ? "#fff" : C.green900,
+          background: view === "acesso" ? C.green700 : C.cardAlt,
+          color: view === "acesso" ? "#fff" : C.ink,
           border: `1px solid ${view === "acesso" ? C.green700 : C.line}`,
           fontFamily: displayFont,
           fontWeight: 800,
