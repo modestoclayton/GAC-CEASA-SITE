@@ -100,6 +100,8 @@ const SEED_CADASTROS = {
       nome: "JOÃO",
       cidade: "LONDRINA PR",
       telefone: "44998942726",
+      temCNPJ: true,
+      temDescontoFundoRural: false,
     },
   ],
   compradoresVendedores: [], // nomes autorizados a ter acesso completo (gestor)
@@ -383,15 +385,47 @@ const FUNCOES = [
 /* Recibo / Pedido — tela dedicada pra imprimir ou salvar como PDF        */
 /* (Ctrl+P no navegador → "Salvar como PDF" — funciona sem internet)      */
 /* ---------------------------------------------------------------------- */
-function ReciboView({ tipo, item, cadastros, onFechar }) {
+function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   const isVenda = tipo === "venda";
+  
+  // Para vendas: agrupa TODAS as vendas do mesmo cliente
+  // Para compras: agrupa TODAS as compras do mesmo clienteDestino
   const parte = isVenda
     ? cadastros.clientes.find((c) => c.id === item.clienteId)
     : cadastros.produtores.find((p) => p.id === item.produtorId);
 
-  const valorUnit = isVenda ? item.precoUnit : item.valorUnit;
-  const titulo = isVenda ? "Pedido de Venda" : "Pedido de Compra";
-  const rotuloParte = isVenda ? "Cliente" : "Produtor";
+  const clienteDestino = !isVenda && item.clienteDestino
+    ? cadastros.clientes.find((c) => c.id === item.clienteDestino)
+    : null;
+
+  // Agregar vendas/compras do mesmo destino
+  const itens = isVenda
+    ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId)
+    : (transacoes?.compras || []).filter(c => c.clienteDestino === item.clienteDestino);
+
+  // Para compras: agrupar por fornecedor e calcular desconto individual
+  let itensAgrupados = itens;
+  let totalSubtotal = 0;
+  let totalDesconto = 0;
+
+  if (!isVenda) {
+    // Compras: calcular desconto de cada fornecedor individualmente
+    itensAgrupados = itens.map(comp => {
+      const produtor = cadastros.produtores.find(p => p.id === comp.produtorId);
+      const desconto = produtor?.temDescontoFundoRural ? comp.valorTotal * 0.0163 : 0;
+      totalSubtotal += Number(comp.valorTotal);
+      totalDesconto += desconto;
+      return { ...comp, desconto, produtor };
+    });
+  } else {
+    // Vendas: sem desconto
+    totalSubtotal = itens.reduce((s, i) => s + Number(i.valorTotal), 0);
+  }
+
+  const totalGeral = totalSubtotal - totalDesconto;
+
+  const titulo = isVenda ? "Pedido de Venda" : "Vale de Compra";
+  const rotuloParte = isVenda ? "Cliente" : "Fornecedor";
 
   return (
     <div
@@ -445,6 +479,25 @@ function ReciboView({ tipo, item, cadastros, onFechar }) {
           )}
         </div>
 
+        {!isVenda && clienteDestino && (
+          <div className="mb-4 p-3 rounded-lg" style={{ background: "#EDEAE0" }}>
+            <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
+              Para Quem (Cliente Destino)
+            </div>
+            <div className="text-lg font-bold">{clienteDestino.nome}</div>
+            {clienteDestino.cidade && (
+              <div className="text-sm" style={{ color: "#6E6650" }}>
+                {clienteDestino.cidade}
+              </div>
+            )}
+            {clienteDestino.telefone && (
+              <div className="text-sm" style={{ color: "#6E6650" }}>
+                Tel: {clienteDestino.telefone}
+              </div>
+            )}
+          </div>
+        )}
+
         <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "2px solid #1F4A30" }}>
@@ -455,22 +508,40 @@ function ReciboView({ tipo, item, cadastros, onFechar }) {
             </tr>
           </thead>
           <tbody>
-            <tr style={{ borderBottom: "1px solid #D8CBA0" }}>
-              <td className="py-2">{item.produto}</td>
-              <td className="text-right py-2">{item.quantidade}</td>
-              <td className="text-right py-2">{fmtMoney(valorUnit)}</td>
-              <td className="text-right py-2 font-bold">{fmtMoney(item.valorTotal)}</td>
-            </tr>
+            {itens.map((i, idx) => (
+              <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0" }}>
+                <td className="py-2">{i.produto}</td>
+                <td className="text-right py-2">{i.quantidade}</td>
+                <td className="text-right py-2">{fmtMoney(isVenda ? i.precoUnit : i.valorUnit)}</td>
+                <td className="text-right py-2 font-bold">{fmtMoney(i.valorTotal)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
         <div className="flex justify-end mb-6">
           <div className="text-right">
-            <div className="text-xs uppercase font-bold" style={{ color: "#6E6650" }}>
-              Total do Pedido
+            <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
+              Subtotal
+            </div>
+            <div className="text-lg" style={{ fontFamily: "monospace" }}>
+              {fmtMoney(totalSubtotal)}
+            </div>
+            {totalDesconto > 0 && (
+              <>
+                <div className="text-xs uppercase font-bold mt-2 mb-1" style={{ color: "#D9861C" }}>
+                  Desconto (-1.63%)
+                </div>
+                <div className="text-lg" style={{ fontFamily: "monospace", color: "#D9861C" }}>
+                  -{fmtMoney(totalDesconto)}
+                </div>
+              </>
+            )}
+            <div className="text-xs uppercase font-bold mt-3 mb-1 pt-2 border-t" style={{ color: "#6E6650", borderColor: "#D8CBA0" }}>
+              Total {isVenda ? "do Pedido" : "do Vale"}
             </div>
             <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
-              {fmtMoney(item.valorTotal)}
+              {fmtMoney(totalGeral)}
             </div>
           </div>
         </div>
@@ -871,6 +942,7 @@ export default function GacCeasaApp() {
         tipo={recibo.tipo}
         item={recibo.item}
         cadastros={cadastros}
+        transacoes={transacoes}
         onFechar={() => setRecibo(null)}
       />
     );
@@ -1446,16 +1518,130 @@ function QuickAddCliente({ onAdd, standalone = false }) {
   );
 }
 
+function QuickAddProdutor({ onAdd, standalone = false }) {
+  const [open, setOpen] = useState(standalone);
+  const [nome, setNome] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [temCNPJ, setTemCNPJ] = useState(false);
+  const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(true);
+
+  const reset = () => {
+    setNome("");
+    setCidade("");
+    setTelefone("");
+    setTemCNPJ(false);
+    setTemDescontoFundoRural(true);
+  };
+
+  if (!open)
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs font-bold mt-1"
+        style={{ color: C.green700 }}
+      >
+        + Cadastrar novo
+      </button>
+    );
+
+  return (
+    <Card>
+      <div className="grid grid-cols-1 gap-3">
+        <Field label="Nome do Produtor">
+          <TextInput value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder="João" />
+        </Field>
+        <Field label="Cidade">
+          <TextInput value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Londrina PR" />
+        </Field>
+        <Field label="Telefone">
+          <TextInput value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="44 99999-9999" />
+        </Field>
+        <div>
+          <label className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={temCNPJ}
+              onChange={(e) => setTemCNPJ(e.target.checked)}
+              style={{ width: "16px", height: "16px", cursor: "pointer" }}
+            />
+            <span className="text-sm" style={{ color: C.ink }}>
+              Tem CNPJ
+            </span>
+          </label>
+          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+            {temCNPJ ? "✓ Produtor pessoa jurídica" : "• Produtor pessoa física (CPF)"}
+          </div>
+        </div>
+        <div>
+          <label className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={temDescontoFundoRural}
+              onChange={(e) => setTemDescontoFundoRural(e.target.checked)}
+              style={{ width: "16px", height: "16px", cursor: "pointer" }}
+            />
+            <span className="text-sm" style={{ color: C.ink }}>
+              Desconto Fundo Rural (1.63%)
+            </span>
+          </label>
+          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+            {temDescontoFundoRural ? "✓ Aplica desconto de 1.63%" : "• Sem desconto"}
+          </div>
+        </div>
+      </div>
+      <div className="flex gap-2 mt-4">
+        <button
+          className="flex-1 px-3 py-2.5 rounded-lg font-bold text-sm"
+          style={{ background: C.amber500, color: C.green900 }}
+          onClick={() => {
+            if (!nome.trim()) return;
+            onAdd({
+              nome: nome.trim(),
+              cidade: cidade.trim(),
+              telefone: telefone.trim(),
+              temCNPJ,
+              temDescontoFundoRural,
+            });
+            reset();
+            if (!standalone) setOpen(false);
+          }}
+        >
+          Salvar Produtor
+        </button>
+        {!standalone && (
+          <button
+            onClick={() => {
+              reset();
+              setOpen(false);
+            }}
+            style={{ color: C.inkSoft }}
+          >
+            <X size={18} />
+          </button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
   const [produtorId, setProdutorId] = useState(cadastros.produtores[0]?.id || "");
+  const [clienteDestino, setClienteDestino] = useState(cadastros.clientes[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
   const [valorUnit, setValorUnit] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
-  const addProdutor = async (nome) => {
-    const novo = { id: uid(), codigo: Date.now() % 100000, nome, cidade: "", telefone: "" };
+  // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
+  const produtorSelecionado = cadastros.produtores.find((p) => p.id === produtorId);
+  const temDesconto = produtorSelecionado?.temDescontoFundoRural; // Desconto conforme configuração
+  const desconto = temDesconto ? total * 0.0163 : 0;
+  const valorFinal = total - desconto;
+
+  const addProdutor = async (dados) => {
+    const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
     const next = { ...cadastros, produtores: [...cadastros.produtores, novo] };
     await persistCadastros(next);
     setProdutorId(novo.id);
@@ -1476,15 +1662,18 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   };
 
   const salvar = async () => {
-    if (!produtorId || !produto || !quantidade || !valorUnit) return;
+    if (!produtorId || !clienteDestino || !produto || !quantidade || !valorUnit) return;
     const nova = {
       id: uid(),
       data: todayISO(),
       produtorId,
+      clienteDestino,
       produto,
       quantidade: Number(quantidade),
       valorUnit: Number(valorUnit),
       valorTotal: total,
+      desconto: desconto,
+      valorFinal: valorFinal,
       entregaConfirmada: false,
       quantidadeRecebida: null,
       divergencia: null,
@@ -1506,7 +1695,28 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
             </option>
           ))}
         </Select>
-        <QuickAddInline placeholder="Nome do produtor" onAdd={addProdutor} />
+        <QuickAddProdutor onAdd={addProdutor} />
+      </Field>
+      {produtorSelecionado && (
+        <div className="mb-3 p-2 rounded-lg" style={{ background: temDesconto ? "#FFEBEE" : "#E8F5E9" }}>
+          <div className="text-xs font-bold" style={{ color: temDesconto ? "#C62828" : "#2E7D32" }}>
+            {temDesconto ? "⚠ Produtor sem CNPJ (CPF)" : "✓ Produtor com CNPJ"}
+          </div>
+          {temDesconto && (
+            <div className="text-xs mt-1" style={{ color: "#C62828" }}>
+              Desconto de 1.63% será aplicado
+            </div>
+          )}
+        </div>
+      )}
+      <Field label="Para Quem (Cliente Destino)">
+        <Select value={clienteDestino} onChange={(e) => setClienteDestino(e.target.value)}>
+          {cadastros.clientes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome}
+            </option>
+          ))}
+        </Select>
       </Field>
       <Field label="Produto">
         <Select value={produto} onChange={(e) => setProduto(e.target.value)}>
@@ -1538,8 +1748,18 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           />
         </Field>
       </div>
-      <div className="text-sm font-bold mb-3" style={{ color: C.green700 }}>
-        Total: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
+      <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
+        <div className="text-sm font-bold mb-2" style={{ color: C.ink }}>
+          Subtotal: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
+        </div>
+        {desconto > 0 && (
+          <div className="text-sm mb-2" style={{ color: C.amber500 }}>
+            Desconto (-1.63%): <span style={{ fontFamily: monoFont }}>{fmtMoney(desconto)}</span>
+          </div>
+        )}
+        <div className="text-sm font-bold" style={{ color: C.green700 }}>
+          Total a Pagar: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
+        </div>
       </div>
       <PrimaryButton onClick={salvar} icon={ArrowDownCircle}>
         Registrar Compra
@@ -1589,6 +1809,8 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
       quantidade: Number(quantidade),
       precoUnit: Number(precoUnit),
       valorTotal: total,
+      desconto: desconto,
+      valorFinal: valorFinal,
       status,
       entrega: null,
     };
