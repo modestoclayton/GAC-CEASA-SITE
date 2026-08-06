@@ -1631,6 +1631,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
   const [valorUnit, setValorUnit] = useState("");
+  const [carregador, setCarregador] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
@@ -1662,7 +1663,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   };
 
   const salvar = async () => {
-    if (!produtorId || !clienteDestino || !produto || !quantidade || !valorUnit) return;
+    if (!produtorId || !clienteDestino || !produto || !quantidade || !valorUnit || !carregador.trim()) return;
     const nova = {
       id: uid(),
       data: todayISO(),
@@ -1674,6 +1675,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       valorTotal: total,
       desconto: desconto,
       valorFinal: valorFinal,
+      carregador: carregador.trim(),
       entregaConfirmada: false,
       quantidadeRecebida: null,
       divergencia: null,
@@ -1717,6 +1719,14 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
             </option>
           ))}
         </Select>
+      </Field>
+      <Field label="Carregador (Motorista)">
+        <TextInput
+          value={carregador}
+          onChange={(e) => setCarregador(e.target.value)}
+          placeholder="Ex: Arnaldo, Leandro"
+          autoComplete="off"
+        />
       </Field>
       <Field label="Produto">
         <Select value={produto} onChange={(e) => setProduto(e.target.value)}>
@@ -3103,6 +3113,104 @@ function ExtratoProdutor({ produtorId, transacoes }) {
   ].sort((a, b) => (a.data < b.data ? 1 : -1));
 
   return <Extrato lancamentos={lancamentos} />;
+}
+
+function FolhaDeCargaTab({ cadastros, transacoes }) {
+  const [carregadorSelecionado, setCarregadorSelecionado] = useState("");
+
+  // Lista de carregadores únicos
+  const carregadores = [...new Set(transacoes.compras.map((c) => c.carregador).filter(Boolean))].sort();
+
+  // Filtra compras do carregador selecionado
+  const comprasDoCarregador = transacoes.compras.filter(
+    (c) => c.carregador === carregadorSelecionado
+  );
+
+  // Agrupa por cliente destino
+  const agrupadoPorCliente = {};
+  comprasDoCarregador.forEach((compra) => {
+    if (!agrupadoPorCliente[compra.clienteDestino]) {
+      agrupadoPorCliente[compra.clienteDestino] = [];
+    }
+    agrupadoPorCliente[compra.clienteDestino].push(compra);
+  });
+
+  return (
+    <div>
+      <Field label="Selecione o Carregador">
+        <Select value={carregadorSelecionado} onChange={(e) => setCarregadorSelecionado(e.target.value)}>
+          <option value="">-- Escolha um carregador --</option>
+          {carregadores.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      {carregadorSelecionado && comprasDoCarregador.length === 0 && (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            Nenhuma carga atribuída a {carregadorSelecionado}.
+          </p>
+        </Card>
+      )}
+
+      {carregadorSelecionado && comprasDoCarregador.length > 0 && (
+        <>
+          <button
+            onClick={() => window.print()}
+            className="w-full px-4 py-2 rounded-xl font-bold text-sm mb-4"
+            style={{ background: C.green700, color: "#fff" }}
+          >
+            Imprimir Folha de Carga
+          </button>
+
+          {Object.entries(agrupadoPorCliente).map(([clienteId, compras]) => {
+            const cliente = cadastros.clientes.find((c) => c.id === clienteId);
+            return (
+              <Card key={clienteId} className="mb-4">
+                <div className="font-bold text-sm mb-3" style={{ color: C.ink }}>
+                  Cliente: {cliente?.nome || "—"}
+                </div>
+                <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${C.line}` }}>
+                      <th className="text-left p-2">Fornecedor</th>
+                      <th className="text-left p-2">Produto</th>
+                      <th className="text-right p-2">Qtd</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compras.map((comp, idx) => {
+                      const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
+                      return (
+                        <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
+                          <td className="p-2">{produtor?.nome || "—"}</td>
+                          <td className="p-2">{comp.produto}</td>
+                          <td className="text-right p-2">{comp.quantidade}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </Card>
+            );
+          })}
+        </>
+      )}
+
+      <style jsx global>{`
+        @media print {
+          nav,
+          header,
+          button {
+            display: none !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 function Extrato({ lancamentos }) {
