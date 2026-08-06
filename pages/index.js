@@ -2273,6 +2273,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast, setRecibo }) {
   const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
   const [conferindoId, setConferindoId] = useState(null);
+  const [view, setView] = useState("conferencia"); // "conferencia" ou "folha-carga"
 
   const pendentes = transacoes.compras.filter((c) => !c.entregaConfirmada);
   const confirmadas = transacoes.compras.filter((c) => c.entregaConfirmada);
@@ -2411,36 +2412,83 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
 
   return (
     <div>
-      <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
-        Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
-        mercadoria chegar no pátio.
-      </p>
-      <SectionTitle icon={ClipboardCheck}>A conferir</SectionTitle>
-      {pendentes.length === 0 ? (
-        <Card>
-          <p className="text-sm" style={{ color: C.inkSoft }}>
-            Nenhuma compra pendente de conferência.
-          </p>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {pendentes.map((c) => (
-            <CompraRow key={c.id} c={c} />
-          ))}
-        </div>
-      )}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setView("conferencia")}
+          className="flex-1 py-2.5 rounded-lg font-bold text-sm"
+          style={{
+            background: view === "conferencia" ? C.green700 : C.cardAlt,
+            color: view === "conferencia" ? "#fff" : C.ink,
+            border: `1px solid ${view === "conferencia" ? C.green700 : C.line}`,
+            fontFamily: displayFont,
+            fontWeight: 800,
+          }}
+        >
+          Conferência
+        </button>
+        <button
+          onClick={() => setView("folha-carga")}
+          className="flex-1 py-2.5 rounded-lg font-bold text-sm"
+          style={{
+            background: view === "folha-carga" ? C.green700 : C.cardAlt,
+            color: view === "folha-carga" ? "#fff" : C.ink,
+            border: `1px solid ${view === "folha-carga" ? C.green700 : C.line}`,
+            fontFamily: displayFont,
+            fontWeight: 800,
+          }}
+        >
+          Folha de Carga
+        </button>
+      </div>
 
-      {confirmadas.length > 0 && (
+      {view === "conferencia" && (
         <>
-          <SectionTitle icon={Check}>Conferidas</SectionTitle>
-          <div className="flex flex-col gap-2">
-            {confirmadas.map((c) => (
-              <CompraRow key={c.id} c={c} />
-            ))}
-          </div>
+          <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
+            Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
+            mercadoria chegar no pátio.
+          </p>
+          <SectionTitle icon={ClipboardCheck}>A conferir</SectionTitle>
+          {pendentes.length === 0 ? (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>
+                Nenhuma compra pendente de conferência.
+              </p>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {pendentes.map((c) => (
+                <CompraRow key={c.id} c={c} />
+              ))}
+            </div>
+          )}
+
+          {confirmadas.length > 0 && (
+            <>
+              <SectionTitle icon={Check}>Conferidas</SectionTitle>
+              <div className="flex flex-col gap-2">
+                {confirmadas.map((c) => (
+                  <CompraRow key={c.id} c={c} />
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
+
+      {view === "folha-carga" && (
+        <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />
+      )}
     </div>
+  );
+}
+
+/* Conferencia aux */
+function DummyCompraRow() {
+  return (
+    <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
+      Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
+      mercadoria chegar no pátio.
+    </p>
   );
 }
 
