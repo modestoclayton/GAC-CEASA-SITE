@@ -1312,36 +1312,164 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
   const totalDesconto = comprasDoCliente.reduce((s, c) => s + (c.desconto || 0), 0);
   const totalFinal = totalSubtotal - totalDesconto;
 
-  // Função para gerar e baixar PDF
+  // Função para gerar e baixar PDF limpo (branco e preto)
   const gerarPDF = () => {
     const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
     if (!cliente) return;
 
-    let conteudo = "FOLHA DE PEDIDO\n";
-    conteudo += "===============\n\n";
-    conteudo += `Cliente: ${cliente.nome}\n`;
-    conteudo += `Data: ${fmtDate(todayISO())}\n\n`;
-    conteudo += "FORNECEDOR | PRODUTO | QTD | VALOR UNIT | TOTAL\n";
-    conteudo += "---------------------------------------------\n";
-
-    comprasDoCliente.forEach((comp) => {
-      const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
-      conteudo += `${produtor?.nome || "—"} | ${comp.produto} | ${comp.quantidade} | ${fmtMoney(comp.valorUnit)} | ${fmtMoney(comp.valorTotal)}\n`;
-    });
-
-    conteudo += "\n---------------------------------------------\n";
-    conteudo += `Subtotal: ${fmtMoney(totalSubtotal)}\n`;
-    if (totalDesconto > 0) {
-      conteudo += `Desconto (-1.63%): ${fmtMoney(totalDesconto)}\n`;
+    // Criar HTML limpo (branco e preto)
+    let html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Folha de Pedido - ${cliente.nome}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: white;
+      color: black;
     }
-    conteudo += `Total a Pagar: ${fmtMoney(totalFinal)}\n`;
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+      border-bottom: 2px solid black;
+      padding-bottom: 15px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .info {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      font-size: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th {
+      background-color: #f0f0f0;
+      border: 1px solid black;
+      padding: 10px;
+      text-align: left;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    td {
+      border: 1px solid black;
+      padding: 10px;
+      font-size: 12px;
+    }
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    .totals {
+      width: 100%;
+      margin-top: 20px;
+      border-top: 2px solid black;
+      padding-top: 15px;
+    }
+    .total-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .total-row .label {
+      margin-right: 20px;
+    }
+    .total-row .value {
+      min-width: 100px;
+      text-align: right;
+      font-weight: bold;
+    }
+    .final-total {
+      display: flex;
+      justify-content: flex-end;
+      font-size: 14px;
+      font-weight: bold;
+      border-top: 2px solid black;
+      padding-top: 10px;
+    }
+    .final-total .label {
+      margin-right: 20px;
+    }
+    .final-total .value {
+      min-width: 100px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Folha de Pedido</h1>
+  </div>
+  
+  <div class="info">
+    <div><strong>Cliente:</strong> ${cliente.nome}</div>
+    <div><strong>Data:</strong> ${fmtDate(todayISO())}</div>
+  </div>
+  
+  <table>
+    <thead>
+      <tr>
+        <th>Fornecedor</th>
+        <th>Produto</th>
+        <th>Qtd</th>
+        <th>Valor Unit</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${comprasDoCliente.map((comp) => {
+        const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
+        return `
+        <tr>
+          <td>${produtor?.nome || "—"}</td>
+          <td>${comp.produto}</td>
+          <td style="text-align: center;">${comp.quantidade}</td>
+          <td style="text-align: right;">${fmtMoney(comp.valorUnit)}</td>
+          <td style="text-align: right;">${fmtMoney(comp.valorTotal)}</td>
+        </tr>
+        `;
+      }).join('')}
+    </tbody>
+  </table>
+  
+  <div class="totals">
+    <div class="total-row">
+      <span class="label">Subtotal:</span>
+      <span class="value">${fmtMoney(totalSubtotal)}</span>
+    </div>
+    ${totalDesconto > 0 ? `
+    <div class="total-row">
+      <span class="label">Desconto (-1.63%):</span>
+      <span class="value">-${fmtMoney(totalDesconto)}</span>
+    </div>
+    ` : ''}
+    <div class="final-total">
+      <span class="label">Total a Pagar:</span>
+      <span class="value">${fmtMoney(totalFinal)}</span>
+    </div>
+  </div>
+</body>
+</html>
+    `;
 
-    // Cria blob e baixa
-    const blob = new Blob([conteudo], { type: "text/plain" });
+    // Criar blob e baixar como HTML (que pode ser salvo como PDF)
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Folha_Pedido_${cliente.nome}_${todayISO()}.txt`;
+    link.download = `Folha_Pedido_${cliente.nome}_${todayISO()}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1401,31 +1529,33 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
               </span>
             </div>
 
-            <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ borderBottom: `2px solid ${C.line}` }}>
-                  <th className="text-left p-2" style={{ color: C.ink }}>Fornecedor</th>
-                  <th className="text-left p-2" style={{ color: C.ink }}>Produto</th>
-                  <th className="text-right p-2" style={{ color: C.ink }}>Qtd</th>
-                  <th className="text-right p-2" style={{ color: C.ink }}>Valor Unit</th>
-                  <th className="text-right p-2" style={{ color: C.ink }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comprasDoCliente.map((comp, idx) => {
-                  const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
-                  return (
-                    <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
-                      <td className="p-2" style={{ color: C.ink }}>{produtor?.nome || "—"}</td>
-                      <td className="p-2" style={{ color: C.ink }}>{comp.produto}</td>
-                      <td className="text-right p-2" style={{ color: C.ink }}>{comp.quantidade}</td>
-                      <td className="text-right p-2" style={{ color: C.ink }}>{fmtMoney(comp.valorUnit)}</td>
-                      <td className="text-right p-2 font-bold" style={{ color: C.ink }}>{fmtMoney(comp.valorTotal)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full text-xs mb-4" style={{ borderCollapse: "collapse", minWidth: "100%" }}>
+                <thead>
+                  <tr style={{ backgroundColor: C.cardAlt, borderBottom: `2px solid ${C.line}` }}>
+                    <th className="text-left p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Fornecedor</th>
+                    <th className="text-left p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Produto</th>
+                    <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Qtd</th>
+                    <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Valor Unit</th>
+                    <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comprasDoCliente.map((comp, idx) => {
+                    const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
+                    return (
+                      <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
+                        <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
+                        <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
+                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.quantidade}</td>
+                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{fmtMoney(comp.valorUnit)}</td>
+                        <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{fmtMoney(comp.valorTotal)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
             <div style={{ borderTop: `2px solid ${C.line}`, paddingTop: "12px" }}>
               <div className="text-sm mb-2 flex justify-end gap-4">
@@ -1453,12 +1583,66 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
 
       <style jsx global>{`
         @media print {
+          body {
+            background: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          
+          * {
+            background: white !important;
+            color: black !important;
+            border-color: black !important;
+          }
+          
+          nav, header, main > div:first-child {
+            display: none !important;
+          }
+          
+          #folha-pedido-container {
+            background: white !important;
+            padding: 20px !important;
+            margin: 0 !important;
+          }
+          
           #folha-pedido-container button {
             display: none !important;
           }
+          
           #folha-pedido-container select,
-          #folha-pedido-container label {
+          #folha-pedido-container label,
+          #folha-pedido-container .flex {
             display: none !important;
+          }
+          
+          #folha-pedido-container Card,
+          #folha-pedido-container > div {
+            background: white !important;
+            border: 1px solid black !important;
+            color: black !important;
+          }
+          
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin: 20px 0 !important;
+          }
+          
+          th, td {
+            border: 1px solid black !important;
+            padding: 8px !important;
+            color: black !important;
+            background: white !important;
+            text-align: left !important;
+          }
+          
+          th {
+            background-color: #f0f0f0 !important;
+            font-weight: bold !important;
+          }
+          
+          tr:nth-child(even) {
+            background-color: white !important;
           }
         }
       `}</style>
