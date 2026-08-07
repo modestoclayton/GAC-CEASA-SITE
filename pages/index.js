@@ -1312,12 +1312,12 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
   const totalDesconto = comprasDoCliente.reduce((s, c) => s + (c.desconto || 0), 0);
   const totalFinal = totalSubtotal - totalDesconto;
 
-  // Função para gerar e baixar PDF limpo (branco e preto)
+  // Função para gerar e baixar PDF limpo (branco e preto) - REDUZIDO
   const gerarPDF = () => {
     const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
     if (!cliente) return;
 
-    // Criar HTML limpo (branco e preto)
+    // Criar HTML limpo (branco e preto) - COMPACTO
     let html = `
 <!DOCTYPE html>
 <html>
@@ -1328,82 +1328,87 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
   <style>
     body {
       font-family: Arial, sans-serif;
-      margin: 20px;
+      margin: 10px;
+      padding: 0;
       background: white;
       color: black;
     }
     .header {
       text-align: center;
-      margin-bottom: 30px;
+      margin-bottom: 15px;
       border-bottom: 2px solid black;
-      padding-bottom: 15px;
+      padding-bottom: 8px;
     }
     .header h1 {
       margin: 0;
-      font-size: 24px;
+      font-size: 18px;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: 1px;
     }
     .info {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 20px;
-      font-size: 12px;
+      margin-bottom: 12px;
+      font-size: 11px;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 20px;
+      margin-bottom: 15px;
+      font-size: 11px;
     }
     th {
       background-color: #f0f0f0;
       border: 1px solid black;
-      padding: 10px;
+      padding: 6px;
       text-align: left;
       font-weight: bold;
-      font-size: 12px;
     }
     td {
       border: 1px solid black;
-      padding: 10px;
-      font-size: 12px;
+      padding: 5px;
+      text-align: left;
+    }
+    td.number {
+      text-align: right;
     }
     tr:nth-child(even) {
-      background-color: #f9f9f9;
+      background-color: #fafafa;
     }
     .totals {
       width: 100%;
-      margin-top: 20px;
+      margin-top: 12px;
       border-top: 2px solid black;
-      padding-top: 15px;
+      padding-top: 8px;
+      font-size: 11px;
     }
     .total-row {
       display: flex;
       justify-content: flex-end;
-      margin-bottom: 8px;
-      font-size: 12px;
+      margin-bottom: 4px;
     }
     .total-row .label {
-      margin-right: 20px;
+      margin-right: 15px;
     }
     .total-row .value {
-      min-width: 100px;
+      min-width: 80px;
       text-align: right;
       font-weight: bold;
     }
     .final-total {
       display: flex;
       justify-content: flex-end;
-      font-size: 14px;
+      font-size: 12px;
       font-weight: bold;
       border-top: 2px solid black;
-      padding-top: 10px;
+      padding-top: 6px;
+      margin-top: 6px;
     }
     .final-total .label {
-      margin-right: 20px;
+      margin-right: 15px;
     }
     .final-total .value {
-      min-width: 100px;
+      min-width: 80px;
       text-align: right;
     }
   </style>
@@ -1435,9 +1440,9 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
         <tr>
           <td>${produtor?.nome || "—"}</td>
           <td>${comp.produto}</td>
-          <td style="text-align: center;">${comp.quantidade}</td>
-          <td style="text-align: right;">${fmtMoney(comp.valorUnit)}</td>
-          <td style="text-align: right;">${fmtMoney(comp.valorTotal)}</td>
+          <td class="number">${comp.quantidade}</td>
+          <td class="number">${fmtMoney(comp.valorUnit)}</td>
+          <td class="number">${fmtMoney(comp.valorTotal)}</td>
         </tr>
         `;
       }).join('')}
@@ -1464,7 +1469,7 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
 </html>
     `;
 
-    // Criar blob e baixar como HTML (que pode ser salvo como PDF)
+    // Criar blob e baixar como HTML
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -2634,9 +2639,125 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 /* ---------------------------------------------------------------------- */
 /* Conferência de Compras (cargueiro tica recebimento)                    */
 /* ---------------------------------------------------------------------- */
+function FolhaDeCargaTab({ cadastros, transacoes }) {
+  const [carregadorSelecionado, setCarregadorSelecionado] = useState("");
+
+  // Lista de carregadores únicos
+  const carregadores = [...new Set(transacoes.compras.map((c) => c.carregador).filter(Boolean))].sort();
+
+  // Filtra compras do carregador selecionado
+  const comprasDoCarregador = transacoes.compras.filter(
+    (c) => c.carregador === carregadorSelecionado
+  );
+
+  // Agrupa por cliente destino
+  const agrupadoPorCliente = {};
+  comprasDoCarregador.forEach((compra) => {
+    if (!agrupadoPorCliente[compra.clienteDestino]) {
+      agrupadoPorCliente[compra.clienteDestino] = [];
+    }
+    agrupadoPorCliente[compra.clienteDestino].push(compra);
+  });
+
+  return (
+    <div>
+      <Field label="Selecione o Carregador">
+        <Select value={carregadorSelecionado} onChange={(e) => setCarregadorSelecionado(e.target.value)}>
+          <option value="">-- Escolha um carregador --</option>
+          {carregadores.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      {carregadorSelecionado && comprasDoCarregador.length === 0 && (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            Nenhuma carga atribuída a {carregadorSelecionado}.
+          </p>
+        </Card>
+      )}
+
+      {carregadorSelecionado && comprasDoCarregador.length > 0 && (
+        <>
+          <button
+            onClick={() => window.print()}
+            className="w-full px-4 py-2.5 rounded-lg font-bold text-sm mb-4"
+            style={{ background: C.green700, color: "#fff" }}
+          >
+            📋 Imprimir Folha de Carga
+          </button>
+
+          {Object.entries(agrupadoPorCliente).map(([clienteId, compras]) => {
+            const cliente = cadastros.clientes.find((c) => c.id === clienteId);
+            return (
+              <Card key={clienteId} className="mb-4">
+                <div className="font-bold text-sm mb-3" style={{ color: C.ink }}>
+                  Cliente: {cliente?.nome || "—"}
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="w-full text-xs" style={{ borderCollapse: "collapse", minWidth: "100%" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: C.cardAlt, borderBottom: `2px solid ${C.line}` }}>
+                        <th className="text-left p-1.5" style={{ color: C.ink }}>Fornecedor</th>
+                        <th className="text-left p-1.5" style={{ color: C.ink }}>Produto</th>
+                        <th className="text-right p-1.5" style={{ color: C.ink }}>Qtd</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {compras.map((comp, idx) => {
+                        const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
+                        return (
+                          <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
+                            <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
+                            <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
+                            <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.quantidade}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            );
+          })}
+
+          <style jsx global>{`
+            @media print {
+              nav, header, button, select, label {
+                display: none !important;
+              }
+              body {
+                background: white;
+              }
+              table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+              th, td {
+                border: 1px solid black;
+                padding: 6px;
+                color: black;
+                background: white;
+              }
+              th {
+                background-color: #f0f0f0;
+                font-weight: bold;
+              }
+            }
+          `}</style>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast, setRecibo }) {
   const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
   const [conferindoId, setConferindoId] = useState(null);
+  const [view, setView] = useState("conferencia"); // "conferencia" ou "folha-carga"
 
   const pendentes = transacoes.compras.filter((c) => !c.entregaConfirmada);
   const confirmadas = transacoes.compras.filter((c) => c.entregaConfirmada);
@@ -2775,34 +2896,67 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
 
   return (
     <div>
-      <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
-        Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
-        mercadoria chegar no pátio.
-      </p>
-      <SectionTitle icon={ClipboardCheck}>A conferir</SectionTitle>
-      {pendentes.length === 0 ? (
-        <Card>
-          <p className="text-sm" style={{ color: C.inkSoft }}>
-            Nenhuma compra pendente de conferência.
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setView("conferencia")}
+          className="flex-1 py-2 rounded-lg font-bold text-sm"
+          style={{
+            background: view === "conferencia" ? C.green700 : C.cardAlt,
+            color: view === "conferencia" ? "#fff" : C.ink,
+            border: `1px solid ${view === "conferencia" ? C.green700 : C.line}`,
+          }}
+        >
+          Conferência
+        </button>
+        <button
+          onClick={() => setView("folha-carga")}
+          className="flex-1 py-2 rounded-lg font-bold text-sm"
+          style={{
+            background: view === "folha-carga" ? C.green700 : C.cardAlt,
+            color: view === "folha-carga" ? "#fff" : C.ink,
+            border: `1px solid ${view === "folha-carga" ? C.green700 : C.line}`,
+          }}
+        >
+          Folha de Carga
+        </button>
+      </div>
+
+      {view === "conferencia" && (
+        <>
+          <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
+            Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
+            mercadoria chegar no pátio.
           </p>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {pendentes.map((c) => (
-            <CompraRow key={c.id} c={c} />
-          ))}
-        </div>
+          <SectionTitle icon={ClipboardCheck}>A conferir</SectionTitle>
+          {pendentes.length === 0 ? (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>
+                Nenhuma compra pendente de conferência.
+              </p>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {pendentes.map((c) => (
+                <CompraRow key={c.id} c={c} />
+              ))}
+            </div>
+          )}
+
+          {confirmadas.length > 0 && (
+            <>
+              <SectionTitle icon={Check}>Conferidas</SectionTitle>
+              <div className="flex flex-col gap-2">
+                {confirmadas.map((c) => (
+                  <CompraRow key={c.id} c={c} />
+                ))}
+              </div>
+            </>
+          )}
+        </>
       )}
 
-      {confirmadas.length > 0 && (
-        <>
-          <SectionTitle icon={Check}>Conferidas</SectionTitle>
-          <div className="flex flex-col gap-2">
-            {confirmadas.map((c) => (
-              <CompraRow key={c.id} c={c} />
-            ))}
-          </div>
-        </>
+      {view === "folha-carga" && (
+        <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />
       )}
     </div>
   );
