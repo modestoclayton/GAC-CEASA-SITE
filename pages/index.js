@@ -24,6 +24,9 @@ import {
   TrendingDown,
   ShoppingCart,
   Menu,
+  Download,
+  FileText,
+  Printer,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
@@ -1297,83 +1300,167 @@ const TIPOS = [
 ];
 
 function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
+  const [tipoRegistro, setTipoRegistro] = useState("compra"); // "compra" ou "venda"
   const [tipo, setTipo] = useState("compra");
 
   return (
     <div>
+      {/* Seletor: Compra ou Venda */}
       <div className="grid grid-cols-2 gap-2 mb-4">
-        {TIPOS.map((t) => (
+        <button
+          onClick={() => setTipoRegistro("compra")}
+          className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
+          style={{
+            background: tipoRegistro === "compra" ? C.green700 : C.cardAlt,
+            color: tipoRegistro === "compra" ? "#fff" : C.ink,
+            border: `1px solid ${tipoRegistro === "compra" ? C.green700 : C.line}`,
+            fontFamily: displayFont,
+            fontWeight: 800,
+          }}
+        >
+          <ShoppingCart size={16} />
+          Compra
+        </button>
+        <button
+          onClick={() => setTipoRegistro("venda")}
+          className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
+          style={{
+            background: tipoRegistro === "venda" ? C.green700 : C.cardAlt,
+            color: tipoRegistro === "venda" ? "#fff" : C.ink,
+            border: `1px solid ${tipoRegistro === "venda" ? C.green700 : C.line}`,
+            fontFamily: displayFont,
+            fontWeight: 800,
+          }}
+        >
+          <ArrowUpCircle size={16} />
+          Venda
+        </button>
+      </div>
+
+      {tipoRegistro === "compra" && (
+        <div>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {TIPOS.filter(t => ['compra', 'conferencia', 'entregas'].includes(t.id)).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTipo(t.id)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
+                style={{
+                  background: tipo === t.id ? C.green700 : C.cardAlt,
+                  color: tipo === t.id ? "#fff" : C.ink,
+                  border: `1px solid ${tipo === t.id ? C.green700 : C.line}`,
+                  fontFamily: displayFont,
+                  fontWeight: 800,
+                }}
+              >
+                <t.icon size={16} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {tipo === "compra" && (
+            <FormCompra
+              cadastros={cadastros}
+              transacoes={transacoes}
+              persistCadastros={persistCadastros}
+              persistTransacoes={persistTransacoes}
+              showToast={showToast}
+              setRecibo={setRecibo}
+            />
+          )}
+          {tipo === "conferencia" && (
+            <ConferenciaComprasTab
+              cadastros={cadastros}
+              transacoes={transacoes}
+              persistTransacoes={persistTransacoes}
+              showToast={showToast}
+              setRecibo={setRecibo}
+            />
+          )}
+          {tipo === "entregas" && (
+            <EntregasTab
+              cadastros={cadastros}
+              transacoes={transacoes}
+              persistTransacoes={persistTransacoes}
+              showToast={showToast}
+              setRecibo={setRecibo}
+            />
+          )}
+
+          {/* Botão para ver Folha de Pedido */}
           <button
-            key={t.id}
-            onClick={() => setTipo(t.id)}
-            className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
+            onClick={() => setTipo("folha-pedido")}
+            className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm mt-4"
             style={{
-              background: tipo === t.id ? C.green700 : C.cardAlt,
-              color: tipo === t.id ? "#fff" : C.ink,
-              border: `1px solid ${tipo === t.id ? C.green700 : C.line}`,
+              background: tipo === "folha-pedido" ? C.green700 : C.cardAlt,
+              color: tipo === "folha-pedido" ? "#fff" : C.ink,
+              border: `1px solid ${C.line}`,
               fontFamily: displayFont,
               fontWeight: 800,
             }}
           >
-            <t.icon size={16} />
-            {t.label}
+            <FileText size={16} />
+            Folha de Pedido por Cliente
           </button>
-        ))}
-      </div>
 
-      {tipo === "compra" && (
-        <FormCompra
-          cadastros={cadastros}
-          transacoes={transacoes}
-          persistCadastros={persistCadastros}
-          persistTransacoes={persistTransacoes}
-          showToast={showToast}
-          setRecibo={setRecibo}
-        />
+          {tipo === "folha-pedido" && (
+            <div className="mt-4">
+              <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} />
+            </div>
+          )}
+        </div>
       )}
-      {tipo === "venda" && (
-        <FormVenda
-          cadastros={cadastros}
-          transacoes={transacoes}
-          persistCadastros={persistCadastros}
-          persistTransacoes={persistTransacoes}
-          showToast={showToast}
-          setRecibo={setRecibo}
-        />
-      )}
-      {tipo === "recebimento" && (
-        <FormRecebimento
-          cadastros={cadastros}
-          transacoes={transacoes}
-          persistTransacoes={persistTransacoes}
-          showToast={showToast}
-        />
-      )}
-      {tipo === "pagamento" && (
-        <FormPagamento
-          cadastros={cadastros}
-          transacoes={transacoes}
-          persistTransacoes={persistTransacoes}
-          showToast={showToast}
-        />
-      )}
-      {tipo === "entregas" && (
-        <EntregasTab
-          cadastros={cadastros}
-          transacoes={transacoes}
-          persistTransacoes={persistTransacoes}
-          showToast={showToast}
-          setRecibo={setRecibo}
-        />
-      )}
-      {tipo === "conferencia" && (
-        <ConferenciaComprasTab
-          cadastros={cadastros}
-          transacoes={transacoes}
-          persistTransacoes={persistTransacoes}
-          showToast={showToast}
-          setRecibo={setRecibo}
-        />
+
+      {tipoRegistro === "venda" && (
+        <div>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {TIPOS.filter(t => ['venda', 'recebimento', 'pagamento'].includes(t.id)).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTipo(t.id)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
+                style={{
+                  background: tipo === t.id ? C.green700 : C.cardAlt,
+                  color: tipo === t.id ? "#fff" : C.ink,
+                  border: `1px solid ${tipo === t.id ? C.green700 : C.line}`,
+                  fontFamily: displayFont,
+                  fontWeight: 800,
+                }}
+              >
+                <t.icon size={16} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {tipo === "venda" && (
+            <FormVenda
+              cadastros={cadastros}
+              transacoes={transacoes}
+              persistCadastros={persistCadastros}
+              persistTransacoes={persistTransacoes}
+              showToast={showToast}
+              setRecibo={setRecibo}
+            />
+          )}
+          {tipo === "recebimento" && (
+            <FormRecebimento
+              cadastros={cadastros}
+              transacoes={transacoes}
+              persistTransacoes={persistTransacoes}
+              showToast={showToast}
+            />
+          )}
+          {tipo === "pagamento" && (
+            <FormPagamento
+              cadastros={cadastros}
+              transacoes={transacoes}
+              persistTransacoes={persistTransacoes}
+              showToast={showToast}
+            />
+          )}
+        </div>
       )}
     </div>
   );
@@ -2282,16 +2369,26 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
     const nextCompras = transacoes.compras.map((c) => {
       if (c.id !== compraId) return c;
       const divergencia = Number(quantidadeRecebida) - Number(c.quantidade);
+      const novaQuantidade = Number(quantidadeRecebida);
+      
+      // Recalcula valor total conforme a quantidade recebida
+      const novoValorTotal = novaQuantidade * c.valorUnit;
+      const novoDesconto = c.desconto ? (novoValorTotal * 0.0163) : 0;
+      const novoValorFinal = novoValorTotal - novoDesconto;
+      
       return {
         ...c,
         entregaConfirmada: true,
-        quantidadeRecebida: Number(quantidadeRecebida),
+        quantidadeRecebida: novaQuantidade,
         divergencia,
+        valorTotal: novoValorTotal,
+        desconto: novoDesconto,
+        valorFinal: novoValorFinal,
       };
     });
     await persistTransacoes({ ...transacoes, compras: nextCompras });
     setConferindoId(null);
-    showToast("Recebimento confirmado");
+    showToast("Recebimento confirmado e vale atualizado");
   };
 
   const desconfirmar = async (compraId) => {
@@ -2476,7 +2573,9 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
       )}
 
       {view === "folha-carga" && (
-        <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />
+        <div id="folha-de-carga-container">
+          <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />
+        </div>
       )}
     </div>
   );
@@ -3163,7 +3262,178 @@ function ExtratoProdutor({ produtorId, transacoes }) {
   return <Extrato lancamentos={lancamentos} />;
 }
 
-function FolhaDeCargaTab({ cadastros, transacoes }) {
+function FolhaDePedidoTab({ cadastros, transacoes }) {
+  const [clienteSelecionado, setClienteSelecionado] = useState("");
+
+  // Lista de clientes únicos nas compras
+  const clientes = [...new Set(transacoes.compras.map((c) => c.clienteDestino).filter(Boolean))].sort();
+
+  // Filtra compras do cliente selecionado
+  const comprasDoCliente = transacoes.compras.filter(
+    (c) => c.clienteDestino === clienteSelecionado
+  );
+
+  // Calcula totais
+  const totalSubtotal = comprasDoCliente.reduce((s, c) => s + Number(c.valorTotal), 0);
+  const totalDesconto = comprasDoCliente.reduce((s, c) => s + (c.desconto || 0), 0);
+  const totalFinal = totalSubtotal - totalDesconto;
+
+  // Função para gerar e baixar PDF
+  const gerarPDF = () => {
+    const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
+    if (!cliente) return;
+
+    let conteudo = "FOLHA DE PEDIDO\n";
+    conteudo += "===============\n\n";
+    conteudo += `Cliente: ${cliente.nome}\n`;
+    conteudo += `Data: ${fmtDate(todayISO())}\n\n`;
+    conteudo += "FORNECEDOR | PRODUTO | QTD | VALOR UNIT | TOTAL\n";
+    conteudo += "---------------------------------------------\n";
+
+    comprasDoCliente.forEach((comp) => {
+      const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
+      conteudo += `${produtor?.nome || "—"} | ${comp.produto} | ${comp.quantidade} | ${fmtMoney(comp.valorUnit)} | ${fmtMoney(comp.valorTotal)}\n`;
+    });
+
+    conteudo += "\n---------------------------------------------\n";
+    conteudo += `Subtotal: ${fmtMoney(totalSubtotal)}\n`;
+    if (totalDesconto > 0) {
+      conteudo += `Desconto (-1.63%): ${fmtMoney(totalDesconto)}\n`;
+    }
+    conteudo += `Total a Pagar: ${fmtMoney(totalFinal)}\n`;
+
+    // Cria blob e baixa
+    const blob = new Blob([conteudo], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Folha_Pedido_${cliente.nome}_${todayISO()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div id="folha-pedido-container">
+      <Field label="Selecione o Cliente">
+        <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
+          <option value="">-- Escolha um cliente --</option>
+          {clientes.map((cId) => {
+            const cliente = cadastros.clientes.find((c) => c.id === cId);
+            return (
+              <option key={cId} value={cId}>
+                {cliente?.nome || "—"}
+              </option>
+            );
+          })}
+        </Select>
+      </Field>
+
+      {clienteSelecionado && comprasDoCliente.length === 0 && (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            Nenhuma compra atribuída a este cliente.
+          </p>
+        </Card>
+      )}
+
+      {clienteSelecionado && comprasDoCliente.length > 0 && (
+        <>
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => window.print()}
+              className="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+              style={{ background: C.green700, color: "#fff", fontFamily: displayFont, fontWeight: 800 }}
+            >
+              <Printer size={16} />
+              Imprimir
+            </button>
+            <button
+              onClick={gerarPDF}
+              className="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+              style={{ background: C.amber500, color: C.green900, fontFamily: displayFont, fontWeight: 800 }}
+            >
+              <Download size={16} />
+              Baixar PDF
+            </button>
+          </div>
+
+          <Card className="mb-4">
+            <div className="font-bold text-lg mb-2" style={{ color: C.ink }}>
+              Folha de Pedido
+            </div>
+            <div className="text-sm mb-4" style={{ color: C.inkSoft }}>
+              Cliente: <span style={{ color: C.ink, fontWeight: 'bold' }}>
+                {cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome || "—"}
+              </span>
+            </div>
+
+            <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${C.line}` }}>
+                  <th className="text-left p-2" style={{ color: C.ink }}>Fornecedor</th>
+                  <th className="text-left p-2" style={{ color: C.ink }}>Produto</th>
+                  <th className="text-right p-2" style={{ color: C.ink }}>Qtd</th>
+                  <th className="text-right p-2" style={{ color: C.ink }}>Valor Unit</th>
+                  <th className="text-right p-2" style={{ color: C.ink }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comprasDoCliente.map((comp, idx) => {
+                  const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
+                  return (
+                    <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
+                      <td className="p-2" style={{ color: C.ink }}>{produtor?.nome || "—"}</td>
+                      <td className="p-2" style={{ color: C.ink }}>{comp.produto}</td>
+                      <td className="text-right p-2" style={{ color: C.ink }}>{comp.quantidade}</td>
+                      <td className="text-right p-2" style={{ color: C.ink }}>{fmtMoney(comp.valorUnit)}</td>
+                      <td className="text-right p-2 font-bold" style={{ color: C.ink }}>{fmtMoney(comp.valorTotal)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <div style={{ borderTop: `2px solid ${C.line}`, paddingTop: "12px" }}>
+              <div className="text-sm mb-2 flex justify-end gap-4">
+                <span style={{ color: C.inkSoft }}>Subtotal:</span>
+                <span style={{ color: C.ink, fontWeight: 'bold', fontFamily: monoFont }}>
+                  {fmtMoney(totalSubtotal)}
+                </span>
+              </div>
+              {totalDesconto > 0 && (
+                <div className="text-sm mb-2 flex justify-end gap-4">
+                  <span style={{ color: C.amber500 }}>Desconto (-1.63%):</span>
+                  <span style={{ color: C.amber500, fontWeight: 'bold', fontFamily: monoFont }}>
+                    {fmtMoney(totalDesconto)}
+                  </span>
+                </div>
+              )}
+              <div className="text-sm font-bold flex justify-end gap-4" style={{ color: C.green700 }}>
+                <span>Total a Pagar:</span>
+                <span style={{ fontFamily: monoFont }}>{fmtMoney(totalFinal)}</span>
+              </div>
+            </div>
+          </Card>
+        </>
+      )}
+
+      <style jsx global>{`
+        @media print {
+          #folha-pedido-container button {
+            display: none !important;
+          }
+          
+          #folha-pedido-container select,
+          #folha-pedido-container label {
+            display: none !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
   const [carregadorSelecionado, setCarregadorSelecionado] = useState("");
 
   // Lista de carregadores únicos
@@ -3250,10 +3520,52 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 
       <style jsx global>{`
         @media print {
+          * {
+            color: black !important;
+            background: white !important;
+            border-color: black !important;
+          }
+          
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: white !important;
+          }
+          
           nav,
           header,
-          button {
+          button,
+          .print-hidden {
             display: none !important;
+          }
+          
+          main, 
+          #folha-de-carga-container {
+            padding: 20px;
+            background: white;
+          }
+          
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            page-break-inside: avoid;
+          }
+          
+          th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+            color: black;
+            background: white;
+          }
+          
+          th {
+            font-weight: bold;
+          }
+          
+          tr {
+            page-break-inside: avoid;
           }
         }
       `}</style>
