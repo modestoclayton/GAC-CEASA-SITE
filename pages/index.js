@@ -2687,7 +2687,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   ];
 
   // Auto-seleciona se só 1 cliente
-  React.useEffect(() => {
+  useEffect(() => {
     if (clientesDoCargueiro.length === 1 && !clienteSelecionado) {
       setClienteSelecionado(clientesDoCargueiro[0]);
     }
