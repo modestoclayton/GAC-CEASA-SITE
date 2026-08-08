@@ -104,6 +104,10 @@ const SEED_CADASTROS = {
       temDescontoFundoRural: false,
     },
   ],
+  cargueiros: [
+    { id: "cg1", nome: "Arnaldo" },
+    { id: "cg2", nome: "Leandro" },
+  ],
   compradoresVendedores: [], // nomes autorizados a ter acesso completo (gestor)
 };
 
@@ -2010,9 +2014,16 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
   const [valorUnit, setValorUnit] = useState("");
-  const [cargueiro, setCargueiro] = useState(""); // Cargueiro/Motorista que confere
+  const [cargueiroid, setCargueiroid] = useState(cadastros.cargueiros[0]?.id || ""); // ID do cargueiro
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
+
+  const addCargueiro = async (nome) => {
+    const novo = { id: uid(), nome };
+    const next = { ...cadastros, cargueiros: [...cadastros.cargueiros, novo] };
+    await persistCadastros(next);
+    setCargueiroid(novo.id);
+  };
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
   const produtorSelecionado = cadastros.produtores.find((p) => p.id === produtorId);
@@ -2042,7 +2053,8 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   };
 
   const salvar = async () => {
-    if (!produtorId || !clienteDestino || !produto || !quantidade || !valorUnit || !cargueiro.trim()) return;
+    if (!produtorId || !clienteDestino || !produto || !quantidade || !valorUnit || !cargueiroid) return;
+    const cargueiro = cadastros.cargueiros.find((c) => c.id === cargueiroid);
     const nova = {
       id: uid(),
       data: todayISO(),
@@ -2054,7 +2066,8 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       valorTotal: total,
       desconto: desconto,
       valorFinal: valorFinal,
-      cargueiro: cargueiro.trim(), // Cargueiro/Motorista que confere a carga
+      cargueiroid, // ID do cargueiro
+      cargueiro: cargueiro?.nome || "", // Nome do cargueiro (para referência)
       entregaConfirmada: false,
       quantidadeRecebida: null,
       divergencia: null,
@@ -2062,7 +2075,6 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     await persistTransacoes({ ...transacoes, compras: [nova, ...transacoes.compras] });
     setQuantidade("");
     setValorUnit("");
-    setCargueiro("");
     setUltimaCompra(nova);
     showToast("Compra registrada");
   };
@@ -2144,11 +2156,14 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         </div>
       </div>
       <Field label="Cargueiro (quem faz a carga)">
-        <TextInput
-          placeholder="Ex: Arnaldo, Leandro, João..."
-          value={cargueiro}
-          onChange={(e) => setCargueiro(e.target.value)}
-        />
+        <Select value={cargueiroid} onChange={(e) => setCargueiroid(e.target.value)}>
+          {cadastros.cargueiros.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome}
+            </option>
+          ))}
+        </Select>
+        <QuickAddInline placeholder="Nome do novo cargueiro" onAdd={addCargueiro} />
       </Field>
       <PrimaryButton onClick={salvar} icon={ArrowDownCircle}>
         Registrar Compra
