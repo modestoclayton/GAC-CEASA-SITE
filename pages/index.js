@@ -2758,9 +2758,18 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
   const [conferindoId, setConferindoId] = useState(null);
   const [view, setView] = useState("conferencia"); // "conferencia" ou "folha-carga"
+  const [carregadorFiltro, setCarregadorFiltro] = useState(""); // Novo: filtro por carregador
 
-  const pendentes = transacoes.compras.filter((c) => !c.entregaConfirmada);
-  const confirmadas = transacoes.compras.filter((c) => c.entregaConfirmada);
+  // Lista de carregadores únicos
+  const carregadores = [...new Set(transacoes.compras.map((c) => c.carregador).filter(Boolean))].sort();
+
+  // Filtra por carregador se selecionado
+  const comprasFiltradas = carregadorFiltro
+    ? transacoes.compras.filter((c) => c.carregador === carregadorFiltro)
+    : transacoes.compras;
+
+  const pendentes = comprasFiltradas.filter((c) => !c.entregaConfirmada);
+  const confirmadas = comprasFiltradas.filter((c) => c.entregaConfirmada);
 
   const confirmar = async (compraId, quantidadeRecebida) => {
     const nextCompras = transacoes.compras.map((c) => {
@@ -2923,6 +2932,17 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
 
       {view === "conferencia" && (
         <>
+          <Field label="Filtrar por Carregador (opcional)">
+            <Select value={carregadorFiltro} onChange={(e) => setCarregadorFiltro(e.target.value)}>
+              <option value="">-- Todas as compras --</option>
+              {carregadores.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
           <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
             Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
             mercadoria chegar no pátio.
