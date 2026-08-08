@@ -2664,6 +2664,274 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 /* ---------------------------------------------------------------------- */
 /* Conferência de Compras (cargueiro tica recebimento)                    */
 /* ---------------------------------------------------------------------- */
+function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast, setRecibo }) {
+  const [cargueirEntrada, setCargueirEntrada] = useState("");
+  const [clienteSelecionado, setClienteSelecionado] = useState("");
+  const [conferindoId, setConferindoId] = useState(null);
+
+  const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
+
+  // Busca cargueiro
+  const cargueirEncontrado = cadastros.cargueiros.find(
+    (c) => c.nome.toLowerCase() === cargueirEntrada.toLowerCase()
+  );
+
+  // Compras do cargueiro
+  const comprasDoCargueiro = cargueirEncontrado
+    ? transacoes.compras.filter((c) => c.cargueiro === cargueirEncontrado.nome)
+    : [];
+
+  // Clientes únicos
+  const clientesDoCargueiro = [
+    ...new Set(comprasDoCargueiro.map((c) => c.clienteDestino).filter(Boolean)),
+  ];
+
+  // Auto-seleciona se só 1 cliente
+  React.useEffect(() => {
+    if (clientesDoCargueiro.length === 1 && !clienteSelecionado) {
+      setClienteSelecionado(clientesDoCargueiro[0]);
+    }
+  }, [clientesDoCargueiro, clienteSelecionado]);
+
+  // Filtra por cliente se selecionado
+  const comprasFinal = clienteSelecionado
+    ? comprasDoCargueiro.filter((c) => c.clienteDestino === clienteSelecionado)
+    : comprasDoCargueiro;
+
+  const pendentes = comprasFinal.filter((c) => !c.entregaConfirmada);
+  const confirmadas = comprasFinal.filter((c) => c.entregaConfirmada);
+
+  // Confirmar
+  const confirmar = async (compraId, quantidadeRecebida) => {
+    const nextCompras = transacoes.compras.map((c) => {
+      if (c.id !== compraId) return c;
+      const divergencia = Number(quantidadeRecebida) - Number(c.quantidade);
+      return {
+        ...c,
+        entregaConfirmada: true,
+        quantidadeRecebida: Number(quantidadeRecebida),
+        divergencia,
+      };
+    });
+    await persistTransacoes({ ...transacoes, compras: nextCompras });
+    setConferindoId(null);
+    showToast("Recebimento confirmado");
+  };
+
+  // Desconfirmar
+  const desconfirmar = async (compraId) => {
+    const nextCompras = transacoes.compras.map((c) =>
+      c.id === compraId
+        ? { ...c, entregaConfirmada: false, quantidadeRecebida: null, divergencia: null }
+        : c
+    );
+    await persistTransacoes({ ...transacoes, compras: nextCompras });
+    showToast("Confirmação removida");
+  };
+
+  // Formulário de conferência
+  const ConferirForm = ({ c }) => {
+    const [qtd, setQtd] = useState(String(c.quantidade));
+    const divergencia = Number(qtd) - Number(c.quantidade);
+    return (
+      <Card key={c.id}>
+        <div className="font-bold text-sm">{c.produto}</div>
+        <div className="text-xs mb-3" style={{ color: C.inkSoft }}>
+          {produtorNome(c.produtorId)} · pedido: {c.quantidade} un · {fmtDate(c.data)}
+        </div>
+        <Field label="Quantidade Recebida">
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            value={qtd}
+            onChange={(e) => setQtd(e.target.value)}
+            autoFocus
+          />
+        </Field>
+        {divergencia !== 0 && qtd !== "" && (
+          <div
+            className="flex items-center gap-2 text-xs font-bold mb-3 px-2 py-1.5 rounded"
+            style={{ background: C.rustSoft, color: C.rust }}
+          >
+            <AlertTriangle size={14} />
+            Divergência de {divergencia > 0 ? "+" : ""}
+            {divergencia} un
+          </div>
+        )}
+        <PrimaryButton onClick={() => confirmar(c.id, qtd)} icon={Check}>
+          Confirmar Recebimento
+        </PrimaryButton>
+        <button
+          onClick={() => setConferindoId(null)}
+          className="w-full text-center text-xs font-bold mt-3"
+          style={{ color: C.inkSoft }}
+        >
+          Cancelar
+        </button>
+      </Card>
+    );
+  };
+
+  // Linha de compra
+  const CompraRow = ({ c }) => {
+    if (conferindoId === c.id) return <ConferirForm c={c} />;
+    const temDivergencia = c.entregaConfirmada && c.divergencia !== null && c.divergencia !== 0;
+    return (
+      <Card key={c.id}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1">
+            <div className="font-bold text-sm">{c.produto}</div>
+            <div className="text-xs" style={{ color: C.inkSoft }}>
+              {produtorNome(c.produtorId)} · pedido: {c.quantidade} un
+            </div>
+            {c.entregaConfirmada && (
+              <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>
+                Recebido: {c.quantidadeRecebida} un
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {temDivergencia && <Badge tone="warn">Divergência</Badge>}
+            {!c.entregaConfirmada ? (
+              <button
+                onClick={() => setConferindoId(c.id)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                style={{ background: C.green700, color: "#fff" }}
+              >
+                Conferir
+              </button>
+            ) : (
+              <button
+                onClick={() => desconfirmar(c.id)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                style={{ background: C.amber600, color: C.green900 }}
+              >
+                Reabrir
+              </button>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
+  return (
+    <div>
+      {!cargueirEncontrado ? (
+        <Card>
+          <p className="text-sm mb-3" style={{ color: C.inkSoft }}>
+            Cargueiro, digite seu nome:
+          </p>
+          <TextInput
+            placeholder="Ex: Arnaldo, Leandro..."
+            value={cargueirEntrada}
+            onChange={(e) => setCargueirEntrada(e.target.value)}
+            autoFocus
+          />
+          {cargueirEntrada && !cargueirEncontrado && (
+            <div className="text-xs mt-2 p-2 rounded" style={{ background: C.rustSoft, color: C.rust }}>
+              ❌ "{cargueirEntrada}" não encontrado
+            </div>
+          )}
+        </Card>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-4 p-3 rounded-lg" style={{ background: C.green700, color: "#fff" }}>
+            <div>
+              <div className="text-xs opacity-75">Logado:</div>
+              <div className="font-bold">{cargueirEncontrado.nome}</div>
+            </div>
+            <button
+              onClick={() => {
+                setCargueirEntrada("");
+                setClienteSelecionado("");
+              }}
+              className="text-xs px-3 py-1 rounded"
+              style={{ background: "rgba(255,255,255,0.2)" }}
+            >
+              Sair
+            </button>
+          </div>
+
+          {clientesDoCargueiro.length > 1 && (
+            <Field label="Qual carga fazer?">
+              <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
+                <option value="">-- Escolha --</option>
+                {clientesDoCargueiro.map((id) => {
+                  const c = cadastros.clientes.find((x) => x.id === id);
+                  return (
+                    <option key={id} value={id}>
+                      {c?.nome || "—"}
+                    </option>
+                  );
+                })}
+              </Select>
+            </Field>
+          )}
+
+          {comprasFinal.length > 0 && (
+            <>
+              <button
+                onClick={() => window.print()}
+                className="w-full px-4 py-2.5 rounded-lg font-bold text-sm mb-4"
+                style={{ background: C.green700, color: "#fff" }}
+              >
+                📋 Imprimir
+              </button>
+
+              <SectionTitle icon={ClipboardCheck}>A conferir</SectionTitle>
+              {pendentes.length === 0 ? (
+                <Card>
+                  <p className="text-sm" style={{ color: C.inkSoft }}>
+                    Nenhuma pendente
+                  </p>
+                </Card>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {pendentes.map((c) => (
+                    <CompraRow key={c.id} c={c} />
+                  ))}
+                </div>
+              )}
+
+              {confirmadas.length > 0 && (
+                <>
+                  <SectionTitle icon={Check}>Conferidas</SectionTitle>
+                  <div className="flex flex-col gap-2">
+                    {confirmadas.map((c) => (
+                      <CompraRow key={c.id} c={c} />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {comprasFinal.length === 0 && (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>
+                Nenhuma carga
+              </p>
+            </Card>
+          )}
+        </>
+      )}
+
+      <style jsx global>{`
+        @media print {
+          nav, header, button, select, label {
+            display: none !important;
+          }
+          body {
+            background: white;
+            padding: 20px;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoes, showToast }) {
   const [view, setView] = useState("estoque");
   const [q, setQ] = useState("");
