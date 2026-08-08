@@ -1300,6 +1300,123 @@ const TIPOS = [
   { id: "conferencia", label: "Conferência Compras", icon: ClipboardCheck },
 ];
 
+function FolhaDeCargaTab({ cadastros, transacoes }) {
+  const [clienteSelecionado, setClienteSelecionado] = useState("");
+
+  // Compras do cliente
+  const comprasDoCliente = transacoes.compras.filter(
+    (c) => c.clienteDestino === clienteSelecionado
+  );
+
+  // Totais
+  const totalSubtotal = comprasDoCliente.reduce((s, c) => s + Number(c.valorTotal), 0);
+  const totalDesconto = comprasDoCliente.reduce((s, c) => s + Number(c.desconto || 0), 0);
+  const totalFinal = totalSubtotal - totalDesconto;
+
+  return (
+    <div>
+      <Field label="Selecione o Cliente">
+        <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
+          <option value="">-- Escolha um cliente --</option>
+          {cadastros.clientes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      {clienteSelecionado && comprasDoCliente.length === 0 && (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            Nenhuma compra para este cliente.
+          </p>
+        </Card>
+      )}
+
+      {clienteSelecionado && comprasDoCliente.length > 0 && (
+        <>
+          <button
+            onClick={() => window.print()}
+            className="w-full px-4 py-2.5 rounded-lg font-bold text-sm mb-4"
+            style={{ background: C.green700, color: "#fff" }}
+          >
+            📋 Imprimir Folha de Carga
+          </button>
+
+          <Card className="mb-4">
+            <div className="text-center font-bold text-lg mb-3" style={{ fontFamily: displayFont }}>
+              FOLHA DE CARGA
+            </div>
+            <div className="text-sm font-bold mb-4">
+              Cliente: {cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome}
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full text-xs" style={{ borderCollapse: "collapse", minWidth: "100%" }}>
+                <thead>
+                  <tr style={{ backgroundColor: C.cardAlt, borderBottom: `2px solid ${C.line}` }}>
+                    <th className="text-left p-1.5" style={{ color: C.ink }}>Fornecedor</th>
+                    <th className="text-left p-1.5" style={{ color: C.ink }}>Produto</th>
+                    <th className="text-right p-1.5" style={{ color: C.ink }}>Qtd</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comprasDoCliente.map((comp, idx) => {
+                    const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
+                    return (
+                      <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
+                        <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
+                        <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
+                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.quantidade}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: C.line }}>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>
+                Total de Itens: {comprasDoCliente.length}
+              </div>
+              <div className="text-xs" style={{ color: C.inkSoft }}>
+                Data: {fmtDate(todayISO())}
+              </div>
+            </div>
+          </Card>
+
+          <style jsx global>{`
+            @media print {
+              nav, header, button, select, label {
+                display: none !important;
+              }
+              body {
+                background: white;
+                padding: 20px;
+              }
+              table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+              th, td {
+                border: 1px solid black;
+                padding: 6px;
+                color: black;
+                background: white;
+              }
+              th {
+                background-color: #f0f0f0;
+                font-weight: bold;
+              }
+            }
+          `}</style>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FolhaDePedidoTab({ cadastros, transacoes }) {
   const [clienteSelecionado, setClienteSelecionado] = useState("");
 
@@ -2016,6 +2133,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [valorUnit, setValorUnit] = useState("");
   const [cargueiroid, setCargueiroid] = useState(cadastros.cargueiros[0]?.id || ""); // ID do cargueiro
   const [ultimaCompra, setUltimaCompra] = useState(null);
+  const [view, setView] = useState("compra"); // "compra", "folha-pedido", "folha-carga"
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   const addCargueiro = async (nome) => {
@@ -2080,7 +2198,45 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   };
 
   return (
-    <Card>
+    <div>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <button
+          onClick={() => setView("compra")}
+          className="py-2 rounded-lg font-bold text-xs"
+          style={{
+            background: view === "compra" ? C.green700 : C.cardAlt,
+            color: view === "compra" ? "#fff" : C.ink,
+            border: `1px solid ${view === "compra" ? C.green700 : C.line}`,
+          }}
+        >
+          Compra
+        </button>
+        <button
+          onClick={() => setView("folha-pedido")}
+          className="py-2 rounded-lg font-bold text-xs"
+          style={{
+            background: view === "folha-pedido" ? C.green700 : C.cardAlt,
+            color: view === "folha-pedido" ? "#fff" : C.ink,
+            border: `1px solid ${view === "folha-pedido" ? C.green700 : C.line}`,
+          }}
+        >
+          Folha Pedido
+        </button>
+        <button
+          onClick={() => setView("folha-carga")}
+          className="py-2 rounded-lg font-bold text-xs"
+          style={{
+            background: view === "folha-carga" ? C.green700 : C.cardAlt,
+            color: view === "folha-carga" ? "#fff" : C.ink,
+            border: `1px solid ${view === "folha-carga" ? C.green700 : C.line}`,
+          }}
+        >
+          Folha Carga
+        </button>
+      </div>
+
+      {view === "compra" && (
+        <Card>
       <Field label="Produtor">
         <Select value={produtorId} onChange={(e) => setProdutorId(e.target.value)}>
           {cadastros.produtores.map((p) => (
@@ -2177,7 +2333,17 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           Imprimir pedido desta compra
         </button>
       )}
-    </Card>
+        </Card>
+      )}
+
+      {view === "folha-pedido" && (
+        <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} />
+      )}
+
+      {view === "folha-carga" && (
+        <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />
+      )}
+    </div>
   );
 }
 
