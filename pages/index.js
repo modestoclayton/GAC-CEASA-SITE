@@ -2666,6 +2666,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 /* ---------------------------------------------------------------------- */
 function FolhaDeCargaTab({ cadastros, transacoes }) {
   const [cargueirSelecionado, setCargueirSelecionado] = useState("");
+  const [clienteSelecionado, setClienteSelecionado] = useState(""); // Novo: filtro por cliente
 
   // Lista de cargueiros únicos
   const cargueiros = [...new Set(transacoes.compras.map((c) => c.cargueiro).filter(Boolean))].sort();
@@ -2675,9 +2676,19 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
     (c) => c.cargueiro === cargueirSelecionado
   );
 
-  // Agrupa por cliente destino
+  // Lista de clientes que esse cargueiro tem (únicos)
+  const clientesDoCargueiro = [
+    ...new Set(comprasDoCargueiro.map((c) => c.clienteDestino).filter(Boolean))
+  ];
+
+  // Se selecionou cliente, filtra apenas aquele
+  const comprasFinal = clienteSelecionado
+    ? comprasDoCargueiro.filter((c) => c.clienteDestino === clienteSelecionado)
+    : comprasDoCargueiro;
+
+  // Agrupa por cliente destino (só se não tem cliente selecionado)
   const agrupadoPorCliente = {};
-  comprasDoCargueiro.forEach((compra) => {
+  comprasFinal.forEach((compra) => {
     if (!agrupadoPorCliente[compra.clienteDestino]) {
       agrupadoPorCliente[compra.clienteDestino] = [];
     }
@@ -2687,7 +2698,10 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
   return (
     <div>
       <Field label="Selecione o Cargueiro">
-        <Select value={cargueirSelecionado} onChange={(e) => setCargueirSelecionado(e.target.value)}>
+        <Select value={cargueirSelecionado} onChange={(e) => {
+          setCargueirSelecionado(e.target.value);
+          setClienteSelecionado(""); // Reset cliente quando muda cargueiro
+        }}>
           <option value="">-- Escolha um cargueiro --</option>
           {cargueiros.map((c) => (
             <option key={c} value={c}>
@@ -2697,6 +2711,22 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
         </Select>
       </Field>
 
+      {cargueirSelecionado && clientesDoCargueiro.length > 1 && (
+        <Field label="Qual cliente você vai carregar?">
+          <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
+            <option value="">-- Todas as cargas deste cargueiro --</option>
+            {clientesDoCargueiro.map((clienteId) => {
+              const cliente = cadastros.clientes.find((c) => c.id === clienteId);
+              return (
+                <option key={clienteId} value={clienteId}>
+                  {cliente?.nome || "—"}
+                </option>
+              );
+            })}
+          </Select>
+        </Field>
+      )}
+
       {cargueirSelecionado && comprasDoCargueiro.length === 0 && (
         <Card>
           <p className="text-sm" style={{ color: C.inkSoft }}>
@@ -2705,7 +2735,7 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
         </Card>
       )}
 
-      {cargueirSelecionado && comprasDoCargueiro.length > 0 && (
+      {cargueirSelecionado && comprasFinal.length > 0 && (
         <>
           <button
             onClick={() => window.print()}
@@ -2783,18 +2813,10 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
   const [conferindoId, setConferindoId] = useState(null);
   const [view, setView] = useState("conferencia"); // "conferencia" ou "folha-carga"
-  const [cargueirFiltro, setCargueirFiltro] = useState(""); // Filtro por cargueiro
 
-  // Lista de cargueiros únicos
-  const cargueiros = [...new Set(transacoes.compras.map((c) => c.cargueiro).filter(Boolean))].sort();
-
-  // Filtra por cargueiro se selecionado
-  const comprasFiltradas = cargueirFiltro
-    ? transacoes.compras.filter((c) => c.cargueiro === cargueirFiltro)
-    : transacoes.compras;
-
-  const pendentes = comprasFiltradas.filter((c) => !c.entregaConfirmada);
-  const confirmadas = comprasFiltradas.filter((c) => c.entregaConfirmada);
+  // Mostra TODAS as compras (sem filtro de cargueiro)
+  const pendentes = transacoes.compras.filter((c) => !c.entregaConfirmada);
+  const confirmadas = transacoes.compras.filter((c) => c.entregaConfirmada);
 
   const confirmar = async (compraId, quantidadeRecebida) => {
     const nextCompras = transacoes.compras.map((c) => {
@@ -2957,19 +2979,8 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
 
       {view === "conferencia" && (
         <>
-          <Field label="Filtrar por Cargueiro (quem vai conferir a carga)">
-            <Select value={cargueirFiltro} onChange={(e) => setCargueirFiltro(e.target.value)}>
-              <option value="">-- Todas as compras --</option>
-              {cargueiros.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
           <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
-            Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
+            Lista de TODAS as compras pra conferir a quantidade recebida e marcar quando a
             mercadoria chegar no pátio.
           </p>
           <SectionTitle icon={ClipboardCheck}>A conferir</SectionTitle>
