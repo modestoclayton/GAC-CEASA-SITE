@@ -1418,6 +1418,278 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
   );
 }
 
+function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) {
+  const [clienteSelecionado, setClienteSelecionado] = useState("");
+  const [editandoId, setEditandoId] = useState(null);
+  const [editQtd, setEditQtd] = useState("");
+
+  // Lista de clientes únicos que têm requisições (Pix/Dinheiro)
+  const comprasComRequisicao = transacoes.compras.filter((c) => {
+    const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+    return produtor && (produtor.formaPagamento === "pix" || produtor.formaPagamento === "dinheiro");
+  });
+
+  const clientes = [...new Set(comprasComRequisicao.map((c) => c.clienteDestino).filter(Boolean))];
+
+  // Requisições do cliente selecionado
+  const requisicoesDoCliente = comprasComRequisicao.filter(
+    (c) => c.clienteDestino === clienteSelecionado
+  );
+
+  const totalSubtotal = requisicoesDoCliente.reduce((s, c) => s + Number(c.valorTotal || 0), 0);
+  const totalDesconto = requisicoesDoCliente.reduce((s, c) => s + (c.desconto || 0), 0);
+  const totalFinal = totalSubtotal - totalDesconto;
+
+  // Atualizar quantidade
+  const atualizarQuantidade = async (compraId, novaQtd) => {
+    const nextCompras = transacoes.compras.map((c) => {
+      if (c.id !== compraId) return c;
+      const novoValorTotal = Number(novaQtd) * Number(c.valorUnit);
+      const novoDesconto = c.desconto ? (novoValorTotal * Number(c.desconto) / Number(c.valorTotal)) : 0;
+      return {
+        ...c,
+        quantidade: Number(novaQtd),
+        valorTotal: novoValorTotal,
+        desconto: novoDesconto,
+      };
+    });
+    await persistTransacoes({ ...transacoes, compras: nextCompras });
+    setEditandoId(null);
+    showToast("Quantidade atualizada");
+  };
+
+  // Gerar PDF/Impressão
+  const gerarPDF = () => {
+    const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
+    if (!cliente) return;
+
+    let html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Requisição - ${cliente.nome}</title>
+  <style>
+    body { font-family: Arial; margin: 40px; background: white; color: black; }
+    .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid black; padding-bottom: 15px; }
+    .header h1 { margin: 0; font-size: 20px; }
+    .header .subtitle { font-size: 24px; font-weight: bold; color: #1b5e20; }
+    .info { margin: 20px 0; font-size: 14px; }
+    .cliente-section { margin: 20px 0; }
+    .cliente-title { font-size: 12px; color: #666; font-weight: bold; }
+    .cliente-name { font-size: 20px; font-weight: bold; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
+    th, td { border-bottom: 1px solid black; padding: 10px; text-align: left; }
+    th { border-bottom: 2px solid black; font-weight: bold; }
+    .number { text-align: right; }
+    .totals { margin-top: 20px; text-align: right; font-size: 14px; }
+    .total-row { margin: 5px 0; }
+    .total-final { font-size: 18px; font-weight: bold; color: #1b5e20; margin-top: 10px; border-top: 2px solid black; padding-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="info">GAC CEASA MANAGER</div>
+    <div class="subtitle">Requisição de Compra</div>
+    <div class="info">Emitido em ${fmtDate(todayISO())}</div>
+  </div>
+
+  <div class="cliente-section">
+    <div class="cliente-title">CLIENTE</div>
+    <div class="cliente-name">${cliente.nome}</div>
+    <div>${cliente.cidade || ""}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Produto</th>
+        <th class="number">Qtd.</th>
+        <th class="number">Valor Unit.</th>
+        <th class="number">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${requisicoesDoCliente.map((c) => `
+      <tr>
+        <td>${c.produto}</td>
+        <td class="number">${c.quantidade}</td>
+        <td class="number">${fmtMoney(c.valorUnit)}</td>
+        <td class="number">${fmtMoney(c.valorTotal)}</td>
+      </tr>
+      `).join("")}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div class="total-row">SUBTOTAL: ${fmtMoney(totalSubtotal)}</div>
+    ${totalDesconto > 0 ? `<div class="total-row">DESCONTO: ${fmtMoney(totalDesconto)}</div>` : ""}
+    <div class="total-final">TOTAL DO PEDIDO: ${fmtMoney(totalFinal)}</div>
+  </div>
+</body>
+</html>
+    `;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Requisicao_${cliente.nome}_${todayISO()}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div>
+      <Field label="Selecione o Cliente">
+        <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
+          <option value="">-- Escolha um cliente --</option>
+          {clientes.map((id) => {
+            const c = cadastros.clientes.find((x) => x.id === id);
+            return (
+              <option key={id} value={id}>
+                {c?.nome || "—"}
+              </option>
+            );
+          })}
+        </Select>
+      </Field>
+
+      {clienteSelecionado && requisicoesDoCliente.length === 0 && (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            Nenhuma requisição para este cliente.
+          </p>
+        </Card>
+      )}
+
+      {clienteSelecionado && requisicoesDoCliente.length > 0 && (
+        <>
+          <button
+            onClick={() => window.print()}
+            className="w-full px-4 py-2.5 rounded-lg font-bold text-sm mb-2"
+            style={{ background: C.green700, color: "#fff" }}
+          >
+            🖨️ Imprimir
+          </button>
+          <button
+            onClick={gerarPDF}
+            className="w-full px-4 py-2.5 rounded-lg font-bold text-sm mb-4"
+            style={{ background: C.green700, color: "#fff" }}
+          >
+            📄 Baixar PDF
+          </button>
+
+          <Card>
+            <div className="text-center mb-4">
+              <div className="text-xs" style={{ color: C.inkSoft }}>GAC CEASA MANAGER</div>
+              <div className="font-bold text-lg" style={{ color: C.green900 }}>Requisição de Compra</div>
+              <div className="text-xs" style={{ color: C.inkSoft }}>Emitido em {fmtDate(todayISO())}</div>
+            </div>
+
+            <div className="mb-4 pb-3 border-b" style={{ borderColor: C.line }}>
+              <div className="text-xs font-bold" style={{ color: C.inkSoft }}>CLIENTE</div>
+              <div className="font-bold text-sm">{cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome}</div>
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom: `2px solid ${C.line}` }}>
+                    <th className="text-left p-1.5" style={{ color: C.ink }}>Produto</th>
+                    <th className="text-right p-1.5" style={{ color: C.ink }}>Qtd</th>
+                    <th className="text-right p-1.5" style={{ color: C.ink }}>Valor Unit</th>
+                    <th className="text-right p-1.5" style={{ color: C.ink }}>Total</th>
+                    <th className="text-center p-1.5" style={{ color: C.ink }}>Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {requisicoesDoCliente.map((comp) => (
+                    <tr key={comp.id} style={{ borderBottom: `1px solid ${C.line}` }}>
+                      <td className="p-1.5" style={{ color: C.ink }}>{comp.produto}</td>
+                      <td className="text-right p-1.5" style={{ color: C.ink }}>
+                        {editandoId === comp.id ? (
+                          <TextInput
+                            type="number"
+                            value={editQtd}
+                            onChange={(e) => setEditQtd(e.target.value)}
+                            style={{ width: "60px" }}
+                            autoFocus
+                          />
+                        ) : (
+                          comp.quantidade
+                        )}
+                      </td>
+                      <td className="text-right p-1.5" style={{ color: C.ink }}>{fmtMoney(comp.valorUnit)}</td>
+                      <td className="text-right p-1.5 font-bold" style={{ color: C.ink }}>{fmtMoney(comp.valorTotal)}</td>
+                      <td className="text-center p-1.5">
+                        {editandoId === comp.id ? (
+                          <>
+                            <button
+                              onClick={() => atualizarQuantidade(comp.id, editQtd)}
+                              className="text-xs px-2 py-1 rounded"
+                              style={{ background: C.green700, color: "#fff" }}
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => setEditandoId(null)}
+                              className="text-xs px-2 py-1 ml-1"
+                              style={{ color: C.inkSoft }}
+                            >
+                              ✕
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditandoId(comp.id);
+                              setEditQtd(String(comp.quantidade));
+                            }}
+                            className="text-xs px-2 py-1 rounded"
+                            style={{ background: C.amber500, color: "#fff" }}
+                          >
+                            ✏️
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 pt-3 text-right" style={{ borderTop: `2px solid ${C.line}` }}>
+              <div className="text-sm mb-1" style={{ color: C.inkSoft }}>
+                Subtotal: <span style={{ fontWeight: "bold", color: C.ink }}>{fmtMoney(totalSubtotal)}</span>
+              </div>
+              {totalDesconto > 0 && (
+                <div className="text-sm mb-1" style={{ color: C.inkSoft }}>
+                  Desconto: <span style={{ fontWeight: "bold", color: C.ink }}>-{fmtMoney(totalDesconto)}</span>
+                </div>
+              )}
+              <div className="text-lg font-bold mt-2" style={{ color: C.green700 }}>
+                Total: {fmtMoney(totalFinal)}
+              </div>
+            </div>
+          </Card>
+
+          <style jsx global>{`
+            @media print {
+              nav, header, button, select {
+                display: none !important;
+              }
+              body { background: white; padding: 20px; }
+            }
+          `}</style>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FolhaDePedidoTab({ cadastros, transacoes }) {
   const [clienteSelecionado, setClienteSelecionado] = useState("");
 
@@ -2241,115 +2513,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       </div>
 
       {view === "requisicao" && (
-        <>
-          {!geraRequisicao ? (
-            <Card>
-              <div className="text-center py-4" style={{ color: C.inkSoft }}>
-                <p className="text-sm font-bold">📄 Pagamento por Boleto</p>
-                <p className="text-xs mt-2">Não requer requisição para pagamento via boleto</p>
-              </div>
-            </Card>
-          ) : (
-            <Card>
-      <Field label="Produtor">
-        <Select value={produtorId} onChange={(e) => setProdutorId(e.target.value)}>
-          {cadastros.produtores.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </Select>
-        <QuickAddProdutor onAdd={addProdutor} />
-      </Field>
-      {produtorSelecionado && (
-        <div className="mb-3 p-2 rounded-lg" style={{ background: temDesconto ? "#FFEBEE" : "#E8F5E9" }}>
-          <div className="text-xs font-bold" style={{ color: temDesconto ? "#C62828" : "#2E7D32" }}>
-            {temDesconto ? "⚠ Produtor sem CNPJ (CPF)" : "✓ Produtor com CNPJ"}
-          </div>
-          {temDesconto && (
-            <div className="text-xs mt-1" style={{ color: "#C62828" }}>
-              Desconto de 1.63% será aplicado
-            </div>
-          )}
-        </div>
-      )}
-      <Field label="Para Quem (Cliente Destino)">
-        <Select value={clienteDestino} onChange={(e) => setClienteDestino(e.target.value)}>
-          {cadastros.clientes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Produto">
-        <Select value={produto} onChange={(e) => setProduto(e.target.value)}>
-          {cadastros.produtos.map((p) => (
-            <option key={p.id} value={p.nome}>
-              {p.nome}
-            </option>
-          ))}
-        </Select>
-        <QuickAddInline placeholder="Nome do produto" onAdd={addProduto} />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Quantidade">
-          <TextInput
-            type="number"
-            inputMode="decimal"
-            value={quantidade}
-            onChange={(e) => setQuantidade(e.target.value)}
-            placeholder="0"
-          />
-        </Field>
-        <Field label="Valor Unit. (R$)">
-          <TextInput
-            type="number"
-            inputMode="decimal"
-            value={valorUnit}
-            onChange={(e) => setValorUnit(e.target.value)}
-            placeholder="0,00"
-          />
-        </Field>
-      </div>
-      <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
-        <div className="text-sm font-bold mb-2" style={{ color: C.ink }}>
-          Subtotal: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
-        </div>
-        {desconto > 0 && (
-          <div className="text-sm mb-2" style={{ color: C.amber500 }}>
-            Desconto (-1.63%): <span style={{ fontFamily: monoFont }}>{fmtMoney(desconto)}</span>
-          </div>
-        )}
-        <div className="text-sm font-bold" style={{ color: C.green700 }}>
-          Total a Pagar: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
-        </div>
-      </div>
-      <Field label="Cargueiro (quem faz a carga)">
-        <Select value={cargueiroid} onChange={(e) => setCargueiroid(e.target.value)}>
-          {cadastros.cargueiros.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
-            </option>
-          ))}
-        </Select>
-        <QuickAddInline placeholder="Nome do novo cargueiro" onAdd={addCargueiro} />
-      </Field>
-      <PrimaryButton onClick={salvar} icon={ArrowDownCircle}>
-        Registrar Compra
-      </PrimaryButton>
-      {ultimaCompra && setRecibo && (
-        <button
-          onClick={() => setRecibo({ tipo: "compra", item: ultimaCompra })}
-          className="w-full text-center text-xs font-bold mt-3"
-          style={{ color: C.amber500 }}
-        >
-          Imprimir pedido desta compra
-        </button>
-      )}
-        </Card>
-          )}
-        </>
+        <RequisicaoTab cadastros={cadastros} transacoes={transacoes} persistTransacoes={persistTransacoes} showToast={showToast} />
       )}
 
       {view === "folha-pedido" && (
