@@ -2343,6 +2343,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
   const [telefone, setTelefone] = useState("");
   const [temCNPJ, setTemCNPJ] = useState(false);
   const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(true);
+  const [formaPagamento, setFormaPagamento] = useState("pix"); // "pix", "dinheiro", "boleto"
 
   const reset = () => {
     setNome("");
@@ -2350,6 +2351,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
     setTelefone("");
     setTemCNPJ(false);
     setTemDescontoFundoRural(true);
+    setFormaPagamento("pix");
   };
 
   if (!open)
@@ -2407,6 +2409,13 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
             {temDescontoFundoRural ? "✓ Aplica desconto de 1.63%" : "• Sem desconto"}
           </div>
         </div>
+        <Field label="Forma de Pagamento">
+          <Select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)}>
+            <option value="pix">💳 Pix (Gera Requisição)</option>
+            <option value="dinheiro">💵 Dinheiro (Gera Requisição)</option>
+            <option value="boleto">📄 Boleto (Sem Requisição)</option>
+          </Select>
+        </Field>
       </div>
       <div className="flex gap-2 mt-4">
         <button
@@ -2420,6 +2429,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
               telefone: telefone.trim(),
               temCNPJ,
               temDescontoFundoRural,
+              formaPagamento,
             });
             reset();
             if (!standalone) setOpen(false);
