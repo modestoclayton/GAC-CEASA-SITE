@@ -1536,7 +1536,7 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
 
   <div class="totals">
     <div class="total-row">SUBTOTAL: ${fmtMoney(totalSubtotal)}</div>
-    ${totalDesconto > 0 ? `<div class="total-row">DESCONTO: ${fmtMoney(totalDesconto)}</div>` : ""}
+    ${totalDesconto > 0 ? `<div class="total-row" style="color: #1b5e20; font-weight: bold;">📋 DESCONTO FUNDO RURAL (1.63%): -${fmtMoney(totalDesconto)}</div>` : ""}
     <div class="total-final">TOTAL DA REQUISIÇÃO: ${fmtMoney(totalFinal)}</div>
   </div>
 </body>
@@ -1711,12 +1711,12 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
                 Subtotal: <span style={{ fontWeight: "bold", color: C.ink }}>{fmtMoney(totalSubtotal)}</span>
               </div>
               {totalDesconto > 0 && (
-                <div className="text-sm mb-1" style={{ color: C.inkSoft }}>
-                  Desconto: <span style={{ fontWeight: "bold", color: C.ink }}>-{fmtMoney(totalDesconto)}</span>
+                <div className="text-sm mb-1 p-2 rounded" style={{ backgroundColor: "#E8F5E9", color: C.green700, fontWeight: "bold" }}>
+                  📋 Desconto Fundo Rural (1.63%): <span style={{ color: C.green700 }}>-{fmtMoney(totalDesconto)}</span>
                 </div>
               )}
-              <div className="text-lg font-bold mt-2" style={{ color: C.green700 }}>
-                Total: {fmtMoney(totalFinal)}
+              <div className="text-lg font-bold mt-2 p-2" style={{ color: C.green700, backgroundColor: C.amberSoft, borderRadius: "8px" }}>
+                Total a Pagar: {fmtMoney(totalFinal)}
               </div>
             </div>
           </Card>
