@@ -102,6 +102,7 @@ const SEED_CADASTROS = {
       telefone: "44998942726",
       temCNPJ: true,
       temDescontoFundoRural: false,
+      formaPagamento: "pix", // "pix", "dinheiro", "boleto"
     },
   ],
   cargueiros: [
@@ -2133,7 +2134,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [valorUnit, setValorUnit] = useState("");
   const [cargueiroid, setCargueiroid] = useState(cadastros.cargueiros[0]?.id || ""); // ID do cargueiro
   const [ultimaCompra, setUltimaCompra] = useState(null);
-  const [view, setView] = useState("compra"); // "compra", "folha-pedido", "folha-carga"
+  const [view, setView] = useState("requisicao"); // "requisicao", "folha-pedido", "folha-carga"
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   const addCargueiro = async (nome) => {
@@ -2148,6 +2149,10 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const temDesconto = produtorSelecionado?.temDescontoFundoRural; // Desconto conforme configuração
   const desconto = temDesconto ? total * 0.0163 : 0;
   const valorFinal = total - desconto;
+  
+  // Forma de pagamento do produtor
+  const formaPagamentoProdutor = produtorSelecionado?.formaPagamento || "pix"; // Default: pix
+  const geraRequisicao = formaPagamentoProdutor === "pix" || formaPagamentoProdutor === "dinheiro";
 
   const addProdutor = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
@@ -2201,15 +2206,15 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     <div>
       <div className="grid grid-cols-3 gap-2 mb-4">
         <button
-          onClick={() => setView("compra")}
+          onClick={() => setView("requisicao")}
           className="py-2 rounded-lg font-bold text-xs"
           style={{
-            background: view === "compra" ? C.green700 : C.cardAlt,
-            color: view === "compra" ? "#fff" : C.ink,
-            border: `1px solid ${view === "compra" ? C.green700 : C.line}`,
+            background: view === "requisicao" ? C.green700 : C.cardAlt,
+            color: view === "requisicao" ? "#fff" : C.ink,
+            border: `1px solid ${view === "requisicao" ? C.green700 : C.line}`,
           }}
         >
-          Compra
+          Requisição
         </button>
         <button
           onClick={() => setView("folha-pedido")}
@@ -2235,8 +2240,17 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         </button>
       </div>
 
-      {view === "compra" && (
-        <Card>
+      {view === "requisicao" && (
+        <>
+          {!geraRequisicao ? (
+            <Card>
+              <div className="text-center py-4" style={{ color: C.inkSoft }}>
+                <p className="text-sm font-bold">📄 Pagamento por Boleto</p>
+                <p className="text-xs mt-2">Não requer requisição para pagamento via boleto</p>
+              </div>
+            </Card>
+          ) : (
+            <Card>
       <Field label="Produtor">
         <Select value={produtorId} onChange={(e) => setProdutorId(e.target.value)}>
           {cadastros.produtores.map((p) => (
@@ -2334,6 +2348,8 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         </button>
       )}
         </Card>
+          )}
+        </>
       )}
 
       {view === "folha-pedido" && (
