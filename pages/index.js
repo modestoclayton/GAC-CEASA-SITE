@@ -887,16 +887,13 @@ export default function GacCeasaApp() {
       }, 0);
     const contasReceber = contaClientes.reduce((s, c) => s + Math.max(c.saldo, 0), 0);
     const estoqueBaixo = estoquePorProduto.filter((e) => e.saldo < e.estoqueMinimo).length;
-    const perdaHoje = (transacoes.perdas || [])
-      .filter((pd) => pd.data === t)
-      .reduce((s, pd) => s + Number(pd.valorPerdido), 0);
     const totalCXComprasHoje = transacoes.compras
       .filter((c) => c.data === t)
       .reduce((s, c) => s + Number(c.quantidade), 0);
     const totalCXVendasHoje = transacoes.vendas
       .filter((v) => v.data === t)
       .reduce((s, v) => s + Number(v.quantidade), 0);
-    return { faturamentoHoje, comprasHoje, lucroHoje, contasReceber, estoqueBaixo, perdaHoje, totalCXComprasHoje, totalCXVendasHoje };
+    return { faturamentoHoje, comprasHoje, lucroHoje, contasReceber, estoqueBaixo, totalCXComprasHoje, totalCXVendasHoje };
   }, [transacoes, cadastros.produtos, contaClientes, estoquePorProduto]);
 
   /* ---------------- loading splash ---------------- */
@@ -1210,34 +1207,40 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
 
   return (
     <div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <CrateTag
           label="Faturamento Hoje"
-          value={fmtMoney(dashboard.faturamentoHoje)}
+          value={fmtMoney(dashboard.faturamentoHoje || 0)}
           icon={TrendingUp}
         />
         <CrateTag
           label="Compras Hoje"
-          value={fmtMoney(dashboard.comprasHoje)}
+          value={fmtMoney(dashboard.comprasHoje || 0)}
           tone="green"
           icon={ShoppingCart}
         />
         <CrateTag
           label="Lucro Bruto Hoje"
-          value={fmtMoney(dashboard.lucroHoje)}
+          value={fmtMoney(dashboard.lucroHoje || 0)}
           icon={TrendingUp}
         />
         <CrateTag
           label="A Receber"
-          value={fmtMoney(dashboard.contasReceber)}
+          value={fmtMoney(dashboard.contasReceber || 0)}
           tone={dashboard.contasReceber > 0 ? "rust" : "green"}
           icon={Wallet}
         />
         <CrateTag
-          label="Perda Hoje"
-          value={fmtMoney(dashboard.perdaHoje)}
-          tone={dashboard.perdaHoje > 0 ? "rust" : "green"}
-          icon={TrendingDown}
+          label="Total CX Compras"
+          value={`${dashboard.totalCXComprasHoje || 0} CX`}
+          tone="green"
+          icon={Package}
+        />
+        <CrateTag
+          label="Total CX Vendas"
+          value={`${dashboard.totalCXVendasHoje || 0} CX`}
+          tone="amber"
+          icon={ShoppingBasket}
         />
       </div>
 
