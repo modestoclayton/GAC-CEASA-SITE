@@ -890,7 +890,13 @@ export default function GacCeasaApp() {
     const perdaHoje = (transacoes.perdas || [])
       .filter((pd) => pd.data === t)
       .reduce((s, pd) => s + Number(pd.valorPerdido), 0);
-    return { faturamentoHoje, comprasHoje, lucroHoje, contasReceber, estoqueBaixo, perdaHoje };
+    const totalCXComprasHoje = transacoes.compras
+      .filter((c) => c.data === t)
+      .reduce((s, c) => s + Number(c.quantidade), 0);
+    const totalCXVendasHoje = transacoes.vendas
+      .filter((v) => v.data === t)
+      .reduce((s, v) => s + Number(v.quantidade), 0);
+    return { faturamentoHoje, comprasHoje, lucroHoje, contasReceber, estoqueBaixo, perdaHoje, totalCXComprasHoje, totalCXVendasHoje };
   }, [transacoes, cadastros.produtos, contaClientes, estoquePorProduto]);
 
   /* ---------------- loading splash ---------------- */
@@ -1351,7 +1357,7 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
               onClick={() => {
                 const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
                 if (!cliente) return;
-                let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Carga - ${cliente.nome}</title><style>body{font-family:Arial;margin:10px;background:white;color:black}table{width:100%;border-collapse:collapse;margin:20px 0;font-size:11px}th,td{border:1px solid black;padding:6px;text-align:left}th{background:#f0f0f0;font-weight:bold}h1{text-align:center;font-size:18px}</style></head><body><h1>FOLHA DE CARGA</h1><p><strong>Cliente:</strong> ${cliente.nome}</p><p><strong>Data:</strong> ${fmtDate(todayISO())}</p><table><tr><th>Fornecedor</th><th>Produto</th><th>Qtd</th></tr>${comprasDoCliente.map(c=>{const p=cadastros.produtores.find(x=>x.id===c.produtorId);return`<tr><td>${p?.nome||"—"}</td><td>${c.produto}</td><td style="text-align:right">${c.quantidade}</td></tr>`}).join("")}</table></body></html>`;
+                let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Carga - ${cliente.nome}</title><style>body{font-family:Arial;margin:10px;background:white;color:black}table{width:100%;border-collapse:collapse;margin:20px 0;font-size:11px}th,td{border:1px solid black;padding:6px;text-align:left}th{background:#f0f0f0;font-weight:bold}h1{text-align:center;font-size:18px}.totals{margin-top:20px;border-top:2px solid black;padding-top:10px}.total-row{display:flex;justify-content:space-between;margin:5px 0;font-weight:bold;font-size:12px}</style></head><body><h1>FOLHA DE CARGA</h1><p><strong>Cliente:</strong> ${cliente.nome}</p><p><strong>Data:</strong> ${fmtDate(todayISO())}</p><table><tr><th>Fornecedor</th><th>Produto</th><th>Qtd</th></tr>${comprasDoCliente.map(c=>{const p=cadastros.produtores.find(x=>x.id===c.produtorId);return`<tr><td>${p?.nome||"—"}</td><td>${c.produto}</td><td style="text-align:right">${c.quantidade}</td></tr>`}).join("")}</table><div class="totals"><div class="total-row"><span>Total de Itens:</span><span>${comprasDoCliente.length}</span></div><div class="total-row"><span>Total de CX:</span><span>${comprasDoCliente.reduce((s,c)=>s+Number(c.quantidade),0)} CX</span></div></div></body></html>`;
                 const blob = new Blob([html], { type: "text/html;charset=utf-8" });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement("a");
