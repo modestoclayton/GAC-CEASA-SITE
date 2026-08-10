@@ -125,6 +125,7 @@ const SEED_TRANSACOES = {
       entregaConfirmada: false,
       quantidadeRecebida: null,
       divergencia: null,
+      confirmadoDivergencia: null,
     },
   ],
   vendas: [
@@ -2026,7 +2027,22 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
                               autoFocus
                             />
                           ) : (
-                            <span className="font-bold">{comp.quantidade}</span>
+                            <div>
+                              <span className="font-bold">{comp.quantidade}</span>
+                              {comp.divergencia && !comp.confirmadoDivergencia && (
+                                <div 
+                                  className="text-xs font-bold mt-1"
+                                  style={{ 
+                                    color: comp.divergencia > 0 ? C.green700 : C.rust,
+                                    backgroundColor: comp.divergencia > 0 ? "#E8F5E9" : "#F1DAD2",
+                                    padding: "2px 4px",
+                                    borderRadius: "3px"
+                                  }}
+                                >
+                                  {comp.divergencia > 0 ? "✓ Recebido: " : "✗ Recebido: "}{comp.quantidadeRecebida} ({comp.divergencia > 0 ? "+" : ""}{comp.divergencia})
+                                </div>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>
@@ -2654,6 +2670,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       entregaConfirmada: false,
       quantidadeRecebida: null,
       divergencia: null,
+      confirmadoDivergencia: null,
     };
     await persistTransacoes({ ...transacoes, compras: [nova, ...transacoes.compras] });
     setQuantidade("");
@@ -3329,7 +3346,8 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistCadastros, persis
     const nextCadastros = { ...cadastros, cargueiros: [...cadastros.cargueiros, novoCargueiro] };
     if (persistCadastros) {
       await persistCadastros(nextCadastros);
-      showToast?.(`✅ Cargueiro "${cargueirEntrada}" adicionado!`);
+      setCargueirEntrada(""); // Limpa o input
+      showToast?.(`✅ Cargueiro "${novoCargueiro.nome}" adicionado!`);
     }
   };
 
@@ -3368,6 +3386,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistCadastros, persis
         entregaConfirmada: true,
         quantidadeRecebida: Number(quantidadeRecebida),
         divergencia,
+        confirmadoDivergencia: divergencia !== 0 ? false : null, // Marca como não confirmado se houver divergência
       };
     });
     await persistTransacoes({ ...transacoes, compras: nextCompras });
@@ -3379,7 +3398,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistCadastros, persis
   const desconfirmar = async (compraId) => {
     const nextCompras = transacoes.compras.map((c) =>
       c.id === compraId
-        ? { ...c, entregaConfirmada: false, quantidadeRecebida: null, divergencia: null }
+        ? { ...c, entregaConfirmada: false, quantidadeRecebida: null, divergencia: null, confirmadoDivergencia: null }
         : c
     );
     await persistTransacoes({ ...transacoes, compras: nextCompras });
