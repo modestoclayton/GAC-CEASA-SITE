@@ -1649,6 +1649,7 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
         valorUnit: novoValorUnit,
         valorTotal: novoTotal,
         desconto: novoDesconto,
+        confirmadoDivergencia: c.divergencia ? true : c.confirmadoDivergencia, // Marca como confirmado se tinha divergência
       };
     });
     
@@ -1906,6 +1907,18 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
 
   return (
     <div id="folha-pedido-container">
+      <Field label="Selecione a Data">
+        <TextInput 
+          type="date" 
+          value={dataSelecionada} 
+          onChange={(e) => {
+            setDataSelecionada(e.target.value);
+            setClienteSelecionado(""); // Reseta cliente quando muda data
+          }}
+          style={{ fontWeight: "bold", color: C.ink }}
+        />
+      </Field>
+
       <Field label="Selecione o Cliente">
         <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
           <option value="">-- Escolha um cliente --</option>
