@@ -1420,78 +1420,46 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 
 function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) {
   const [clienteSelecionado, setClienteSelecionado] = useState("");
-  const [fornecedorSelecionado, setFornecedorSelecionado] = useState("");
-  const [editandoId, setEditandoId] = useState(null);
-  const [editQtd, setEditQtd] = useState("");
 
-  // Lista de clientes únicos que têm requisições (Pix/Dinheiro)
   const comprasComRequisicao = transacoes.compras.filter((c) => {
     const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
     return produtor && (produtor.formaPagamento === "pix" || produtor.formaPagamento === "dinheiro");
   });
 
   const clientes = [...new Set(comprasComRequisicao.map((c) => c.clienteDestino).filter(Boolean))];
-
-  // Requisições do cliente selecionado
-  const requisicoesDoCliente = comprasComRequisicao.filter(
-    (c) => c.clienteDestino === clienteSelecionado
-  );
-
-  // Fornecedores únicos para este cliente
+  const requisicoesDoCliente = comprasComRequisicao.filter((c) => c.clienteDestino === clienteSelecionado);
   const fornecedoresDoCliente = [...new Set(requisicoesDoCliente.map((c) => c.produtorId))];
 
-  // Compras apenas do fornecedor selecionado
-  const comprasDoFornecedor = requisicoesDoCliente.filter((c) => c.produtorId === fornecedorSelecionado);
-
-  const totalSubtotal = comprasDoFornecedor.reduce((s, c) => s + Number(c.valorTotal || 0), 0);
-  const totalDesconto = comprasDoFornecedor.reduce((s, c) => s + (c.desconto || 0), 0);
-  const totalFinal = totalSubtotal - totalDesconto;
-
-  // Atualizar quantidade
-  const atualizarQuantidade = async (compraId, novaQtd) => {
-    const nextCompras = transacoes.compras.map((c) => {
-      if (c.id !== compraId) return c;
-      const novoValorTotal = Number(novaQtd) * Number(c.valorUnit);
-      const novoDesconto = c.desconto ? (novoValorTotal * Number(c.desconto) / Number(c.valorTotal)) : 0;
-      return {
-        ...c,
-        quantidade: Number(novaQtd),
-        valorTotal: novoValorTotal,
-        desconto: novoDesconto,
-      };
-    });
-    await persistTransacoes({ ...transacoes, compras: nextCompras });
-    setEditandoId(null);
-    showToast("Quantidade atualizada");
-  };
-
-  // Gerar PDF
   const gerarPDF = () => {
     const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
-    const produtor = cadastros.produtores.find((p) => p.id === fornecedorSelecionado);
-    if (!cliente || !produtor) return;
+    if (!cliente) return;
 
-    let html = `
+    fornecedoresDoCliente.forEach((fornecedorId) => {
+      const produtor = cadastros.produtores.find((p) => p.id === fornecedorId);
+      const produtosDoFornecedor = requisicoesDoCliente.filter((c) => c.produtorId === fornecedorId);
+      const subtotalFornecedor = produtosDoFornecedor.reduce((s, c) => s + Number(c.valorTotal || 0), 0);
+      const descontoFornecedor = produtosDoFornecedor.reduce((s, c) => s + (c.desconto || 0), 0);
+      const totalFornecedor = subtotalFornecedor - descontoFornecedor;
+
+      let html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Requisição - ${cliente.nome} - ${produtor.nome}</title>
+  <title>Requisição - ${cliente.nome} - ${produtor?.nome}</title>
   <style>
     body { font-family: Arial; margin: 40px; background: white; color: black; }
     .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid black; padding-bottom: 15px; }
-    .header h1 { margin: 0; font-size: 20px; }
-    .header .subtitle { font-size: 24px; font-weight: bold; color: #1b5e20; }
+    .subtitle { font-size: 24px; font-weight: bold; color: #1b5e20; }
     .info { margin: 20px 0; font-size: 14px; }
     .section { margin: 15px 0; }
     .section-title { font-size: 12px; color: #666; font-weight: bold; }
-    .section-value { font-size: 16px; font-weight: bold; margin: 5px 0; }
+    .section-value { font-size: 16px; font-weight: bold; }
     table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
     th, td { border-bottom: 1px solid black; padding: 10px; text-align: left; }
     th { border-bottom: 2px solid black; font-weight: bold; }
     .number { text-align: right; }
     .totals { margin-top: 20px; text-align: right; font-size: 14px; }
-    .total-row { margin: 5px 0; }
     .total-final { font-size: 18px; font-weight: bold; color: #1b5e20; margin-top: 10px; border-top: 2px solid black; padding-top: 10px; }
   </style>
 </head>
@@ -1501,18 +1469,14 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
     <div class="subtitle">Requisição de Compra</div>
     <div class="info">Emitido em ${fmtDate(todayISO())}</div>
   </div>
-
   <div class="section">
     <div class="section-title">CLIENTE</div>
     <div class="section-value">${cliente.nome}</div>
-    <div>${cliente.cidade || ""}</div>
   </div>
-
   <div class="section">
     <div class="section-title">FORNECEDOR</div>
-    <div class="section-value">${produtor.nome}</div>
+    <div class="section-value">${produtor?.nome || "—"}</div>
   </div>
-
   <table>
     <thead>
       <tr>
@@ -1523,209 +1487,76 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
       </tr>
     </thead>
     <tbody>
-      ${comprasDoFornecedor.map((c) => `
-      <tr>
-        <td>${c.produto}</td>
-        <td class="number">${c.quantidade}</td>
-        <td class="number">${fmtMoney(c.valorUnit)}</td>
-        <td class="number">${fmtMoney(c.valorTotal)}</td>
-      </tr>
-      `).join("")}
+      ${produtosDoFornecedor.map((c) => `<tr><td>${c.produto}</td><td class="number">${c.quantidade}</td><td class="number">${fmtMoney(c.valorUnit)}</td><td class="number">${fmtMoney(c.valorTotal)}</td></tr>`).join("")}
     </tbody>
   </table>
-
   <div class="totals">
-    <div class="total-row">SUBTOTAL: ${fmtMoney(totalSubtotal)}</div>
-    ${totalDesconto > 0 ? `<div class="total-row" style="color: #1b5e20; font-weight: bold;">📋 DESCONTO FUNDO RURAL (1.63%): -${fmtMoney(totalDesconto)}</div>` : ""}
-    <div class="total-final">TOTAL DA REQUISIÇÃO: ${fmtMoney(totalFinal)}</div>
+    <div>SUBTOTAL: ${fmtMoney(subtotalFornecedor)}</div>
+    ${descontoFornecedor > 0 ? `<div style="color: #1b5e20; font-weight: bold;">📋 DESCONTO FUNDO RURAL (1.63%): -${fmtMoney(descontoFornecedor)}</div>` : ""}
+    <div class="total-final">TOTAL: ${fmtMoney(totalFornecedor)}</div>
   </div>
 </body>
-</html>
-    `;
+</html>`;
 
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Requisicao_${cliente.nome}_${produtor.nome}_${todayISO()}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Requisicao_${cliente.nome}_${produtor?.nome}_${todayISO()}.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
   };
 
   return (
     <div>
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <Field label="Selecione o Cliente">
-          <Select value={clienteSelecionado} onChange={(e) => {
-            setClienteSelecionado(e.target.value);
-            setFornecedorSelecionado(""); // Reset fornecedor ao trocar cliente
-          }}>
-            <option value="">-- Escolha um cliente --</option>
-            {clientes.map((id) => {
-              const c = cadastros.clientes.find((x) => x.id === id);
-              return (
-                <option key={id} value={id}>
-                  {c?.nome || "—"}
-                </option>
-              );
-            })}
-          </Select>
-        </Field>
+      <Field label="Selecione o Cliente">
+        <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
+          <option value="">-- Escolha um cliente --</option>
+          {clientes.map((id) => {
+            const c = cadastros.clientes.find((x) => x.id === id);
+            return (<option key={id} value={id}>{c?.nome || "—"}</option>);
+          })}
+        </Select>
+      </Field>
 
-        <Field label="Selecione o Fornecedor">
-          <Select value={fornecedorSelecionado} onChange={(e) => setFornecedorSelecionado(e.target.value)}>
-            <option value="">-- Escolha um fornecedor --</option>
-            {fornecedoresDoCliente.map((id) => {
-              const p = cadastros.produtores.find((x) => x.id === id);
-              return (
-                <option key={id} value={id}>
-                  {p?.nome || "—"}
-                </option>
-              );
-            })}
-          </Select>
-        </Field>
-      </div>
-
-      {clienteSelecionado && !fornecedorSelecionado && (
-        <Card>
-          <p className="text-sm" style={{ color: C.inkSoft }}>
-            Selecione um fornecedor para visualizar a requisição.
-          </p>
-        </Card>
+      {clienteSelecionado && requisicoesDoCliente.length === 0 && (
+        <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma requisição para este cliente.</p></Card>
       )}
 
-      {clienteSelecionado && fornecedorSelecionado && comprasDoFornecedor.length === 0 && (
-        <Card>
-          <p className="text-sm" style={{ color: C.inkSoft }}>
-            Nenhuma compra para este fornecedor neste cliente.
-          </p>
-        </Card>
-      )}
-
-      {clienteSelecionado && fornecedorSelecionado && comprasDoFornecedor.length > 0 && (
+      {clienteSelecionado && requisicoesDoCliente.length > 0 && (
         <>
-          <button
-            onClick={() => window.print()}
-            className="w-full px-4 py-2.5 rounded-lg font-bold text-sm mb-2"
-            style={{ background: C.green700, color: "#fff" }}
-          >
-            🖨️ Imprimir
-          </button>
-          <button
-            onClick={gerarPDF}
-            className="w-full px-4 py-2.5 rounded-lg font-bold text-sm mb-4"
-            style={{ background: C.green700, color: "#fff" }}
-          >
-            📄 Baixar PDF
-          </button>
+          <div className="flex gap-2 mb-4">
+            <button onClick={() => window.print()} className="flex-1 px-4 py-2.5 rounded-lg font-bold text-sm" style={{ background: C.green700, color: "#fff" }}>🖨️ Imprimir</button>
+            <button onClick={gerarPDF} className="flex-1 px-4 py-2.5 rounded-lg font-bold text-sm" style={{ background: C.green700, color: "#fff" }}>📄 PDF</button>
+          </div>
 
-          <Card>
-            <div className="text-center mb-4">
-              <div className="text-xs" style={{ color: C.inkSoft }}>GAC CEASA MANAGER</div>
-              <div className="font-bold text-lg" style={{ color: C.green900 }}>Requisição de Compra</div>
-              <div className="text-xs" style={{ color: C.inkSoft }}>Emitido em {fmtDate(todayISO())}</div>
-            </div>
+          {fornecedoresDoCliente.map((fornecedorId) => {
+            const produtor = cadastros.produtores.find((p) => p.id === fornecedorId);
+            const produtosDoFornecedor = requisicoesDoCliente.filter((c) => c.produtorId === fornecedorId);
+            const subtotalFornecedor = produtosDoFornecedor.reduce((s, c) => s + Number(c.valorTotal || 0), 0);
+            const descontoFornecedor = produtosDoFornecedor.reduce((s, c) => s + (c.desconto || 0), 0);
+            const totalFornecedor = subtotalFornecedor - descontoFornecedor;
 
-            <div className="mb-4 pb-3 border-b" style={{ borderColor: C.line }}>
-              <div className="text-xs font-bold" style={{ color: C.inkSoft }}>CLIENTE</div>
-              <div className="font-bold text-sm">{cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome}</div>
-            </div>
-
-            <div className="mb-4 pb-3 border-b" style={{ borderColor: C.line }}>
-              <div className="text-xs font-bold" style={{ color: C.inkSoft }}>FORNECEDOR</div>
-              <div className="font-bold text-sm">{cadastros.produtores.find((p) => p.id === fornecedorSelecionado)?.nome}</div>
-            </div>
-
-            <div style={{ overflowX: "auto" }}>
-              <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ borderBottom: `2px solid ${C.line}` }}>
-                    <th className="text-left p-1.5" style={{ color: C.ink }}>Produto</th>
-                    <th className="text-right p-1.5" style={{ color: C.ink }}>Qtd</th>
-                    <th className="text-right p-1.5" style={{ color: C.ink }}>Valor Unit</th>
-                    <th className="text-right p-1.5" style={{ color: C.ink }}>Total</th>
-                    <th className="text-center p-1.5" style={{ color: C.ink }}>Ação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {comprasDoFornecedor.map((comp) => (
-                    <tr key={comp.id} style={{ borderBottom: `1px solid ${C.line}` }}>
-                      <td className="p-1.5" style={{ color: C.ink }}>{comp.produto}</td>
-                      <td className="text-right p-1.5" style={{ color: C.ink }}>
-                        {editandoId === comp.id ? (
-                          <TextInput
-                            type="number"
-                            value={editQtd}
-                            onChange={(e) => setEditQtd(e.target.value)}
-                            style={{ width: "60px" }}
-                            autoFocus
-                          />
-                        ) : (
-                          comp.quantidade
-                        )}
-                      </td>
-                      <td className="text-right p-1.5" style={{ color: C.ink }}>{fmtMoney(comp.valorUnit)}</td>
-                      <td className="text-right p-1.5 font-bold" style={{ color: C.ink }}>{fmtMoney(comp.valorTotal)}</td>
-                      <td className="text-center p-1.5">
-                        {editandoId === comp.id ? (
-                          <>
-                            <button
-                              onClick={() => atualizarQuantidade(comp.id, editQtd)}
-                              className="text-xs px-2 py-1 rounded"
-                              style={{ background: C.green700, color: "#fff" }}
-                            >
-                              ✓
-                            </button>
-                            <button
-                              onClick={() => setEditandoId(null)}
-                              className="text-xs px-2 py-1 ml-1"
-                              style={{ color: C.inkSoft }}
-                            >
-                              ✕
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setEditandoId(comp.id);
-                              setEditQtd(String(comp.quantidade));
-                            }}
-                            className="text-xs px-2 py-1 rounded"
-                            style={{ background: C.amber500, color: "#fff" }}
-                          >
-                            ✏️
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-4 pt-3 text-right" style={{ borderTop: `2px solid ${C.line}` }}>
-              <div className="text-sm mb-1" style={{ color: C.inkSoft }}>
-                Subtotal: <span style={{ fontWeight: "bold", color: C.ink }}>{fmtMoney(totalSubtotal)}</span>
-              </div>
-              {totalDesconto > 0 && (
-                <div className="text-sm mb-1 p-2 rounded" style={{ backgroundColor: "#E8F5E9", color: C.green700, fontWeight: "bold" }}>
-                  📋 Desconto Fundo Rural (1.63%): <span style={{ color: C.green700 }}>-{fmtMoney(totalDesconto)}</span>
-                </div>
-              )}
-              <div className="text-lg font-bold mt-2 p-2" style={{ color: C.green700, backgroundColor: C.amberSoft, borderRadius: "8px" }}>
-                Total a Pagar: {fmtMoney(totalFinal)}
-              </div>
-            </div>
-          </Card>
+            return (
+              <Card key={fornecedorId} className="mb-4 p-4" style={{ background: "white" }}>
+                <div className="text-center mb-3"><div className="text-xs" style={{ color: C.inkSoft }}>GAC CEASA MANAGER</div><div className="font-bold text-lg" style={{ color: C.green900 }}>Requisição de Compra</div><div className="text-xs" style={{ color: C.inkSoft }}>Emitido em {fmtDate(todayISO())}</div></div>
+                <div className="mb-3 pb-2 border-b" style={{ borderColor: C.line }}><div className="text-xs font-bold" style={{ color: C.inkSoft }}>CLIENTE</div><div className="font-bold text-sm">{cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome}</div></div>
+                <div className="mb-3 pb-2 border-b" style={{ borderColor: C.line }}><div className="text-xs font-bold" style={{ color: C.inkSoft }}>FORNECEDOR</div><div className="font-bold text-sm">{produtor?.nome}</div></div>
+                <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                  <thead><tr style={{ borderBottom: `2px solid ${C.line}` }}><th className="text-left p-1.5" style={{ color: C.ink }}>Produto</th><th className="text-right p-1.5" style={{ color: C.ink }}>Qtd</th><th className="text-right p-1.5" style={{ color: C.ink }}>Valor Unit</th><th className="text-right p-1.5" style={{ color: C.ink }}>Total</th></tr></thead>
+                  <tbody>{produtosDoFornecedor.map((comp) => (<tr key={comp.id} style={{ borderBottom: `1px solid ${C.line}` }}><td className="p-1.5" style={{ color: C.ink }}>{comp.produto}</td><td className="text-right p-1.5" style={{ color: C.ink }}>{comp.quantidade}</td><td className="text-right p-1.5" style={{ color: C.ink }}>{fmtMoney(comp.valorUnit)}</td><td className="text-right p-1.5 font-bold" style={{ color: C.ink }}>{fmtMoney(comp.valorTotal)}</td></tr>))}</tbody>
+                </table>
+                <div className="mt-3 pt-3 text-right" style={{ borderTop: `2px solid ${C.line}` }}><div className="text-sm mb-1" style={{ color: C.inkSoft }}>Subtotal: <span style={{ fontWeight: "bold", color: C.ink }}>{fmtMoney(subtotalFornecedor)}</span></div>{descontoFornecedor > 0 && (<div className="text-sm mb-1 p-2 rounded" style={{ backgroundColor: "#E8F5E9", color: C.green700, fontWeight: "bold" }}>📋 Desconto Fundo Rural (1.63%): -<span>{fmtMoney(descontoFornecedor)}</span></div>)}<div className="text-lg font-bold mt-2 p-2" style={{ color: C.green700, backgroundColor: C.amberSoft, borderRadius: "8px" }}>Total: {fmtMoney(totalFornecedor)}</div></div>
+              </Card>
+            );
+          })}
 
           <style jsx global>{`
             @media print {
-              nav, header, button, select {
-                display: none !important;
-              }
+              nav, header, button, select, .flex { display: none !important; }
               body { background: white; padding: 20px; }
             }
           `}</style>
@@ -2423,6 +2254,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
           style={{ background: C.amber500, color: C.green900 }}
           onClick={() => {
             if (!nome.trim()) return;
+        
             onAdd({
               nome: nome.trim(),
               cidade: cidade.trim(),
