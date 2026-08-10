@@ -1579,8 +1579,11 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
   );
 }
 
-function FolhaDePedidoTab({ cadastros, transacoes }) {
+function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
   const [clienteSelecionado, setClienteSelecionado] = useState("");
+  const [editandoId, setEditandoId] = useState(null);
+  const [editQtd, setEditQtd] = useState("");
+  const [editValor, setEditValor] = useState("");
 
   // Lista de clientes únicos nas compras
   const clientes = [...new Set(transacoes.compras.map((c) => c.clienteDestino).filter(Boolean))].sort();
@@ -1594,6 +1597,62 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
   const totalSubtotal = comprasDoCliente.reduce((s, c) => s + Number(c.valorTotal), 0);
   const totalDesconto = comprasDoCliente.reduce((s, c) => s + (c.desconto || 0), 0);
   const totalFinal = totalSubtotal - totalDesconto;
+
+  const atualizarEditar = async (compraId, novaQtd, novoValor) => {
+    const nextCompras = transacoes.compras.map((c) => {
+      if (c.id !== compraId) return c;
+      const qtd = Number(novaQtd) || c.quantidade;
+      const valor = Number(novoValor) || c.valorUnit;
+      const novoTotal = qtd * valor;
+      const novoDesconto = c.desconto ? (novoTotal * Number(c.desconto) / Number(c.valorTotal)) : 0;
+      return { ...c, quantidade: qtd, valorUnit: valor, valorTotal: novoTotal, desconto: novoDesconto };
+    });
+    if (persistTransacoes) await persistTransacoes({ ...transacoes, compras: nextCompras });
+    setEditandoId(null);
+  };
+
+  const finalizarFolha = () => {
+    const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
+    if (!cliente) return alert("Selecione um cliente");
+    
+    // Verificar se tem compras
+    if (comprasDoCliente.length === 0) return alert("Nenhuma compra para finalizar");
+    
+    // Gerar requisições para Pix + Dinheiro
+    const comprasComRequisicao = comprasDoCliente.filter((c) => {
+      const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+      return produtor && (produtor.formaPagamento === "pix" || produtor.formaPagamento === "dinheiro");
+    });
+
+    if (comprasComRequisicao.length === 0) {
+      alert("Nenhuma compra com pagamento Pix ou Dinheiro para gerar requisição");
+      return;
+    }
+
+    const fornecedoresUnicos = [...new Set(comprasComRequisicao.map((c) => c.produtorId))];
+
+    fornecedoresUnicos.forEach((fornecedorId) => {
+      const produtor = cadastros.produtores.find((p) => p.id === fornecedorId);
+      const produtosDoFornecedor = comprasComRequisicao.filter((c) => c.produtorId === fornecedorId);
+      const subtotal = produtosDoFornecedor.reduce((s, c) => s + Number(c.valorTotal || 0), 0);
+      const desconto = produtosDoFornecedor.reduce((s, c) => s + (c.desconto || 0), 0);
+      const total = subtotal - desconto;
+
+      let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Requisição</title><style>body{font-family:Arial;margin:40px;background:white;color:black}.header{text-align:center;margin-bottom:30px;border-bottom:2px solid black;padding-bottom:15px}.subtitle{font-size:24px;font-weight:bold;color:#1b5e20}.section{margin:15px 0}.section-title{font-size:12px;color:#666;font-weight:bold}.section-value{font-size:16px;font-weight:bold}table{width:100%;border-collapse:collapse;margin:20px 0;font-size:12px}th,td{border-bottom:1px solid black;padding:10px;text-align:left}th{border-bottom:2px solid black;font-weight:bold}.number{text-align:right}.totals{margin-top:20px;text-align:right;font-size:14px}.total-final{font-size:18px;font-weight:bold;color:#1b5e20;margin-top:10px;border-top:2px solid black;padding-top:10px}</style></head><body><div class="header"><div class="info">GAC CEASA MANAGER</div><div class="subtitle">Requisição de Compra</div><div class="info">Emitido em ${fmtDate(todayISO())}</div></div><div class="section"><div class="section-title">CLIENTE</div><div class="section-value">${cliente.nome}</div></div><div class="section"><div class="section-title">FORNECEDOR</div><div class="section-value">${produtor?.nome || "—"}</div></div><table><tr><th>Produto</th><th class="number">Qtd.</th><th class="number">Valor Unit.</th><th class="number">Total</th></tr>${produtosDoFornecedor.map((c) => `<tr><td>${c.produto}</td><td class="number">${c.quantidade}</td><td class="number">${fmtMoney(c.valorUnit)}</td><td class="number">${fmtMoney(c.valorTotal)}</td></tr>`).join("")}</table><div class="totals"><div>SUBTOTAL: ${fmtMoney(subtotal)}</div>${desconto > 0 ? `<div style="color:#1b5e20;font-weight:bold">DESCONTO FUNDO RURAL (1.63%): -${fmtMoney(desconto)}</div>` : ""}<div class="total-final">TOTAL: ${fmtMoney(total)}</div></div></body></html>`;
+
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Requisicao_${cliente.nome}_${produtor?.nome}_${todayISO()}.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+
+    alert(`✅ Folha finalizada! ${fornecedoresUnicos.length} requisição(ões) gerada(s)`);
+  };
 
   // Função para gerar e baixar PDF limpo (branco e preto) - REDUZIDO
   const gerarPDF = () => {
@@ -1796,16 +1855,23 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
               className="flex-1 px-4 py-2.5 rounded-lg font-bold text-sm"
               style={{ background: C.green700, color: "#fff", fontFamily: displayFont }}
             >
-              Imprimir
+              🖨️ Imprimir
             </button>
             <button
               onClick={gerarPDF}
               className="flex-1 px-4 py-2.5 rounded-lg font-bold text-sm"
               style={{ background: C.amber500, color: C.green900, fontFamily: displayFont }}
             >
-              Baixar PDF
+              📄 Baixar PDF
             </button>
           </div>
+          <button
+            onClick={finalizarFolha}
+            className="w-full px-4 py-3 rounded-lg font-bold text-sm mb-4"
+            style={{ background: C.green900, color: "#fff", fontFamily: displayFont, fontSize: "14px" }}
+          >
+            ✅ FINALIZAR E GERAR REQUISIÇÕES
+          </button>
 
           <Card>
             <div className="font-bold text-lg mb-3" style={{ color: C.ink }}>
@@ -1826,18 +1892,34 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
                     <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Qtd</th>
                     <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Valor Unit</th>
                     <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Total</th>
+                    <th className="text-center p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Ação</th>
                   </tr>
                 </thead>
                 <tbody>
                   {comprasDoCliente.map((comp, idx) => {
                     const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
+                    const isEditando = editandoId === comp.id;
                     return (
                       <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
                         <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
                         <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
-                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.quantidade}</td>
-                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{fmtMoney(comp.valorUnit)}</td>
-                        <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{fmtMoney(comp.valorTotal)}</td>
+                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>
+                          {isEditando ? <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} style={{ width: "50px" }} /> : comp.quantidade}
+                        </td>
+                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>
+                          {isEditando ? <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} style={{ width: "50px" }} /> : fmtMoney(comp.valorUnit)}
+                        </td>
+                        <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{isEditando ? fmtMoney((Number(editQtd) || comp.quantidade) * (Number(editValor) || comp.valorUnit)) : fmtMoney(comp.valorTotal)}</td>
+                        <td className="text-center p-1.5" style={{ fontSize: "11px" }}>
+                          {isEditando ? (
+                            <>
+                              <button onClick={() => atualizarEditar(comp.id, editQtd, editValor)} className="text-xs px-2 py-1 rounded mr-1" style={{ background: C.green700, color: "#fff" }}>✓</button>
+                              <button onClick={() => setEditandoId(null)} className="text-xs px-2 py-1" style={{ color: C.inkSoft }}>✕</button>
+                            </>
+                          ) : (
+                            <button onClick={() => { setEditandoId(comp.id); setEditQtd(String(comp.quantidade)); setEditValor(String(comp.valorUnit)); }} className="text-xs px-2 py-1 rounded" style={{ background: C.amber500, color: "#fff" }}>✏️</button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
