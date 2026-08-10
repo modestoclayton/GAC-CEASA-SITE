@@ -1406,6 +1406,9 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
                 Total de Itens: {comprasDoCliente.length}
               </div>
               <div className="text-xs font-bold" style={{ color: C.ink }}>
+                Total de CX: {comprasDoCliente.reduce((s, c) => s + Number(c.quantidade), 0)} CX
+              </div>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>
                 Data: {fmtDate(todayISO())}
               </div>
             </div>
@@ -1845,7 +1848,7 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
   
   <div class="info">
     <div><strong>Cliente:</strong> ${cliente.nome}</div>
-    <div><strong>Data:</strong> ${fmtDate(todayISO())}</div>
+    <div><strong>Data:</strong> ${fmtDate(dataSelecionada)}</div>
   </div>
   
   <table>
@@ -1897,7 +1900,7 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Folha_Pedido_${cliente.nome}_${todayISO()}.html`;
+    link.download = `Folha_Pedido_${cliente.nome}_${dataSelecionada}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
