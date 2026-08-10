@@ -1368,20 +1368,20 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
           </div>
 
           <Card className="mb-4" id="folha-carga-container">
-            <div className="text-center font-bold text-lg mb-3" style={{ fontFamily: displayFont }}>
+            <div className="text-center font-bold text-lg mb-3" style={{ fontFamily: displayFont, color: C.green900 }}>
               FOLHA DE CARGA
             </div>
-            <div className="text-sm font-bold mb-4">
-              Cliente: {cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome}
+            <div className="text-sm font-bold mb-4" style={{ color: C.ink }}>
+              Cliente: <span style={{ color: C.ink, fontWeight: 'bold' }}>{cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome}</span>
             </div>
 
             <div style={{ overflowX: "auto" }}>
               <table className="w-full text-xs" style={{ borderCollapse: "collapse", minWidth: "100%" }}>
                 <thead>
                   <tr style={{ backgroundColor: C.cardAlt, borderBottom: `2px solid ${C.line}` }}>
-                    <th className="text-left p-1.5" style={{ color: C.ink }}>Fornecedor</th>
-                    <th className="text-left p-1.5" style={{ color: C.ink }}>Produto</th>
-                    <th className="text-right p-1.5" style={{ color: C.ink }}>Qtd</th>
+                    <th className="text-left p-1.5 font-bold" style={{ color: C.ink }}>Fornecedor</th>
+                    <th className="text-left p-1.5 font-bold" style={{ color: C.ink }}>Produto</th>
+                    <th className="text-right p-1.5 font-bold" style={{ color: C.ink }}>Qtd</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1389,9 +1389,9 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
                     const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
                     return (
                       <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
-                        <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
-                        <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
-                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.quantidade}</td>
+                        <td className="p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
+                        <td className="p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
+                        <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{comp.quantidade}</td>
                       </tr>
                     );
                   })}
@@ -1403,7 +1403,7 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
               <div className="text-xs font-bold" style={{ color: C.ink }}>
                 Total de Itens: {comprasDoCliente.length}
               </div>
-              <div className="text-xs" style={{ color: C.inkSoft }}>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>
                 Data: {fmtDate(todayISO())}
               </div>
             </div>
@@ -1411,13 +1411,26 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 
           <style jsx global>{`
             @media print {
-              body { background: white !important; margin: 0 !important; padding: 0 !important; }
-              * { background: white !important; color: black !important; border-color: black !important; }
+              body { background: white !important; margin: 5px !important; padding: 10px !important; color: #000 !important; }
+              * { background: white !important; color: #000 !important; border-color: #000 !important; }
               nav, header, main, button, select, label, .flex { display: none !important; }
-              #folha-carga-container { background: white !important; padding: 20px !important; margin: 0 !important; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { border: 1px solid black; padding: 6px; color: black !important; background: white !important; }
-              th { background-color: #f0f0f0 !important; font-weight: bold; }
+              #folha-carga-container { background: white !important; padding: 10px !important; margin: 0 !important; }
+              h1, h2, h3, div { color: #000 !important; }
+              
+              table { width: 100% !important; border-collapse: collapse !important; margin: 15px 0 !important; }
+              th { 
+                background-color: #d3d3d3 !important; 
+                border: 2px solid #000 !important; 
+                padding: 8px !important; 
+                color: #000 !important; 
+                font-weight: bold !important;
+              }
+              td { 
+                border: 1px solid #000 !important; 
+                padding: 6px !important; 
+                color: #000 !important; 
+                background: white !important;
+              }
               tr:nth-child(even) { background-color: #fafafa !important; }
             }
           `}</style>
@@ -1551,26 +1564,40 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
 
             return (
               <Card key={fornecedorId} className="mb-4 p-4" style={{ background: "white" }}>
-                <div className="text-center mb-3"><div className="text-xs" style={{ color: C.inkSoft }}>GAC CEASA MANAGER</div><div className="font-bold text-lg" style={{ color: C.green900 }}>Requisição de Compra</div><div className="text-xs" style={{ color: C.inkSoft }}>Emitido em {fmtDate(todayISO())}</div></div>
-                <div className="mb-3 pb-2 border-b" style={{ borderColor: C.line }}><div className="text-xs font-bold" style={{ color: C.inkSoft }}>CLIENTE</div><div className="font-bold text-sm">{cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome}</div></div>
-                <div className="mb-3 pb-2 border-b" style={{ borderColor: C.line }}><div className="text-xs font-bold" style={{ color: C.inkSoft }}>FORNECEDOR</div><div className="font-bold text-sm">{produtor?.nome}</div></div>
+                <div className="text-center mb-3"><div className="text-xs font-bold" style={{ color: C.ink }}>GAC CEASA MANAGER</div><div className="font-bold text-lg" style={{ color: C.green900 }}>Requisição de Compra</div><div className="text-xs font-bold" style={{ color: C.ink }}>Emitido em {fmtDate(todayISO())}</div></div>
+                <div className="mb-3 pb-2 border-b" style={{ borderColor: C.line }}><div className="text-xs font-bold" style={{ color: C.green900 }}>CLIENTE</div><div className="font-bold text-sm" style={{ color: C.ink }}>{cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome}</div></div>
+                <div className="mb-3 pb-2 border-b" style={{ borderColor: C.line }}><div className="text-xs font-bold" style={{ color: C.green900 }}>FORNECEDOR</div><div className="font-bold text-sm" style={{ color: C.ink }}>{produtor?.nome}</div></div>
                 <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
-                  <thead><tr style={{ borderBottom: `2px solid ${C.line}` }}><th className="text-left p-1.5" style={{ color: C.ink }}>Produto</th><th className="text-right p-1.5" style={{ color: C.ink }}>Qtd</th><th className="text-right p-1.5" style={{ color: C.ink }}>Valor Unit</th><th className="text-right p-1.5" style={{ color: C.ink }}>Total</th></tr></thead>
-                  <tbody>{produtosDoFornecedor.map((comp) => (<tr key={comp.id} style={{ borderBottom: `1px solid ${C.line}` }}><td className="p-1.5" style={{ color: C.ink }}>{comp.produto}</td><td className="text-right p-1.5" style={{ color: C.ink }}>{comp.quantidade}</td><td className="text-right p-1.5" style={{ color: C.ink }}>{fmtMoney(comp.valorUnit)}</td><td className="text-right p-1.5 font-bold" style={{ color: C.ink }}>{fmtMoney(comp.valorTotal)}</td></tr>))}</tbody>
+                  <thead><tr style={{ borderBottom: `2px solid ${C.line}`, backgroundColor: C.cardAlt }}><th className="text-left p-1.5 font-bold" style={{ color: C.ink }}>Produto</th><th className="text-right p-1.5 font-bold" style={{ color: C.ink }}>Qtd</th><th className="text-right p-1.5 font-bold" style={{ color: C.ink }}>Valor Unit</th><th className="text-right p-1.5 font-bold" style={{ color: C.ink }}>Total</th></tr></thead>
+                  <tbody>{produtosDoFornecedor.map((comp) => (<tr key={comp.id} style={{ borderBottom: `1px solid ${C.line}` }}><td className="p-1.5 font-bold" style={{ color: C.ink }}>{comp.produto}</td><td className="text-right p-1.5" style={{ color: C.ink, fontWeight: "bold" }}>{comp.quantidade}</td><td className="text-right p-1.5" style={{ color: C.ink, fontWeight: "bold" }}>{fmtMoney(comp.valorUnit)}</td><td className="text-right p-1.5 font-bold" style={{ color: C.ink }}>{fmtMoney(comp.valorTotal)}</td></tr>))}</tbody>
                 </table>
-                <div className="mt-3 pt-3 text-right" style={{ borderTop: `2px solid ${C.line}` }}><div className="text-sm mb-1" style={{ color: C.inkSoft }}>Subtotal: <span style={{ fontWeight: "bold", color: C.ink }}>{fmtMoney(subtotalFornecedor)}</span></div>{descontoFornecedor > 0 && (<div className="text-sm mb-1 p-2 rounded" style={{ backgroundColor: "#E8F5E9", color: C.green700, fontWeight: "bold" }}>📋 Desconto Fundo Rural (1.63%): -<span>{fmtMoney(descontoFornecedor)}</span></div>)}<div className="text-lg font-bold mt-2 p-2" style={{ color: C.green700, backgroundColor: C.amberSoft, borderRadius: "8px" }}>Total: {fmtMoney(totalFornecedor)}</div></div>
+                <div className="mt-3 pt-3 text-right" style={{ borderTop: `2px solid ${C.line}` }}><div className="text-sm mb-1" style={{ color: C.ink, fontWeight: "bold" }}>Subtotal: <span style={{ fontWeight: "bold", color: C.ink }}>{fmtMoney(subtotalFornecedor)}</span></div>{descontoFornecedor > 0 && (<div className="text-sm mb-1 p-2 rounded" style={{ backgroundColor: "#d4edda", color: C.green900, fontWeight: "bold", border: `1px solid ${C.green700}` }}>📋 Desconto Fundo Rural (1.63%): -<span style={{ color: C.green900, fontWeight: "bold" }}>{fmtMoney(descontoFornecedor)}</span></div>)}<div className="text-lg font-bold mt-2 p-2" style={{ color: C.green900, backgroundColor: "#fff3cd", borderRadius: "8px", border: `2px solid ${C.amber600}` }}>Total: {fmtMoney(totalFornecedor)}</div></div>
               </Card>
             );
           })}
 
           <style jsx global>{`
             @media print {
-              body { background: white !important; margin: 0 !important; padding: 0 !important; }
-              * { background: white !important; color: black !important; border-color: black !important; }
+              body { background: white !important; margin: 5px !important; padding: 10px !important; color: #000 !important; }
+              * { background: white !important; color: #000 !important; border-color: #000 !important; }
               nav, header, main, button, select, label, .flex { display: none !important; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { border: 1px solid black; padding: 6px; color: black !important; background: white !important; }
-              th { background-color: #f0f0f0 !important; font-weight: bold; }
+              h1, h2, h3, div { color: #000 !important; }
+              
+              table { width: 100% !important; border-collapse: collapse !important; margin: 15px 0 !important; }
+              th { 
+                background-color: #d3d3d3 !important; 
+                border: 2px solid #000 !important; 
+                padding: 8px !important; 
+                color: #000 !important; 
+                font-weight: bold !important;
+              }
+              td { 
+                border: 1px solid #000 !important; 
+                padding: 6px !important; 
+                color: #000 !important; 
+                background: white !important;
+              }
+              tr:nth-child(even) { background-color: #fafafa !important; }
             }
           `}</style>
         </>
@@ -1582,7 +1609,6 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
 function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
   const [clienteSelecionado, setClienteSelecionado] = useState("");
   const [editandoId, setEditandoId] = useState(null);
-  const [editQtd, setEditQtd] = useState("");
   const [editValor, setEditValor] = useState("");
 
   // Lista de clientes únicos nas compras
@@ -1598,14 +1624,13 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
   const totalDesconto = comprasDoCliente.reduce((s, c) => s + (c.desconto || 0), 0);
   const totalFinal = totalSubtotal - totalDesconto;
 
-  const atualizarEditar = async (compraId, novaQtd, novoValor) => {
+  const atualizarEditar = async (compraId, novoValor) => {
     const nextCompras = transacoes.compras.map((c) => {
       if (c.id !== compraId) return c;
-      const qtd = Number(novaQtd) || c.quantidade;
       const valor = Number(novoValor) || c.valorUnit;
-      const novoTotal = qtd * valor;
+      const novoTotal = c.quantidade * valor;
       const novoDesconto = c.desconto ? (novoTotal * Number(c.desconto) / Number(c.valorTotal)) : 0;
-      return { ...c, quantidade: qtd, valorUnit: valor, valorTotal: novoTotal, desconto: novoDesconto };
+      return { ...c, valorUnit: valor, valorTotal: novoTotal, desconto: novoDesconto };
     });
     if (persistTransacoes) await persistTransacoes({ ...transacoes, compras: nextCompras });
     setEditandoId(null);
@@ -1874,10 +1899,10 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
           </button>
 
           <Card>
-            <div className="font-bold text-lg mb-3" style={{ color: C.ink }}>
+            <div className="font-bold text-lg mb-3" style={{ color: C.green900 }}>
               Folha de Pedido
             </div>
-            <div className="text-sm mb-4" style={{ color: C.inkSoft }}>
+            <div className="text-sm mb-4" style={{ color: C.ink, fontWeight: 'bold' }}>
               Cliente: <span style={{ color: C.ink, fontWeight: 'bold' }}>
                 {cadastros.clientes.find((c) => c.id === clienteSelecionado)?.nome || "—"}
               </span>
@@ -1887,12 +1912,12 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
               <table className="w-full text-xs mb-4" style={{ borderCollapse: "collapse", minWidth: "100%" }}>
                 <thead>
                   <tr style={{ backgroundColor: C.cardAlt, borderBottom: `2px solid ${C.line}` }}>
-                    <th className="text-left p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Fornecedor</th>
-                    <th className="text-left p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Produto</th>
-                    <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Qtd</th>
-                    <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Valor Unit</th>
-                    <th className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Total</th>
-                    <th className="text-center p-1.5" style={{ color: C.ink, fontSize: "11px" }}>Ação</th>
+                    <th className="text-left p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Fornecedor</th>
+                    <th className="text-left p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Produto</th>
+                    <th className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Qtd</th>
+                    <th className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Valor Unit</th>
+                    <th className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Total</th>
+                    <th className="text-center p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Ação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1901,23 +1926,34 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
                     const isEditando = editandoId === comp.id;
                     return (
                       <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
-                        <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
-                        <td className="p-1.5" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
+                        <td className="p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
+                        <td className="p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
+                        <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{comp.quantidade}</td>
                         <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>
-                          {isEditando ? <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} style={{ width: "50px" }} /> : comp.quantidade}
+                          {isEditando ? (
+                            <TextInput 
+                              type="number" 
+                              value={editValor} 
+                              onChange={(e) => setEditValor(e.target.value)}
+                              placeholder={fmtMoney(comp.valorUnit)}
+                              style={{ width: "70px", padding: "4px", fontWeight: "bold", color: C.ink }}
+                              autoFocus
+                            />
+                          ) : (
+                            <span className="font-bold">{fmtMoney(comp.valorUnit)}</span>
+                          )}
                         </td>
-                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>
-                          {isEditando ? <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} style={{ width: "50px" }} /> : fmtMoney(comp.valorUnit)}
+                        <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>
+                          {isEditando ? fmtMoney(comp.quantidade * (Number(editValor) || comp.valorUnit)) : fmtMoney(comp.valorTotal)}
                         </td>
-                        <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{isEditando ? fmtMoney((Number(editQtd) || comp.quantidade) * (Number(editValor) || comp.valorUnit)) : fmtMoney(comp.valorTotal)}</td>
                         <td className="text-center p-1.5" style={{ fontSize: "11px" }}>
                           {isEditando ? (
                             <>
-                              <button onClick={() => atualizarEditar(comp.id, editQtd, editValor)} className="text-xs px-2 py-1 rounded mr-1" style={{ background: C.green700, color: "#fff" }}>✓</button>
+                              <button onClick={() => atualizarEditar(comp.id, editValor)} className="text-xs px-2 py-1 rounded mr-1" style={{ background: C.green700, color: "#fff" }}>✓</button>
                               <button onClick={() => setEditandoId(null)} className="text-xs px-2 py-1" style={{ color: C.inkSoft }}>✕</button>
                             </>
                           ) : (
-                            <button onClick={() => { setEditandoId(comp.id); setEditQtd(String(comp.quantidade)); setEditValor(String(comp.valorUnit)); }} className="text-xs px-2 py-1 rounded" style={{ background: C.amber500, color: "#fff" }}>✏️</button>
+                            <button onClick={() => { setEditandoId(comp.id); setEditValor(String(comp.valorUnit)); }} className="text-xs px-2 py-1 rounded" style={{ background: C.amber500, color: "#fff" }}>✏️</button>
                           )}
                         </td>
                       </tr>
@@ -1929,22 +1965,22 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
 
             <div style={{ borderTop: `2px solid ${C.line}`, paddingTop: "12px" }}>
               <div className="text-sm mb-2 flex justify-end gap-4">
-                <span style={{ color: C.inkSoft }}>Subtotal:</span>
-                <span style={{ fontWeight: 'bold', fontFamily: monoFont }}>
+                <span style={{ color: C.ink, fontWeight: 'bold' }}>Subtotal:</span>
+                <span style={{ fontWeight: 'bold', fontFamily: monoFont, color: C.ink }}>
                   {fmtMoney(totalSubtotal)}
                 </span>
               </div>
               {totalDesconto > 0 && (
-                <div className="text-sm mb-2 flex justify-end gap-4">
-                  <span style={{ color: C.amber500 }}>Desconto (-1.63%):</span>
-                  <span style={{ color: C.amber500, fontWeight: 'bold', fontFamily: monoFont }}>
-                    {fmtMoney(totalDesconto)}
+                <div className="text-sm mb-2 flex justify-end gap-4 p-2 rounded" style={{ backgroundColor: "#d4edda", border: `1px solid ${C.green700}` }}>
+                  <span style={{ color: C.green900, fontWeight: 'bold' }}>📋 Desconto (-1.63%):</span>
+                  <span style={{ color: C.green900, fontWeight: 'bold', fontFamily: monoFont }}>
+                    -{fmtMoney(totalDesconto)}
                   </span>
                 </div>
               )}
-              <div className="text-sm font-bold flex justify-end gap-4" style={{ color: C.green700 }}>
+              <div className="text-sm font-bold flex justify-end gap-4 p-2 rounded" style={{ color: C.green900, backgroundColor: "#fff3cd", border: `2px solid ${C.amber600}` }}>
                 <span>Total a Pagar:</span>
-                <span style={{ fontFamily: monoFont }}>{fmtMoney(totalFinal)}</span>
+                <span style={{ fontFamily: monoFont, color: C.green900 }}>{fmtMoney(totalFinal)}</span>
               </div>
             </div>
           </Card>
@@ -1955,30 +1991,29 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
         @media print {
           body {
             background: white !important;
-            margin: 0 !important;
-            padding: 0 !important;
+            margin: 5px !important;
+            padding: 10px !important;
+            color: #000 !important;
           }
           
           * {
             background: white !important;
-            color: black !important;
-            border-color: black !important;
+            color: #000 !important;
+            border-color: #000 !important;
           }
           
-          nav, header, main > div:first-child {
+          nav, header, main > div:first-child, button, select, label, .flex {
             display: none !important;
           }
           
           #folha-pedido-container {
             background: white !important;
-            padding: 20px !important;
+            padding: 10px !important;
             margin: 0 !important;
+            color: #000 !important;
           }
           
-          #folha-pedido-container button {
-            display: none !important;
-          }
-          
+          #folha-pedido-container button, 
           #folha-pedido-container select,
           #folha-pedido-container label,
           #folha-pedido-container .flex {
@@ -1988,30 +2023,42 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
           #folha-pedido-container Card,
           #folha-pedido-container > div {
             background: white !important;
-            border: 1px solid black !important;
-            color: black !important;
+            border: 2px solid #000 !important;
+            color: #000 !important;
+          }
+          
+          h1, h2, h3, div, span {
+            color: #000 !important;
           }
           
           table {
             width: 100% !important;
             border-collapse: collapse !important;
-            margin: 20px 0 !important;
+            margin: 15px 0 !important;
           }
           
-          th, td {
-            border: 1px solid black !important;
+          th {
+            background-color: #d3d3d3 !important;
+            border: 2px solid #000 !important;
             padding: 8px !important;
-            color: black !important;
+            color: #000 !important;
+            font-weight: bold !important;
+            text-align: left !important;
+          }
+          
+          td {
+            border: 1px solid #000 !important;
+            padding: 8px !important;
+            color: #000 !important;
             background: white !important;
             text-align: left !important;
           }
           
-          th {
-            background-color: #f0f0f0 !important;
-            font-weight: bold !important;
+          tr:nth-child(even) {
+            background-color: #fafafa !important;
           }
           
-          tr:nth-child(even) {
+          tr:nth-child(odd) {
             background-color: white !important;
           }
         }
