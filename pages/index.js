@@ -1337,15 +1337,37 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 
       {clienteSelecionado && comprasDoCliente.length > 0 && (
         <>
-          <button
-            onClick={() => window.print()}
-            className="w-full px-4 py-2.5 rounded-lg font-bold text-sm mb-4"
-            style={{ background: C.green700, color: "#fff" }}
-          >
-            📋 Imprimir Folha de Carga
-          </button>
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => window.print()}
+              className="flex-1 px-4 py-2.5 rounded-lg font-bold text-sm"
+              style={{ background: C.green700, color: "#fff", fontFamily: displayFont }}
+            >
+              🖨️ Imprimir
+            </button>
+            <button
+              onClick={() => {
+                const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
+                if (!cliente) return;
+                let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Carga - ${cliente.nome}</title><style>body{font-family:Arial;margin:10px;background:white;color:black}table{width:100%;border-collapse:collapse;margin:20px 0;font-size:11px}th,td{border:1px solid black;padding:6px;text-align:left}th{background:#f0f0f0;font-weight:bold}h1{text-align:center;font-size:18px}</style></head><body><h1>FOLHA DE CARGA</h1><p><strong>Cliente:</strong> ${cliente.nome}</p><p><strong>Data:</strong> ${fmtDate(todayISO())}</p><table><tr><th>Fornecedor</th><th>Produto</th><th>Qtd</th></tr>${comprasDoCliente.map(c=>{const p=cadastros.produtores.find(x=>x.id===c.produtorId);return`<tr><td>${p?.nome||"—"}</td><td>${c.produto}</td><td style="text-align:right">${c.quantidade}</td></tr>`}).join("")}</table></body></html>`;
+                const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `Folha_Carga_${cliente.nome}_${todayISO()}.html`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+              }}
+              className="flex-1 px-4 py-2.5 rounded-lg font-bold text-sm"
+              style={{ background: C.amber500, color: C.green900, fontFamily: displayFont }}
+            >
+              📄 Baixar PDF
+            </button>
+          </div>
 
-          <Card className="mb-4">
+          <Card className="mb-4" id="folha-carga-container">
             <div className="text-center font-bold text-lg mb-3" style={{ fontFamily: displayFont }}>
               FOLHA DE CARGA
             </div>
@@ -1389,27 +1411,14 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 
           <style jsx global>{`
             @media print {
-              nav, header, button, select, label {
-                display: none !important;
-              }
-              body {
-                background: white;
-                padding: 20px;
-              }
-              table {
-                width: 100%;
-                border-collapse: collapse;
-              }
-              th, td {
-                border: 1px solid black;
-                padding: 6px;
-                color: black;
-                background: white;
-              }
-              th {
-                background-color: #f0f0f0;
-                font-weight: bold;
-              }
+              body { background: white !important; margin: 0 !important; padding: 0 !important; }
+              * { background: white !important; color: black !important; border-color: black !important; }
+              nav, header, main, button, select, label, .flex { display: none !important; }
+              #folha-carga-container { background: white !important; padding: 20px !important; margin: 0 !important; }
+              table { width: 100%; border-collapse: collapse; }
+              th, td { border: 1px solid black; padding: 6px; color: black !important; background: white !important; }
+              th { background-color: #f0f0f0 !important; font-weight: bold; }
+              tr:nth-child(even) { background-color: #fafafa !important; }
             }
           `}</style>
         </>
@@ -1556,8 +1565,12 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
 
           <style jsx global>{`
             @media print {
-              nav, header, button, select, .flex { display: none !important; }
-              body { background: white; padding: 20px; }
+              body { background: white !important; margin: 0 !important; padding: 0 !important; }
+              * { background: white !important; color: black !important; border-color: black !important; }
+              nav, header, main, button, select, label, .flex { display: none !important; }
+              table { width: 100%; border-collapse: collapse; }
+              th, td { border: 1px solid black; padding: 6px; color: black !important; background: white !important; }
+              th { background-color: #f0f0f0 !important; font-weight: bold; }
             }
           `}</style>
         </>
