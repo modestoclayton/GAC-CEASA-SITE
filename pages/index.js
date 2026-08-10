@@ -1606,10 +1606,13 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
   );
 }
 
-function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
+function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast }) {
   const [clienteSelecionado, setClienteSelecionado] = useState("");
   const [editandoId, setEditandoId] = useState(null);
+  const [editandoProdutorId, setEditandoProdutorId] = useState(null);
+  const [editQtd, setEditQtd] = useState("");
   const [editValor, setEditValor] = useState("");
+  const [novoProdutor, setNovoProdutor] = useState("");
 
   // Lista de clientes únicos nas compras
   const clientes = [...new Set(transacoes.compras.map((c) => c.clienteDestino).filter(Boolean))].sort();
@@ -1624,16 +1627,66 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
   const totalDesconto = comprasDoCliente.reduce((s, c) => s + (c.desconto || 0), 0);
   const totalFinal = totalSubtotal - totalDesconto;
 
-  const atualizarEditar = async (compraId, novoValor) => {
+  const atualizarEditar = async (compraId, novaQtd, novoValor) => {
+    const novaQuantidade = Number(novaQtd);
+    const novoValorUnit = Number(novoValor);
+    
+    if (!novaQuantidade || !novoValorUnit) {
+      alert("Quantidade e Valor são obrigatórios!");
+      return;
+    }
+
     const nextCompras = transacoes.compras.map((c) => {
       if (c.id !== compraId) return c;
-      const valor = Number(novoValor) || c.valorUnit;
-      const novoTotal = c.quantidade * valor;
-      const novoDesconto = c.desconto ? (novoTotal * Number(c.desconto) / Number(c.valorTotal)) : 0;
-      return { ...c, valorUnit: valor, valorTotal: novoTotal, desconto: novoDesconto };
+      const novoTotal = novaQuantidade * novoValorUnit;
+      const novoDesconto = c.temDescontoFundoRural ? (novoTotal * 0.0163) : 0;
+      return {
+        ...c,
+        quantidade: novaQuantidade,
+        valorUnit: novoValorUnit,
+        valorTotal: novoTotal,
+        desconto: novoDesconto,
+      };
     });
-    if (persistTransacoes) await persistTransacoes({ ...transacoes, compras: nextCompras });
+    
+    console.log("Atualizando compra:", { compraId, novaQuantidade, novoValorUnit });
+    console.log("Compras após atualização:", nextCompras.find(c => c.id === compraId));
+    
+    if (persistTransacoes) {
+      await persistTransacoes({ ...transacoes, compras: nextCompras });
+    }
     setEditandoId(null);
+    setEditQtd("");
+    setEditValor("");
+  };
+
+  const atualizarProdutor = async (compraId, novoProdutorId) => {
+    if (!novoProdutorId) {
+      alert("Selecione um fornecedor!");
+      return;
+    }
+
+    const nextCompras = transacoes.compras.map((c) => {
+      if (c.id !== compraId) return c;
+      return { ...c, produtorId: novoProdutorId };
+    });
+
+    if (persistTransacoes) {
+      await persistTransacoes({ ...transacoes, compras: nextCompras });
+      showToast?.("Fornecedor atualizado!");
+    }
+    setEditandoProdutorId(null);
+    setNovoProdutor("");
+  };
+
+  const excluirCompra = async (compraId) => {
+    if (!window.confirm("Tem certeza que deseja excluir esta compra?")) return;
+
+    const nextCompras = transacoes.compras.filter((c) => c.id !== compraId);
+    if (persistTransacoes) {
+      await persistTransacoes({ ...transacoes, compras: nextCompras });
+      showToast?.("Compra excluída!");
+    }
   };
 
   const finalizarFolha = () => {
@@ -1917,43 +1970,132 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes }) {
                     <th className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Qtd</th>
                     <th className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Valor Unit</th>
                     <th className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Total</th>
-                    <th className="text-center p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Ação</th>
+                    <th className="text-center p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Editar Qtd/Valor</th>
+                    <th className="text-center p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {comprasDoCliente.map((comp, idx) => {
                     const produtor = cadastros.produtores.find((p) => p.id === comp.produtorId);
                     const isEditando = editandoId === comp.id;
+                    const isEditandoProdutor = editandoProdutorId === comp.id;
                     return (
                       <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
-                        <td className="p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{produtor?.nome || "—"}</td>
+                        <td className="p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>
+                          {isEditandoProdutor ? (
+                            <Select 
+                              value={novoProdutor} 
+                              onChange={(e) => setNovoProdutor(e.target.value)}
+                              style={{ fontSize: "11px", padding: "2px" }}
+                              autoFocus
+                            >
+                              <option value="">-- Escolha --</option>
+                              {cadastros.produtores.map((p) => (
+                                <option key={p.id} value={p.id}>{p.nome}</option>
+                              ))}
+                            </Select>
+                          ) : (
+                            produtor?.nome || "—"
+                          )}
+                        </td>
                         <td className="p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{comp.produto}</td>
-                        <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>{comp.quantidade}</td>
+                        <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>
+                          {isEditando ? (
+                            <TextInput 
+                              type="number" 
+                              value={editQtd} 
+                              onChange={(e) => setEditQtd(e.target.value)}
+                              placeholder={String(comp.quantidade)}
+                              style={{ width: "60px", padding: "4px", fontWeight: "bold", color: C.ink }}
+                              autoFocus
+                            />
+                          ) : (
+                            <span className="font-bold">{comp.quantidade}</span>
+                          )}
+                        </td>
                         <td className="text-right p-1.5" style={{ color: C.ink, fontSize: "11px" }}>
                           {isEditando ? (
                             <TextInput 
                               type="number" 
                               value={editValor} 
                               onChange={(e) => setEditValor(e.target.value)}
-                              placeholder={fmtMoney(comp.valorUnit)}
+                              placeholder={String(comp.valorUnit)}
                               style={{ width: "70px", padding: "4px", fontWeight: "bold", color: C.ink }}
-                              autoFocus
                             />
                           ) : (
                             <span className="font-bold">{fmtMoney(comp.valorUnit)}</span>
                           )}
                         </td>
                         <td className="text-right p-1.5 font-bold" style={{ color: C.ink, fontSize: "11px" }}>
-                          {isEditando ? fmtMoney(comp.quantidade * (Number(editValor) || comp.valorUnit)) : fmtMoney(comp.valorTotal)}
+                          {isEditando ? fmtMoney((Number(editQtd) || comp.quantidade) * (Number(editValor) || comp.valorUnit)) : fmtMoney(comp.valorTotal)}
                         </td>
                         <td className="text-center p-1.5" style={{ fontSize: "11px" }}>
                           {isEditando ? (
                             <>
-                              <button onClick={() => atualizarEditar(comp.id, editValor)} className="text-xs px-2 py-1 rounded mr-1" style={{ background: C.green700, color: "#fff" }}>✓</button>
-                              <button onClick={() => setEditandoId(null)} className="text-xs px-2 py-1" style={{ color: C.inkSoft }}>✕</button>
+                              <button 
+                                onClick={() => atualizarEditar(comp.id, editQtd || comp.quantidade, editValor || comp.valorUnit)} 
+                                className="text-xs px-2 py-1 rounded mr-1" 
+                                style={{ background: C.green700, color: "#fff", fontWeight: "bold" }}
+                              >
+                                ✓
+                              </button>
+                              <button 
+                                onClick={() => { setEditandoId(null); setEditQtd(""); setEditValor(""); }} 
+                                className="text-xs px-2 py-1" 
+                                style={{ color: C.inkSoft }}
+                              >
+                                ✕
+                              </button>
                             </>
                           ) : (
-                            <button onClick={() => { setEditandoId(comp.id); setEditValor(String(comp.valorUnit)); }} className="text-xs px-2 py-1 rounded" style={{ background: C.amber500, color: "#fff" }}>✏️</button>
+                            <button 
+                              onClick={() => { 
+                                setEditandoId(comp.id); 
+                                setEditQtd(String(comp.quantidade)); 
+                                setEditValor(String(comp.valorUnit)); 
+                              }} 
+                              className="text-xs px-2 py-1 rounded" 
+                              style={{ background: C.amber500, color: "#fff" }}
+                            >
+                              ✏️
+                            </button>
+                          )}
+                        </td>
+                        <td className="text-center p-1.5" style={{ fontSize: "11px" }}>
+                          {isEditandoProdutor ? (
+                            <>
+                              <button 
+                                onClick={() => atualizarProdutor(comp.id, novoProdutor)} 
+                                className="text-xs px-2 py-1 rounded mr-1" 
+                                style={{ background: C.green700, color: "#fff", fontWeight: "bold" }}
+                              >
+                                ✓
+                              </button>
+                              <button 
+                                onClick={() => { setEditandoProdutorId(null); setNovoProdutor(""); }} 
+                                className="text-xs px-2 py-1" 
+                                style={{ color: C.inkSoft }}
+                              >
+                                ✕
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button 
+                                onClick={() => { setEditandoProdutorId(comp.id); setNovoProdutor(comp.produtorId); }} 
+                                className="text-xs px-2 py-1 rounded mr-1" 
+                                style={{ background: C.green700, color: "#fff" }}
+                              >
+                                📦
+                              </button>
+                              <button 
+                                onClick={() => excluirCompra(comp.id)} 
+                                className="text-xs px-2 py-1 rounded" 
+                                style={{ background: C.rust, color: "#fff" }}
+                              >
+                                🗑️
+                              </button>
+                            </>
                           )}
                         </td>
                       </tr>
