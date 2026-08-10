@@ -971,6 +971,7 @@ export default function GacCeasaApp() {
           <ConferenciaComprasTab
             cadastros={cadastros}
             transacoes={transacoes}
+            persistCadastros={persistCadastros}
             persistTransacoes={persistTransacoes}
             showToast={showToast}
             setRecibo={setRecibo}
@@ -2283,6 +2284,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
         <ConferenciaComprasTab
           cadastros={cadastros}
           transacoes={transacoes}
+          persistCadastros={persistCadastros}
           persistTransacoes={persistTransacoes}
           showToast={showToast}
           setRecibo={setRecibo}
@@ -2305,7 +2307,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
 
       {tipo === "folha-pedido" && (
         <div className="mt-4">
-          <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} />
+          <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} persistTransacoes={persistTransacoes} showToast={showToast} />
         </div>
       )}
     </div>
@@ -2800,7 +2802,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       )}
 
       {view === "folha-pedido" && (
-        <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} />
+        <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} persistTransacoes={persistTransacoes} showToast={showToast} />
       )}
 
       {view === "folha-carga" && (
@@ -3293,7 +3295,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 /* ---------------------------------------------------------------------- */
 /* Conferência de Compras (cargueiro tica recebimento)                    */
 /* ---------------------------------------------------------------------- */
-function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast, setRecibo }) {
+function ConferenciaComprasTab({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
   const [cargueirEntrada, setCargueirEntrada] = useState("");
   const [clienteSelecionado, setClienteSelecionado] = useState("");
   const [conferindoId, setConferindoId] = useState(null);
@@ -3304,6 +3306,17 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const cargueirEncontrado = cadastros.cargueiros.find(
     (c) => c.nome.toLowerCase() === cargueirEntrada.toLowerCase()
   );
+
+  // Adiciona novo cargueiro
+  const adicionarNovoCargueiro = async () => {
+    if (!cargueirEntrada.trim()) return;
+    const novoCargueiro = { id: uid(), nome: cargueirEntrada.trim() };
+    const nextCadastros = { ...cadastros, cargueiros: [...cadastros.cargueiros, novoCargueiro] };
+    if (persistCadastros) {
+      await persistCadastros(nextCadastros);
+      showToast?.(`✅ Cargueiro "${cargueirEntrada}" adicionado!`);
+    }
+  };
 
   // Compras do cargueiro
   const comprasDoCargueiro = cargueirEncontrado
@@ -3458,8 +3471,15 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
             autoFocus
           />
           {cargueirEntrada && !cargueirEncontrado && (
-            <div className="text-xs mt-2 p-2 rounded" style={{ background: C.rustSoft, color: C.rust }}>
-              ❌ "{cargueirEntrada}" não encontrado
+            <div className="text-xs mt-3 p-2 rounded" style={{ background: C.rustSoft, color: C.rust }}>
+              <div className="mb-2">❌ "{cargueirEntrada}" não encontrado</div>
+              <button
+                onClick={adicionarNovoCargueiro}
+                className="w-full px-3 py-2 rounded text-xs font-bold"
+                style={{ background: C.amber500, color: "#fff" }}
+              >
+                ➕ Adicionar Novo Cargueiro
+              </button>
             </div>
           )}
         </Card>
