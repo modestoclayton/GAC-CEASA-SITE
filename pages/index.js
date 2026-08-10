@@ -1608,6 +1608,7 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
 }
 
 function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast }) {
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [clienteSelecionado, setClienteSelecionado] = useState("");
   const [editandoId, setEditandoId] = useState(null);
   const [editandoProdutorId, setEditandoProdutorId] = useState(null);
@@ -1615,11 +1616,12 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
   const [editValor, setEditValor] = useState("");
   const [novoProdutor, setNovoProdutor] = useState("");
 
-  // Lista de clientes únicos nas compras
-  const clientes = [...new Set(transacoes.compras.map((c) => c.clienteDestino).filter(Boolean))].sort();
+  // Lista de clientes únicos nas compras da data selecionada
+  const comprasDaData = transacoes.compras.filter((c) => c.data === dataSelecionada);
+  const clientes = [...new Set(comprasDaData.map((c) => c.clienteDestino).filter(Boolean))].sort();
 
-  // Filtra compras do cliente selecionado
-  const comprasDoCliente = transacoes.compras.filter(
+  // Filtra compras do cliente selecionado E da data selecionada
+  const comprasDoCliente = comprasDaData.filter(
     (c) => c.clienteDestino === clienteSelecionado
   );
 
