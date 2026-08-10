@@ -1628,8 +1628,6 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
 
   // Calcula totais
   const totalSubtotal = comprasDoCliente.reduce((s, c) => s + Number(c.valorTotal), 0);
-  const totalDesconto = comprasDoCliente.reduce((s, c) => s + (c.desconto || 0), 0);
-  const totalFinal = totalSubtotal - totalDesconto;
 
   const atualizarEditar = async (compraId, novaQtd, novoValor) => {
     const novaQuantidade = Number(novaQtd);
@@ -1651,6 +1649,7 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
         valorTotal: novoTotal,
         desconto: novoDesconto,
         confirmadoDivergencia: c.divergencia ? true : c.confirmadoDivergencia, // Marca como confirmado se tinha divergência
+        divergencia: null, // Limpa a divergência após confirmar
       };
     });
     
@@ -1659,6 +1658,7 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
     
     if (persistTransacoes) {
       await persistTransacoes({ ...transacoes, compras: nextCompras });
+      showToast?.("✅ Compra atualizada - Divergência confirmada!");
     }
     setEditandoId(null);
     setEditQtd("");
@@ -1879,15 +1879,13 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
       <span class="label">Subtotal:</span>
       <span class="value">${fmtMoney(totalSubtotal)}</span>
     </div>
-    ${totalDesconto > 0 ? `
     <div class="total-row">
-      <span class="label">Desconto (-1.63%):</span>
-      <span class="value">-${fmtMoney(totalDesconto)}</span>
+      <span class="label">Total de CX:</span>
+      <span class="value">${comprasDoCliente.reduce((s, c) => s + Number(c.quantidade), 0)} CX</span>
     </div>
-    ` : ''}
     <div class="final-total">
-      <span class="label">Total a Pagar:</span>
-      <span class="value">${fmtMoney(totalFinal)}</span>
+      <span class="label">Total:</span>
+      <span class="value">${fmtMoney(totalSubtotal)}</span>
     </div>
   </div>
 </body>
@@ -2144,17 +2142,15 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
                   {fmtMoney(totalSubtotal)}
                 </span>
               </div>
-              {totalDesconto > 0 && (
-                <div className="text-sm mb-2 flex justify-end gap-4 p-2 rounded" style={{ backgroundColor: "#d4edda", border: `1px solid ${C.green700}` }}>
-                  <span style={{ color: C.green900, fontWeight: 'bold' }}>📋 Desconto (-1.63%):</span>
-                  <span style={{ color: C.green900, fontWeight: 'bold', fontFamily: monoFont }}>
-                    -{fmtMoney(totalDesconto)}
-                  </span>
-                </div>
-              )}
+              <div className="text-sm mb-2 flex justify-end gap-4">
+                <span style={{ color: C.ink, fontWeight: 'bold' }}>Total de CX:</span>
+                <span style={{ fontWeight: 'bold', fontFamily: monoFont, color: C.ink }}>
+                  {comprasDoCliente.reduce((s, c) => s + Number(c.quantidade), 0)} CX
+                </span>
+              </div>
               <div className="text-sm font-bold flex justify-end gap-4 p-2 rounded" style={{ color: C.green900, backgroundColor: "#fff3cd", border: `2px solid ${C.amber600}` }}>
-                <span>Total a Pagar:</span>
-                <span style={{ fontFamily: monoFont, color: C.green900 }}>{fmtMoney(totalFinal)}</span>
+                <span>Total:</span>
+                <span style={{ fontFamily: monoFont, color: C.green900 }}>{fmtMoney(totalSubtotal)}</span>
               </div>
             </div>
           </Card>
