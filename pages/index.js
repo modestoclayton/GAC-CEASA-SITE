@@ -3136,7 +3136,6 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const [status, setStatus] = useState("Pendente");
   const [entregaVendaId, setEntregaVendaId] = useState(null);
   const [editandoId, setEditandoId] = useState(null);
-  const [minhasVendas, setMinhasVendas] = useState([]);
   
   const total = (Number(quantidade) || 0) * (Number(precoUnit) || 0);
 
