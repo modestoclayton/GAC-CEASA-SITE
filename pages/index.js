@@ -2990,13 +2990,13 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       )}
 
       {view === "estoque" && (
-        <EstoqueTab transacoes={transacoes} cadastros={cadastros} persistTransacoes={persistTransacoes} showToast={showToast} />
+        <EstoqueCompraTab transacoes={transacoes} cadastros={cadastros} persistTransacoes={persistTransacoes} showToast={showToast} />
       )}
     </div>
   );
 }
 
-function EstoqueTab({ transacoes, cadastros, persistTransacoes, showToast }) {
+function EstoqueCompraTab({ transacoes, cadastros, persistTransacoes, showToast }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [editandoId, setEditandoId] = useState(null);
 
