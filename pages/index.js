@@ -3163,8 +3163,6 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
       quantidade: Number(quantidade),
       precoUnit: Number(precoUnit),
       valorTotal: total,
-      desconto: desconto,
-      valorFinal: valorFinal,
       status,
       entrega: null,
     };
@@ -3252,7 +3250,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
         Registrar Venda
       </PrimaryButton>
 
-      <SectionTitle icon={ShoppingBasket} style={{ marginTop: 20 }}>Minhas Vendas do Dia</SectionTitle>
+      <SectionTitle icon={ShoppingBasket}>Minhas Vendas do Dia</SectionTitle>
       
       {transacoes.vendas.filter((v) => v.data === todayISO()).length === 0 ? (
         <Card>
