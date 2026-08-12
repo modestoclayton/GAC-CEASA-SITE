@@ -391,8 +391,9 @@ const FUNCOES = [
 /* Recibo / Pedido — tela dedicada pra imprimir ou salvar como PDF        */
 /* (Ctrl+P no navegador → "Salvar como PDF" — funciona sem internet)      */
 /* ---------------------------------------------------------------------- */
-function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
+function ReciboView({ tipo, item, cadastros, onFechar, transacoes, quemVe = "vendedor" }) {
   const isVenda = tipo === "venda";
+  const isEntregador = quemVe === "entregador";
   
   // Para vendas: agrupa TODAS as vendas do mesmo cliente
   // Para compras: agrupa TODAS as compras do mesmo clienteDestino
@@ -430,8 +431,9 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
 
   const totalGeral = totalSubtotal - totalDesconto;
 
-  const titulo = isVenda ? "Pedido de Venda" : "Vale de Compra";
+  const titulo = isVenda ? "Vale Compra" : "Vale de Compra";
   const rotuloParte = isVenda ? "Cliente" : "Fornecedor";
+  const mostraValores = !isEntregador;
 
   return (
     <div
@@ -460,8 +462,15 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
           <div className="text-xs uppercase tracking-widest font-bold" style={{ color: "#6E6650" }}>
             GAC CEASA Manager
           </div>
-          <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
-            {titulo}
+          <div className="flex items-center gap-2">
+            <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
+              {titulo}
+            </div>
+            {isEntregador && (
+              <div className="px-2 py-1 rounded text-xs font-bold" style={{ background: "#FF9800", color: "#fff" }}>
+                🚚 ENTREGADOR
+              </div>
+            )}
           </div>
           <div className="text-xs mt-1" style={{ color: "#6E6650" }}>
             Emitido em {fmtDate(todayISO())}
@@ -509,8 +518,12 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
             <tr style={{ borderBottom: "2px solid #1F4A30" }}>
               <th className="text-left py-2">Produto</th>
               <th className="text-right py-2">Qtd.</th>
-              <th className="text-right py-2">Valor Unit.</th>
-              <th className="text-right py-2">Total</th>
+              {mostraValores && (
+                <>
+                  <th className="text-right py-2">Valor Unit.</th>
+                  <th className="text-right py-2">Total</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -518,41 +531,47 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
               <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0" }}>
                 <td className="py-2">{i.produto}</td>
                 <td className="text-right py-2">{i.quantidade}</td>
-                <td className="text-right py-2">{fmtMoney(isVenda ? i.precoUnit : i.valorUnit)}</td>
-                <td className="text-right py-2 font-bold">{fmtMoney(i.valorTotal)}</td>
+                {mostraValores && (
+                  <>
+                    <td className="text-right py-2">{fmtMoney(isVenda ? i.precoUnit : i.valorUnit)}</td>
+                    <td className="text-right py-2 font-bold">{fmtMoney(i.valorTotal)}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
 
-        <div className="flex justify-end mb-6">
-          <div className="text-right">
-            <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
-              Subtotal
-            </div>
-            <div className="text-lg" style={{ fontFamily: "monospace" }}>
-              {fmtMoney(totalSubtotal)}
-            </div>
-            {totalDesconto > 0 && (
-              <>
-                <div className="text-xs uppercase font-bold mt-2 mb-1" style={{ color: "#D9861C" }}>
-                  Desconto (-1.63%)
-                </div>
-                <div className="text-lg" style={{ fontFamily: "monospace", color: "#D9861C" }}>
-                  -{fmtMoney(totalDesconto)}
-                </div>
-              </>
-            )}
-            <div className="text-xs uppercase font-bold mt-3 mb-1 pt-2 border-t" style={{ color: "#6E6650", borderColor: "#D8CBA0" }}>
-              Total {isVenda ? "do Pedido" : "do Vale"}
-            </div>
-            <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
-              {fmtMoney(totalGeral)}
+        {mostraValores && (
+          <div className="flex justify-end mb-6">
+            <div className="text-right">
+              <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
+                Subtotal
+              </div>
+              <div className="text-lg" style={{ fontFamily: "monospace" }}>
+                {fmtMoney(totalSubtotal)}
+              </div>
+              {totalDesconto > 0 && (
+                <>
+                  <div className="text-xs uppercase font-bold mt-2 mb-1" style={{ color: "#D9861C" }}>
+                    Desconto (-1.63%)
+                  </div>
+                  <div className="text-lg" style={{ fontFamily: "monospace", color: "#D9861C" }}>
+                    -{fmtMoney(totalDesconto)}
+                  </div>
+                </>
+              )}
+              <div className="text-xs uppercase font-bold mt-3 mb-1 pt-2 border-t" style={{ color: "#6E6650", borderColor: "#D8CBA0" }}>
+                Total {isVenda ? "do Pedido" : "do Vale"}
+              </div>
+              <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
+                {fmtMoney(totalGeral)}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {isVenda && (
+        {mostraValores && isVenda && (
           <div className="mb-4 text-sm">
             <span className="font-bold">Status do pagamento: </span>
             {item.status || "—"}
@@ -953,6 +972,7 @@ export default function GacCeasaApp() {
         cadastros={cadastros}
         transacoes={transacoes}
         onFechar={() => setRecibo(null)}
+        quemVe={recibo.quemVe || "vendedor"}
       />
     );
   }
@@ -1313,10 +1333,15 @@ const TIPOS = [
 ];
 
 function FolhaDeCargaTab({ cadastros, transacoes }) {
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [clienteSelecionado, setClienteSelecionado] = useState("");
 
-  // Compras do cliente
-  const comprasDoCliente = transacoes.compras.filter(
+  // Filtra compras da data selecionada
+  const comprasDaData = transacoes.compras.filter((c) => c.data === dataSelecionada);
+  const clientes = [...new Set(comprasDaData.map((c) => c.clienteDestino).filter(Boolean))].sort();
+
+  // Compras do cliente selecionado E data selecionada
+  const comprasDoCliente = comprasDaData.filter(
     (c) => c.clienteDestino === clienteSelecionado
   );
 
@@ -1327,12 +1352,31 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 
   return (
     <div>
+      <Field label="Selecione a Data">
+        <TextInput 
+          type="date" 
+          value={dataSelecionada} 
+          onChange={(e) => {
+            setDataSelecionada(e.target.value);
+            setClienteSelecionado(""); // Reseta cliente quando muda data
+          }}
+          style={{ fontWeight: "bold", color: C.ink }}
+        />
+      </Field>
+
       <Field label="Selecione o Cliente">
         <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
           <option value="">-- Escolha um cliente --</option>
-          {cadastros.clientes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
+          {clientes.map((cId) => {
+            const cliente = cadastros.clientes.find((c) => c.id === cId);
+            return (
+              <option key={cId} value={cId}>
+                {cliente?.nome || "—"}
+              </option>
+            );
+          })}
+        </Select>
+      </Field>
             </option>
           ))}
         </Select>
@@ -1455,15 +1499,21 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 }
 
 function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) {
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [clienteSelecionado, setClienteSelecionado] = useState("");
 
-  const comprasComRequisicao = transacoes.compras.filter((c) => {
+  // Filtra compras com requisição da data selecionada
+  const comprasComRequisicaoDaData = transacoes.compras.filter((c) => {
     const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
-    return produtor && (produtor.formaPagamento === "pix" || produtor.formaPagamento === "dinheiro");
+    return (
+      c.data === dataSelecionada &&
+      produtor &&
+      (produtor.formaPagamento === "pix" || produtor.formaPagamento === "dinheiro")
+    );
   });
 
-  const clientes = [...new Set(comprasComRequisicao.map((c) => c.clienteDestino).filter(Boolean))];
-  const requisicoesDoCliente = comprasComRequisicao.filter((c) => c.clienteDestino === clienteSelecionado);
+  const clientes = [...new Set(comprasComRequisicaoDaData.map((c) => c.clienteDestino).filter(Boolean))];
+  const requisicoesDoCliente = comprasComRequisicaoDaData.filter((c) => c.clienteDestino === clienteSelecionado);
   const fornecedoresDoCliente = [...new Set(requisicoesDoCliente.map((c) => c.produtorId))];
 
   const gerarPDF = () => {
@@ -1548,6 +1598,18 @@ function RequisicaoTab({ cadastros, transacoes, persistTransacoes, showToast }) 
 
   return (
     <div>
+      <Field label="Selecione a Data">
+        <TextInput 
+          type="date" 
+          value={dataSelecionada} 
+          onChange={(e) => {
+            setDataSelecionada(e.target.value);
+            setClienteSelecionado(""); // Reseta cliente quando muda data
+          }}
+          style={{ fontWeight: "bold", color: C.ink }}
+        />
+      </Field>
+
       <Field label="Selecione o Cliente">
         <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
           <option value="">-- Escolha um cliente --</option>
@@ -1631,7 +1693,11 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
 
   // Lista de clientes únicos nas compras da data selecionada
   const comprasDaData = transacoes.compras.filter((c) => c.data === dataSelecionada);
-  const clientes = [...new Set(comprasDaData.map((c) => c.clienteDestino).filter(Boolean))].sort();
+  const clientesUnicos = [...new Set(comprasDaData.map((c) => c.clienteDestino).filter(Boolean))].sort();
+  // Separa ESTOQUE dos clientes normais
+  const clientes = clientesUnicos.filter((c) => c !== "ESTOQUE");
+  const temEstoque = clientesUnicos.includes("ESTOQUE");
+  const clientesList = temEstoque ? ["ESTOQUE", ...clientes] : clientes;
 
   // Filtra compras do cliente selecionado E da data selecionada
   const comprasDoCliente = comprasDaData.filter(
@@ -1706,15 +1772,16 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
     }
   };
 
-  const finalizarFolha = () => {
+  const finalizarFolha = async () => {
     const cliente = cadastros.clientes.find((c) => c.id === clienteSelecionado);
     if (!cliente) return alert("Selecione um cliente");
     
-    // Verificar se tem compras
-    if (comprasDoCliente.length === 0) return alert("Nenhuma compra para finalizar");
+    // Verificar se tem compras (excluindo estoque)
+    const comprasParaFinalizar = comprasDoCliente.filter((c) => c.clienteDestino !== "ESTOQUE");
+    if (comprasParaFinalizar.length === 0) return alert("Nenhuma compra para finalizar");
     
     // Gerar requisições para Pix + Dinheiro
-    const comprasComRequisicao = comprasDoCliente.filter((c) => {
+    const comprasComRequisicao = comprasParaFinalizar.filter((c) => {
       const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
       return produtor && (produtor.formaPagamento === "pix" || produtor.formaPagamento === "dinheiro");
     });
@@ -1746,7 +1813,22 @@ function FolhaDePedidoTab({ cadastros, transacoes, persistTransacoes, showToast 
       URL.revokeObjectURL(url);
     });
 
-    alert(`✅ Folha finalizada! ${fornecedoresUnicos.length} requisição(ões) gerada(s)`);
+    // Atualizar data das compras finalizadas para hoje
+    const comprasAtualizadas = transacoes.compras.map((c) => {
+      if (c.clienteDestino === clienteSelecionado && c.data === dataSelecionada && c.clienteDestino !== "ESTOQUE") {
+        return { ...c, data: todayISO() }; // Atualiza para data de hoje
+      }
+      return c;
+    });
+
+    await persistTransacoes({ ...transacoes, compras: comprasAtualizadas });
+    
+    alert(`✅ Folha finalizada! ${fornecedoresUnicos.length} requisição(ões) gerada(s)\n✅ Compras atualizadas para ${fmtDate(todayISO())}`);
+    
+    // Resetar interface para novo pedido
+    setClienteSelecionado("");
+    setDataSelecionada(todayISO());
+    showToast?.("✅ Novo pedido iniciado!");
   };
 
   // Função para gerar e baixar PDF limpo (branco e preto) - REDUZIDO
@@ -2612,20 +2694,28 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
 
 function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
   const [produtorId, setProdutorId] = useState(cadastros.produtores[0]?.id || "");
-  const [clienteDestino, setClienteDestino] = useState(cadastros.clientes[0]?.id || "");
+  const [clienteDestino, setClienteDestino] = useState("");
+  const [isEstoque, setIsEstoque] = useState(false);
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
   const [valorUnit, setValorUnit] = useState("");
-  const [cargueiroid, setCargueiroid] = useState(cadastros.cargueiros[0]?.id || ""); // ID do cargueiro
+  const [cargueiroid, setCargueiroid] = useState(cadastros.cargueiros[0]?.id || "");
   const [ultimaCompra, setUltimaCompra] = useState(null);
-  const [view, setView] = useState("registrar"); // "registrar", "requisicao", "folha-pedido", "folha-carga"
+  const [view, setView] = useState("registrar");
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   const addCargueiro = async (nome) => {
-    const novo = { id: uid(), nome };
+    if (!nome.trim()) {
+      alert("Nome do cargueiro é obrigatório!");
+      return;
+    }
+    const novo = { id: uid(), nome: nome.trim() };
     const next = { ...cadastros, cargueiros: [...cadastros.cargueiros, novo] };
-    await persistCadastros(next);
-    setCargueiroid(novo.id);
+    if (persistCadastros) {
+      await persistCadastros(next);
+      setCargueiroid(novo.id);
+      showToast?.(`✅ Cargueiro "${novo.nome}" adicionado!`);
+    }
   };
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -2660,21 +2750,23 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   };
 
   const salvar = async () => {
-    if (!produtorId || !clienteDestino || !produto || !quantidade || !valorUnit || !cargueiroid) return;
+    if (!produtorId || !produto || !quantidade || !valorUnit || !cargueiroid) return;
+    if (!isEstoque && !clienteDestino) return; // Se não é estoque, precisa de cliente
     const cargueiro = cadastros.cargueiros.find((c) => c.id === cargueiroid);
     const nova = {
       id: uid(),
       data: todayISO(),
       produtorId,
-      clienteDestino,
+      clienteDestino: isEstoque ? "ESTOQUE" : clienteDestino,
+      paraEstoque: isEstoque,
       produto,
       quantidade: Number(quantidade),
       valorUnit: Number(valorUnit),
       valorTotal: total,
       desconto: desconto,
       valorFinal: valorFinal,
-      cargueiroid, // ID do cargueiro
-      cargueiro: cargueiro?.nome || "", // Nome do cargueiro (para referência)
+      cargueiroid,
+      cargueiro: cargueiro?.nome || "",
       entregaConfirmada: false,
       quantidadeRecebida: null,
       divergencia: null,
@@ -2734,6 +2826,17 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         >
           Folha Carga
         </button>
+        <button
+          onClick={() => setView("estoque")}
+          className="py-2 rounded-lg font-bold text-xs"
+          style={{
+            background: view === "estoque" ? C.green700 : C.cardAlt,
+            color: view === "estoque" ? "#fff" : C.ink,
+            border: `1px solid ${view === "estoque" ? C.green700 : C.line}`,
+          }}
+        >
+          📦 Estoque
+        </button>
       </div>
 
       {view === "registrar" && (
@@ -2760,8 +2863,17 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
               )}
             </div>
           )}
-          <Field label="Para Quem (Cliente Destino)">
-            <Select value={clienteDestino} onChange={(e) => setClienteDestino(e.target.value)}>
+          <Field label="Distribuidora">
+            <Select 
+              value={clienteDestino} 
+              onChange={(e) => {
+                setClienteDestino(e.target.value);
+                if (e.target.value) setIsEstoque(false); // Desativa estoque ao selecionar cliente
+              }}
+              disabled={isEstoque}
+              style={{ opacity: isEstoque ? 0.5 : 1 }}
+            >
+              <option value="">-- Selecione uma distribuidora --</option>
               {cadastros.clientes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nome}
@@ -2769,6 +2881,21 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
               ))}
             </Select>
           </Field>
+
+          <label className="block mb-3">
+            <input
+              type="checkbox"
+              checked={isEstoque}
+              onChange={(e) => {
+                setIsEstoque(e.target.checked);
+                if (e.target.checked) setClienteDestino(""); // Limpa cliente ao marcar estoque
+              }}
+              style={{ marginRight: 8, cursor: "pointer" }}
+            />
+            <span style={{ color: C.ink, fontWeight: "bold", cursor: "pointer" }}>
+              📦 Armazenar em Estoque Próprio
+            </span>
+          </label>
           <Field label="Produto">
             <Select value={produto} onChange={(e) => setProduto(e.target.value)}>
               {cadastros.produtos.map((p) => (
@@ -2779,6 +2906,19 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
             </Select>
             <QuickAddInline placeholder="Nome do produto" onAdd={addProduto} />
           </Field>
+
+          <Field label="Cargueiro">
+            <Select value={cargueiroid} onChange={(e) => setCargueiroid(e.target.value)}>
+              <option value="">-- Selecione o cargueiro --</option>
+              {cadastros.cargueiros.map((cg) => (
+                <option key={cg.id} value={cg.id}>
+                  {cg.nome}
+                </option>
+              ))}
+            </Select>
+            <QuickAddInline placeholder="Nome do cargueiro" onAdd={addCargueiro} />
+          </Field>
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Quantidade">
               <TextInput
@@ -2848,6 +2988,142 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       {view === "folha-carga" && (
         <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />
       )}
+
+      {view === "estoque" && (
+        <EstoqueTab transacoes={transacoes} cadastros={cadastros} persistTransacoes={persistTransacoes} showToast={showToast} />
+      )}
+    </div>
+  );
+}
+
+function EstoqueTab({ transacoes, cadastros, persistTransacoes, showToast }) {
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+  const [editandoId, setEditandoId] = useState(null);
+
+  const comprasEstoque = transacoes.compras.filter(
+    (c) => c.clienteDestino === "ESTOQUE" && c.data === dataSelecionada
+  );
+
+  const totalQtd = comprasEstoque.reduce((s, c) => s + Number(c.quantidade), 0);
+  const totalValor = comprasEstoque.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
+
+  const editar = async (compraId, novosDados) => {
+    const nextCompras = transacoes.compras.map((c) =>
+      c.id === compraId ? { ...c, ...novosDados } : c
+    );
+    await persistTransacoes({ ...transacoes, compras: nextCompras });
+    setEditandoId(null);
+    showToast?.("Compra atualizada");
+  };
+
+  return (
+    <div>
+      <Field label="Selecione a Data">
+        <TextInput 
+          type="date" 
+          value={dataSelecionada} 
+          onChange={(e) => setDataSelecionada(e.target.value)}
+          style={{ fontWeight: "bold", color: C.ink }}
+        />
+      </Field>
+
+      <SectionTitle icon={Package}>Compras para Estoque - {fmtDate(dataSelecionada)}</SectionTitle>
+
+      {comprasEstoque.length === 0 ? (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            Nenhuma compra para estoque nesta data.
+          </p>
+        </Card>
+      ) : (
+        <>
+          <div className="flex flex-col gap-2 mb-4">
+            {comprasEstoque.map((c) => {
+              const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+              if (editandoId === c.id) {
+                return (
+                  <Card key={c.id} style={{ background: C.amberSoft }}>
+                    <div className="mb-3 font-bold text-sm">Editando Compra</div>
+                    <Field label="Quantidade">
+                      <TextInput
+                        type="number"
+                        defaultValue={c.quantidade}
+                        onBlur={(e) => {
+                          const novaQtd = Number(e.target.value) || c.quantidade;
+                          const novoTotal = novaQtd * c.valorUnit;
+                          editar(c.id, { quantidade: novaQtd, valorTotal: novoTotal, valorFinal: novoTotal });
+                        }}
+                      />
+                    </Field>
+                    <Field label="Valor Unit. (R$)">
+                      <TextInput
+                        type="number"
+                        defaultValue={c.valorUnit}
+                        onBlur={(e) => {
+                          const novoValor = Number(e.target.value) || c.valorUnit;
+                          const novoTotal = c.quantidade * novoValor;
+                          const desconto = c.desconto || 0;
+                          const novoFinal = novoTotal - desconto;
+                          editar(c.id, { valorUnit: novoValor, valorTotal: novoTotal, valorFinal: novoFinal });
+                        }}
+                      />
+                    </Field>
+                    <button
+                      onClick={() => setEditandoId(null)}
+                      className="text-xs font-bold mt-2"
+                      style={{ color: C.green700 }}
+                    >
+                      ✓ Pronto
+                    </button>
+                  </Card>
+                );
+              }
+              return (
+                <Card key={c.id}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex-1">
+                      <div className="font-bold text-sm">{c.produto}</div>
+                      <div className="text-xs" style={{ color: C.inkSoft }}>
+                        {produtor?.nome || "—"} • {c.cargueiro || "—"}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold" style={{ fontFamily: monoFont }}>
+                        {c.quantidade} CX
+                      </div>
+                      <div className="text-xs" style={{ color: C.inkSoft }}>
+                        {fmtMoney(c.valorFinal || c.valorTotal)}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setEditandoId(c.id)}
+                    className="text-xs font-bold"
+                    style={{ color: C.green700 }}
+                  >
+                    ✏️ Editar
+                  </button>
+                </Card>
+              );
+            })}
+          </div>
+
+          <Card style={{ background: C.amberSoft, borderColor: C.amber600 }}>
+            <div className="flex justify-between mb-2">
+              <span className="font-bold" style={{ color: C.ink }}>Total de CX:</span>
+              <span className="font-bold" style={{ color: C.ink, fontFamily: monoFont }}>
+                {totalQtd} CX
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-bold" style={{ color: C.ink }}>Valor Total:</span>
+              <span className="font-bold" style={{ color: C.ink, fontFamily: monoFont }}>
+                {fmtMoney(totalValor)}
+              </span>
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
@@ -2859,6 +3135,9 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const [precoUnit, setPrecoUnit] = useState("");
   const [status, setStatus] = useState("Pendente");
   const [entregaVendaId, setEntregaVendaId] = useState(null);
+  const [editandoId, setEditandoId] = useState(null);
+  const [minhasVendas, setMinhasVendas] = useState([]);
+  
   const total = (Number(quantidade) || 0) * (Number(precoUnit) || 0);
 
   useEffect(() => {
@@ -2893,6 +3172,15 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
     setQuantidade("");
     showToast("Venda registrada");
     setEntregaVendaId(novaId);
+  };
+
+  const editar = async (vendaId, novosDados) => {
+    const nextVendas = transacoes.vendas.map((v) =>
+      v.id === vendaId ? { ...v, ...novosDados } : v
+    );
+    await persistTransacoes({ ...transacoes, vendas: nextVendas });
+    setEditandoId(null);
+    showToast("Venda atualizada");
   };
 
   if (entregaVendaId) {
@@ -2963,6 +3251,96 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
       <PrimaryButton onClick={salvar} icon={ArrowUpCircle}>
         Registrar Venda
       </PrimaryButton>
+
+      <SectionTitle icon={ShoppingBasket} style={{ marginTop: 20 }}>Minhas Vendas do Dia</SectionTitle>
+      
+      {transacoes.vendas.filter((v) => v.data === todayISO()).length === 0 ? (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            Nenhuma venda registrada hoje.
+          </p>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {transacoes.vendas.filter((v) => v.data === todayISO()).map((v) => {
+            const cliente = cadastros.clientes.find((c) => c.id === v.clienteId);
+            if (editandoId === v.id) {
+              return (
+                <Card key={v.id} style={{ background: C.amberSoft }}>
+                  <div className="mb-3 font-bold text-sm">Editando Venda</div>
+                  <Field label="Quantidade">
+                    <TextInput
+                      type="number"
+                      defaultValue={v.quantidade}
+                      onBlur={(e) => {
+                        const novaQtd = Number(e.target.value) || v.quantidade;
+                        const novoTotal = novaQtd * v.precoUnit;
+                        editar(v.id, { quantidade: novaQtd, valorTotal: novoTotal });
+                      }}
+                    />
+                  </Field>
+                  <Field label="Preço Unit. (R$)">
+                    <TextInput
+                      type="number"
+                      defaultValue={v.precoUnit}
+                      onBlur={(e) => {
+                        const novoPreco = Number(e.target.value) || v.precoUnit;
+                        const novoTotal = v.quantidade * novoPreco;
+                        editar(v.id, { precoUnit: novoPreco, valorTotal: novoTotal });
+                      }}
+                    />
+                  </Field>
+                  <button
+                    onClick={() => setEditandoId(null)}
+                    className="text-xs font-bold mt-2"
+                    style={{ color: C.green700 }}
+                  >
+                    ✓ Pronto
+                  </button>
+                </Card>
+              );
+            }
+            return (
+              <Card key={v.id}>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">{cliente?.nome || "—"}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>
+                      {v.produto} • {v.quantidade} un
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold" style={{ fontFamily: monoFont }}>
+                      {fmtMoney(v.valorTotal)}
+                    </div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>
+                      {v.status}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => setEditandoId(v.id)}
+                    className="text-xs font-bold"
+                    style={{ color: C.green700 }}
+                  >
+                    ✏️ Editar
+                  </button>
+                  {setRecibo && (
+                    <button
+                      onClick={() => setRecibo({ tipo: "venda", item: v, quemVe: "vendedor" })}
+                      className="text-xs font-bold"
+                      style={{ color: C.amber500 }}
+                    >
+                      🖨️ Vale
+                    </button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 }
@@ -3227,7 +3605,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
           </button>
           {setRecibo && (
             <button
-              onClick={() => setRecibo({ tipo: "venda", item: v })}
+              onClick={() => setRecibo({ tipo: "venda", item: v, quemVe: "entregador" })}
               className="text-xs font-bold mt-1.5 ml-3"
               style={{ color: C.amber500 }}
             >
@@ -3347,17 +3725,6 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistCadastros, persis
     (c) => c.nome.toLowerCase() === cargueirEntrada.toLowerCase()
   );
 
-  // Adiciona novo cargueiro
-  const adicionarNovoCargueiro = async () => {
-    if (!cargueirEntrada.trim()) return;
-    const novoCargueiro = { id: uid(), nome: cargueirEntrada.trim() };
-    const nextCadastros = { ...cadastros, cargueiros: [...cadastros.cargueiros, novoCargueiro] };
-    if (persistCadastros) {
-      await persistCadastros(nextCadastros);
-      setCargueirEntrada(""); // Limpa o input
-      showToast?.(`✅ Cargueiro "${novoCargueiro.nome}" adicionado!`);
-    }
-  };
 
   // Compras do cargueiro
   const comprasDoCargueiro = cargueirEncontrado
@@ -3504,26 +3871,20 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistCadastros, persis
       {!cargueirEncontrado ? (
         <Card>
           <p className="text-sm mb-3" style={{ color: C.inkSoft }}>
-            Cargueiro, digite seu nome:
+            Selecione seu nome (Cargueiro):
           </p>
-          <TextInput
-            placeholder="Ex: Arnaldo, Leandro..."
+          <Select
             value={cargueirEntrada}
             onChange={(e) => setCargueirEntrada(e.target.value)}
             autoFocus
-          />
-          {cargueirEntrada && !cargueirEncontrado && (
-            <div className="text-xs mt-3 p-2 rounded" style={{ background: C.rustSoft, color: C.rust }}>
-              <div className="mb-2">❌ "{cargueirEntrada}" não encontrado</div>
-              <button
-                onClick={adicionarNovoCargueiro}
-                className="w-full px-3 py-2 rounded text-xs font-bold"
-                style={{ background: C.amber500, color: "#fff" }}
-              >
-                ➕ Adicionar Novo Cargueiro
-              </button>
-            </div>
-          )}
+          >
+            <option value="">-- Escolha seu nome --</option>
+            {cadastros.cargueiros.map((cg) => (
+              <option key={cg.id} value={cg.nome}>
+                {cg.nome}
+              </option>
+            ))}
+          </Select>
         </Card>
       ) : (
         <>
