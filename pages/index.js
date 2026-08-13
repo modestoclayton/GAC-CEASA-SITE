@@ -1632,6 +1632,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [quantidade, setQuantidade] = useState("");
   const [valorUnit, setValorUnit] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
+  const [isEstoque, setIsEstoque] = useState(false);
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -1709,8 +1710,30 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           )}
         </div>
       )}
-      <Field label="Para Quem (Cliente Destino)">
-        <Select value={clienteDestino} onChange={(e) => setClienteDestino(e.target.value)}>
+
+      <div className="mb-3 p-3 rounded" style={{ background: C.amberSoft, borderLeft: `4px solid ${C.amber500}` }}>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isEstoque}
+            onChange={(e) => {
+              setIsEstoque(e.target.checked);
+              if (e.target.checked) setClienteDestino("ESTOQUE");
+            }}
+            style={{ width: 20, height: 20 }}
+          />
+          <span style={{ color: C.ink, fontWeight: "bold", fontSize: "14px" }}>
+            📦 Esta compra é para Estoque?
+          </span>
+        </label>
+      </div>
+
+      <Field label="Para Quem (Cliente Destino)" style={{ opacity: isEstoque ? 0.5 : 1 }}>
+        <Select 
+          value={clienteDestino} 
+          onChange={(e) => setClienteDestino(e.target.value)}
+          disabled={isEstoque}
+        >
           {cadastros.clientes.map((c) => (
             <option key={c.id} value={c.id}>
               {c.nome}
@@ -2549,9 +2572,20 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
 /* ---------------------------------------------------------------------- */
 function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
   const [aberto, setAberto] = useState(false);
-  const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
+  const [produto, setProduto] = useState(cadastros.produtos?.[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
-  const [motivo, setMotivo] = useState(MOTIVOS_PERDA[0]);
+  const [motivo, setMotivo] = useState(MOTIVOS_PERDA[0] || "Deterioração");
+
+  // Validação: se não há produtos, mostra mensagem
+  if (!cadastros.produtos || cadastros.produtos.length === 0) {
+    return (
+      <Card>
+        <p className="text-sm" style={{ color: C.rust }}>
+          ⚠️ Adicione produtos no cadastro antes de registrar perdas.
+        </p>
+      </Card>
+    );
+  }
 
   const perdas = transacoes.perdas || [];
   const hoje = todayISO();
