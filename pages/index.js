@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  LayoutGrid,
+  Bugfix: Remover duplicate closing brace”,
   PlusCircle,
   Package,
   Wallet,
