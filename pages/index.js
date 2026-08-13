@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Bugfix: Remover duplicate closing brace”,
+  LayoutGrid,
   PlusCircle,
   Package,
   Wallet,
@@ -3009,20 +3009,14 @@ function EstoqueCompraTab({ transacoes, cadastros, persistTransacoes, showToast 
 
   const editar = async (compraId, novosDados) => {
     try {
-      if (!persistTransacoes) {
-        showToast?.("❌ Erro ao conectar - tente novamente");
-        return;
-      }
-
       const nextCompras = transacoes.compras.map((c) =>
         c.id === compraId ? { ...c, ...novosDados } : c
       );
       await persistTransacoes({ ...transacoes, compras: nextCompras });
       setEditandoId(null);
-      showToast?.("✅ Compra atualizada!");
-    } catch (erro) {
-      console.error("Erro ao editar compra:", erro);
-      showToast?.("❌ Erro ao editar - tente novamente");
+      showToast?.("Compra atualizada!");
+    } catch (e) {
+      showToast?.("Erro ao editar");
     }
   };
   };
@@ -3163,60 +3157,46 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   };
 
   const salvar = async () => {
+    if (!clienteId || !produto || !quantidade || !precoUnit) {
+      showToast("Preencha todos os campos!");
+      return;
+    }
+
+    const novaId = uid();
+    const nova = {
+      id: novaId,
+      data: todayISO(),
+      clienteId,
+      produto,
+      quantidade: Number(quantidade),
+      precoUnit: Number(precoUnit),
+      valorTotal: total,
+      status,
+      entrega: null,
+    };
+
     try {
-      if (!clienteId || !produto || !quantidade || !precoUnit) {
-        showToast("❌ Preencha todos os campos!");
-        return;
-      }
-      
-      if (!persistTransacoes) {
-        showToast("❌ Erro ao conectar - tente novamente");
-        return;
-      }
-
-      const novaId = uid();
-      const nova = {
-        id: novaId,
-        data: todayISO(),
-        clienteId,
-        produto,
-        quantidade: Number(quantidade),
-        precoUnit: Number(precoUnit),
-        valorTotal: total,
-        status,
-        entrega: null,
-      };
-
       await persistTransacoes({ ...transacoes, vendas: [nova, ...transacoes.vendas] });
-      
       setQuantidade("");
       setPrecoUnit("");
-      showToast("✅ Venda registrada com sucesso!");
+      showToast("Venda registrada!");
       setEntregaVendaId(novaId);
-    } catch (erro) {
-      console.error("Erro ao salvar venda:", erro);
-      showToast("❌ Erro ao salvar - tente novamente");
+    } catch (e) {
+      showToast("Erro ao salvar");
     }
   };
 
   const editar = async (vendaId, novosDados) => {
     try {
-      if (!persistTransacoes) {
-        showToast("❌ Erro ao conectar - tente novamente");
-        return;
-      }
-
       const nextVendas = transacoes.vendas.map((v) =>
         v.id === vendaId ? { ...v, ...novosDados } : v
       );
       await persistTransacoes({ ...transacoes, vendas: nextVendas });
       setEditandoId(null);
-      showToast("✅ Venda atualizada!");
-    } catch (erro) {
-      console.error("Erro ao editar venda:", erro);
-      showToast("❌ Erro ao editar - tente novamente");
+      showToast("Venda atualizada!");
+    } catch (e) {
+      showToast("Erro ao editar");
     }
-  };
   };
 
   if (entregaVendaId) {
