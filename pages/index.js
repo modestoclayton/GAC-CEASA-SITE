@@ -13,7 +13,7 @@ import {
   Search,
   X,
   Check,
-  ChevronRight,
+  ChevronRight
   Loader2,
   Truck,
   ClipboardCheck,
