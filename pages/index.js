@@ -3008,12 +3008,23 @@ function EstoqueCompraTab({ transacoes, cadastros, persistTransacoes, showToast 
   const totalValor = comprasEstoque.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
 
   const editar = async (compraId, novosDados) => {
-    const nextCompras = transacoes.compras.map((c) =>
-      c.id === compraId ? { ...c, ...novosDados } : c
-    );
-    await persistTransacoes({ ...transacoes, compras: nextCompras });
-    setEditandoId(null);
-    showToast?.("Compra atualizada");
+    try {
+      if (!persistTransacoes) {
+        showToast?.("❌ Erro ao conectar - tente novamente");
+        return;
+      }
+
+      const nextCompras = transacoes.compras.map((c) =>
+        c.id === compraId ? { ...c, ...novosDados } : c
+      );
+      await persistTransacoes({ ...transacoes, compras: nextCompras });
+      setEditandoId(null);
+      showToast?.("✅ Compra atualizada!");
+    } catch (erro) {
+      console.error("Erro ao editar compra:", erro);
+      showToast?.("❌ Erro ao editar - tente novamente");
+    }
+  };
   };
 
   return (
@@ -4704,5 +4715,3 @@ function Extrato({ lancamentos }) {
     </div>
   );
 }
-
-
