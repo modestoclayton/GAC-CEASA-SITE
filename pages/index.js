@@ -3152,32 +3152,60 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   };
 
   const salvar = async () => {
-    if (!clienteId || !produto || !quantidade || !precoUnit) return;
-    const novaId = uid();
-    const nova = {
-      id: novaId,
-      data: todayISO(),
-      clienteId,
-      produto,
-      quantidade: Number(quantidade),
-      precoUnit: Number(precoUnit),
-      valorTotal: total,
-      status,
-      entrega: null,
-    };
-    await persistTransacoes({ ...transacoes, vendas: [nova, ...transacoes.vendas] });
-    setQuantidade("");
-    showToast("Venda registrada");
-    setEntregaVendaId(novaId);
+    try {
+      if (!clienteId || !produto || !quantidade || !precoUnit) {
+        showToast("❌ Preencha todos os campos!");
+        return;
+      }
+      
+      if (!persistTransacoes) {
+        showToast("❌ Erro ao conectar - tente novamente");
+        return;
+      }
+
+      const novaId = uid();
+      const nova = {
+        id: novaId,
+        data: todayISO(),
+        clienteId,
+        produto,
+        quantidade: Number(quantidade),
+        precoUnit: Number(precoUnit),
+        valorTotal: total,
+        status,
+        entrega: null,
+      };
+
+      await persistTransacoes({ ...transacoes, vendas: [nova, ...transacoes.vendas] });
+      
+      setQuantidade("");
+      setPrecoUnit("");
+      showToast("✅ Venda registrada com sucesso!");
+      setEntregaVendaId(novaId);
+    } catch (erro) {
+      console.error("Erro ao salvar venda:", erro);
+      showToast("❌ Erro ao salvar - tente novamente");
+    }
   };
 
   const editar = async (vendaId, novosDados) => {
-    const nextVendas = transacoes.vendas.map((v) =>
-      v.id === vendaId ? { ...v, ...novosDados } : v
-    );
-    await persistTransacoes({ ...transacoes, vendas: nextVendas });
-    setEditandoId(null);
-    showToast("Venda atualizada");
+    try {
+      if (!persistTransacoes) {
+        showToast("❌ Erro ao conectar - tente novamente");
+        return;
+      }
+
+      const nextVendas = transacoes.vendas.map((v) =>
+        v.id === vendaId ? { ...v, ...novosDados } : v
+      );
+      await persistTransacoes({ ...transacoes, vendas: nextVendas });
+      setEditandoId(null);
+      showToast("✅ Venda atualizada!");
+    } catch (erro) {
+      console.error("Erro ao editar venda:", erro);
+      showToast("❌ Erro ao editar - tente novamente");
+    }
+  };
   };
 
   if (entregaVendaId) {
