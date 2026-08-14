@@ -1625,6 +1625,155 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
   );
 }
 
+/* ====================================================================== */
+/* Requisição Tab - Mostra compras por produtor com filtro de data       */
+/* ====================================================================== */
+function RequisicaoTab({ cadastros, transacoes }) {
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+
+  const comprasHoje = transacoes.compras.filter((c) => c.data === dataSelecionada && c.clienteDestino !== "ESTOQUE");
+  const produtoresUnicos = [...new Set(comprasHoje.map((c) => c.produtorId))];
+  
+  return (
+    <div>
+      <Field label="Data">
+        <TextInput type="date" value={dataSelecionada} onChange={(e) => setDataSelecionada(e.target.value)} />
+      </Field>
+
+      <SectionTitle icon={Package}>Requisições por Produtor</SectionTitle>
+
+      {produtoresUnicos.length === 0 ? (
+        <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma compra nesta data.</p></Card>
+      ) : (
+        produtoresUnicos.map((produtorId) => {
+          const produtor = cadastros.produtores.find((p) => p.id === produtorId);
+          const comprasProdutor = comprasHoje.filter((c) => c.produtorId === produtorId);
+          const totalQtd = comprasProdutor.reduce((s, c) => s + Number(c.quantidade), 0);
+          const totalValor = comprasProdutor.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
+
+          return (
+            <Card key={produtorId} style={{ marginBottom: 12 }}>
+              <div className="font-bold mb-2" style={{ color: C.green700 }}>{produtor?.nome}</div>
+              <div className="text-xs mb-2" style={{ color: C.inkSoft }}>Total: {totalQtd} CX | {fmtMoney(totalValor)}</div>
+              {comprasProdutor.map((c) => (
+                <div key={c.id} className="text-xs mb-1 flex justify-between">
+                  <span>{c.produto} - {c.quantidade} CX</span>
+                  <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorFinal || c.valorTotal)}</span>
+                </div>
+              ))}
+            </Card>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+/* ====================================================================== */
+/* Folha de Pedido Tab - Mostra compras por cliente com filtro de data   */
+/* ====================================================================== */
+function FolhaDePedidoTab({ cadastros, transacoes }) {
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+  const [clienteSelecionado, setClienteSelecionado] = useState("");
+
+  const comprasHoje = transacoes.compras.filter((c) => c.data === dataSelecionada && c.clienteDestino !== "ESTOQUE");
+  const clientesUnicos = [...new Set(comprasHoje.map((c) => c.clienteDestino))];
+  
+  const comprasDoCliente = clienteSelecionado ? comprasHoje.filter((c) => c.clienteDestino === clienteSelecionado) : [];
+  const totalQtd = comprasDoCliente.reduce((s, c) => s + Number(c.quantidade), 0);
+  const totalValor = comprasDoCliente.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
+
+  return (
+    <div>
+      <Field label="Data">
+        <TextInput type="date" value={dataSelecionada} onChange={(e) => { setDataSelecionada(e.target.value); setClienteSelecionado(""); }} />
+      </Field>
+
+      <Field label="Cliente">
+        <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
+          <option value="">Selecione um cliente</option>
+          {clientesUnicos.map((clienteId) => {
+            const cl = cadastros.clientes.find((c) => c.id === clienteId);
+            return <option key={clienteId} value={clienteId}>{cl?.nome}</option>;
+          })}
+        </Select>
+      </Field>
+
+      {clienteSelecionado && (
+        <Card style={{ marginTop: 16 }}>
+          <div className="mb-3 font-bold" style={{ color: C.green700 }}>Total de Itens: {totalQtd} CX</div>
+          {comprasDoCliente.map((c) => {
+            const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+            return (
+              <Card key={c.id} style={{ marginBottom: 12, background: C.cardAlt }}>
+                <div className="flex justify-between">
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">{c.produto}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome}</div>
+                  </div>
+                  <div className="text-right"><div className="font-bold">{c.quantidade} CX</div></div>
+                </div>
+              </Card>
+            );
+          })}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ====================================================================== */
+/* Folha de Carga Tab - Mostra compras sem valores, agrupadas por cliente */
+/* ====================================================================== */
+function FolhaDeCargaTab({ cadastros, transacoes }) {
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+  const [clienteSelecionado, setClienteSelecionado] = useState("");
+
+  const comprasHoje = transacoes.compras.filter((c) => c.data === dataSelecionada && c.clienteDestino !== "ESTOQUE");
+  const clientesUnicos = [...new Set(comprasHoje.map((c) => c.clienteDestino))];
+  
+  const comprasDoCliente = clienteSelecionado ? comprasHoje.filter((c) => c.clienteDestino === clienteSelecionado) : [];
+  const totalQtd = comprasDoCliente.reduce((s, c) => s + Number(c.quantidade), 0);
+
+  return (
+    <div>
+      <Field label="Data">
+        <TextInput type="date" value={dataSelecionada} onChange={(e) => { setDataSelecionada(e.target.value); setClienteSelecionado(""); }} />
+      </Field>
+
+      <Field label="Cliente">
+        <Select value={clienteSelecionado} onChange={(e) => setClienteSelecionado(e.target.value)}>
+          <option value="">Selecione um cliente</option>
+          {clientesUnicos.map((clienteId) => {
+            const cl = cadastros.clientes.find((c) => c.id === clienteId);
+            return <option key={clienteId} value={clienteId}>{cl?.nome}</option>;
+          })}
+        </Select>
+      </Field>
+
+      {clienteSelecionado && (
+        <Card style={{ marginTop: 16 }}>
+          <div className="mb-3 font-bold" style={{ color: C.green700 }}>Total de CX: {totalQtd} CX</div>
+          {comprasDoCliente.map((c) => {
+            const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+            return (
+              <Card key={c.id} style={{ marginBottom: 12, background: C.cardAlt }}>
+                <div className="flex justify-between">
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">{c.produto}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome}</div>
+                  </div>
+                  <div className="text-right"><div className="font-bold">{c.quantidade} CX</div></div>
+                </div>
+              </Card>
+            );
+          })}
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
   const [produtorId, setProdutorId] = useState(cadastros.produtores[0]?.id || "");
   const [clienteDestino, setClienteDestino] = useState(cadastros.clientes[0]?.id || "");
@@ -1633,6 +1782,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [valorUnit, setValorUnit] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const [isEstoque, setIsEstoque] = useState(false);
+  const [view, setView] = useState("registrar");
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -1693,7 +1843,17 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   };
 
   return (
-    <Card>
+    <>
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button onClick={() => setView("registrar")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "registrar" ? C.green700 : C.cardAlt, color: view === "registrar" ? "#fff" : C.ink }}>➕ Registrar</button>
+          <button onClick={() => setView("requisicao")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "requisicao" ? C.green700 : C.cardAlt, color: view === "requisicao" ? "#fff" : C.ink }}>📋 Requisição</button>
+          <button onClick={() => setView("folha-pedido")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "folha-pedido" ? C.green700 : C.cardAlt, color: view === "folha-pedido" ? "#fff" : C.ink }}>📄 Folha Pedido</button>
+          <button onClick={() => setView("folha-carga")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "folha-carga" ? C.green700 : C.cardAlt, color: view === "folha-carga" ? "#fff" : C.ink }}>📦 Folha Carga</button>
+        </div>
+
+        {view === "registrar" && (
+          <Card>
       <Field label="Produtor">
         <Select value={produtorId} onChange={(e) => setProdutorId(e.target.value)}>
           {cadastros.produtores.map((p) => (
@@ -1794,7 +1954,13 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           Imprimir pedido desta compra
         </button>
       )}
-    </Card>
+          </>
+        )}
+        {view === "requisicao" && <RequisicaoTab cadastros={cadastros} transacoes={transacoes} />}
+        {view === "folha-pedido" && <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} />}
+        {view === "folha-carga" && <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />}
+      </Card>
+    </>
   );
 }
 
