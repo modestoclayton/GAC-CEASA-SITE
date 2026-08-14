@@ -1633,7 +1633,6 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [valorUnit, setValorUnit] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const [isEstoque, setIsEstoque] = useState(false);
-  const [view, setView] = useState("registrar");
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -1664,12 +1663,17 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   };
 
   const salvar = async () => {
-    if (!produtorId || !clienteDestino || !produto || !quantidade || !valorUnit) return;
+    if (!produtorId || !produto || !quantidade || !valorUnit) return;
+    if (!isEstoque && !clienteDestino) {
+      showToast("Escolha um cliente ou marque Para Estoque");
+      return;
+    }
     const nova = {
       id: uid(),
       data: todayISO(),
       produtorId,
-      clienteDestino,
+      clienteDestino: isEstoque ? "ESTOQUE" : clienteDestino,
+      paraEstoque: isEstoque,
       produto,
       quantidade: Number(quantidade),
       valorUnit: Number(valorUnit),
@@ -1683,6 +1687,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     await persistTransacoes({ ...transacoes, compras: [nova, ...transacoes.compras] });
     setQuantidade("");
     setValorUnit("");
+    setIsEstoque(false);
     setUltimaCompra(nova);
     showToast("Compra registrada");
   };
@@ -1711,25 +1716,18 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           )}
         </div>
       )}
-
-      <div className="mb-3 p-3 rounded" style={{ background: C.amberSoft, borderLeft: `4px solid ${C.amber500}` }}>
-        <label className="flex items-center gap-3 cursor-pointer">
+      <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
+        <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
             checked={isEstoque}
-            onChange={(e) => {
-              setIsEstoque(e.target.checked);
-              if (e.target.checked) setClienteDestino("ESTOQUE");
-            }}
-            style={{ width: 20, height: 20 }}
+            onChange={(e) => setIsEstoque(e.target.checked)}
           />
-          <span style={{ color: C.ink, fontWeight: "bold", fontSize: "14px" }}>
-            📦 Esta compra é para Estoque?
-          </span>
+          <span style={{ color: C.ink, fontSize: "14px" }}>📦 Esta compra é para Estoque?</span>
         </label>
       </div>
 
-      <Field label="Para Quem (Cliente Destino)" style={{ opacity: isEstoque ? 0.5 : 1 }}>
+      <Field label="Para Quem (Cliente Destino)">
         <Select 
           value={clienteDestino} 
           onChange={(e) => setClienteDestino(e.target.value)}
@@ -1796,55 +1794,6 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         >
           Imprimir pedido desta compra
         </button>
-      )}
-    </Card>
-
-    {/* ABAS: Requisição, Folha Pedido, Folha Carga */}
-    <Card style={{ marginTop: 20 }}>
-      <div className="flex flex-wrap gap-2 mb-4">
-        <button
-          onClick={() => setView("requisicao")}
-          className="px-4 py-2 rounded-lg font-bold text-xs"
-          style={{
-            background: view === "requisicao" ? C.green700 : C.cardAlt,
-            color: view === "requisicao" ? "#fff" : C.ink,
-            border: `1px solid ${view === "requisicao" ? C.green700 : C.line}`,
-          }}
-        >
-          📋 Requisição
-        </button>
-        <button
-          onClick={() => setView("folha-pedido")}
-          className="px-4 py-2 rounded-lg font-bold text-xs"
-          style={{
-            background: view === "folha-pedido" ? C.green700 : C.cardAlt,
-            color: view === "folha-pedido" ? "#fff" : C.ink,
-            border: `1px solid ${view === "folha-pedido" ? C.green700 : C.line}`,
-          }}
-        >
-          📄 Folha Pedido
-        </button>
-        <button
-          onClick={() => setView("folha-carga")}
-          className="px-4 py-2 rounded-lg font-bold text-xs"
-          style={{
-            background: view === "folha-carga" ? C.green700 : C.cardAlt,
-            color: view === "folha-carga" ? "#fff" : C.ink,
-            border: `1px solid ${view === "folha-carga" ? C.green700 : C.line}`,
-          }}
-        >
-          📦 Folha Carga
-        </button>
-      </div>
-
-      {view === "requisicao" && (
-        <RequisicaoTab cadastros={cadastros} transacoes={transacoes} persistTransacoes={persistTransacoes} showToast={showToast} />
-      )}
-      {view === "folha-pedido" && (
-        <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} persistTransacoes={persistTransacoes} showToast={showToast} />
-      )}
-      {view === "folha-carga" && (
-        <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />
       )}
     </Card>
   );
@@ -2622,20 +2571,9 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
 /* ---------------------------------------------------------------------- */
 function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
   const [aberto, setAberto] = useState(false);
-  const [produto, setProduto] = useState(cadastros.produtos?.[0]?.nome || "");
+  const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
-  const [motivo, setMotivo] = useState(MOTIVOS_PERDA[0] || "Deterioração");
-
-  // Validação: se não há produtos, mostra mensagem
-  if (!cadastros.produtos || cadastros.produtos.length === 0) {
-    return (
-      <Card>
-        <p className="text-sm" style={{ color: C.rust }}>
-          ⚠️ Adicione produtos no cadastro antes de registrar perdas.
-        </p>
-      </Card>
-    );
-  }
+  const [motivo, setMotivo] = useState(MOTIVOS_PERDA[0]);
 
   const perdas = transacoes.perdas || [];
   const hoje = todayISO();
