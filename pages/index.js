@@ -1853,7 +1853,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         </div>
 
         {view === "registrar" && (
-          <Card>
+          <>
       <Field label="Produtor">
         <Select value={produtorId} onChange={(e) => setProdutorId(e.target.value)}>
           {cadastros.produtores.map((p) => (
