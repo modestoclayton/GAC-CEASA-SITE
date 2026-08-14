@@ -1783,6 +1783,9 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const [isEstoque, setIsEstoque] = useState(false);
   const [view, setView] = useState("registrar");
+  const [editandoId, setEditandoId] = useState(null);
+  const [editQtd, setEditQtd] = useState("");
+  const [editValor, setEditValor] = useState("");
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -1840,6 +1843,23 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     setIsEstoque(false);
     setUltimaCompra(nova);
     showToast("Compra registrada");
+  };
+
+  const editarCompra = async (compraId) => {
+    if (!editQtd || !editValor) return;
+    const novaQtd = Number(editQtd);
+    const novoValor = Number(editValor);
+    const novoTotal = novaQtd * novoValor;
+    const nextCompras = transacoes.compras.map((c) =>
+      c.id === compraId 
+        ? { ...c, quantidade: novaQtd, valorUnit: novoValor, valorTotal: novoTotal, valorFinal: novoTotal - (c.desconto || 0) }
+        : c
+    );
+    await persistTransacoes({ ...transacoes, compras: nextCompras });
+    setEditandoId(null);
+    setEditQtd("");
+    setEditValor("");
+    showToast("✅ Compra atualizada!");
   };
 
   return (
@@ -1954,6 +1974,50 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           Imprimir pedido desta compra
         </button>
       )}
+
+      <SectionTitle icon={Package} style={{ marginTop: 20 }}>Minhas Compras do Dia</SectionTitle>
+
+      {transacoes.compras.filter((c) => c.data === todayISO()).length === 0 ? (
+        <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma compra registrada hoje.</p></Card>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {transacoes.compras.filter((c) => c.data === todayISO()).map((c) => {
+            const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+            if (editandoId === c.id) {
+              return (
+                <Card key={c.id} style={{ background: C.amberSoft }}>
+                  <div className="mb-3 font-bold">Editando Compra</div>
+                  <Field label="Quantidade">
+                    <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={c.quantidade} />
+                  </Field>
+                  <Field label="Valor Unit (R$)">
+                    <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} placeholder={c.valorUnit} />
+                  </Field>
+                  <div className="flex gap-2">
+                    <button onClick={() => editarCompra(c.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
+                    <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
+                  </div>
+                </Card>
+              );
+            }
+            return (
+              <Card key={c.id} style={{ background: C.cardAlt }}>
+                <div className="flex justify-between mb-2">
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">{c.produto}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome || "—"}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold">{c.quantidade} CX</div>
+                    <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(c.valorFinal || c.valorTotal)}</div>
+                  </div>
+                </div>
+                <button onClick={() => { setEditandoId(c.id); setEditQtd(String(c.quantidade)); setEditValor(String(c.valorUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
+              </Card>
+            );
+          })}
+        </div>
+      )}
           </>
         )}
         {view === "requisicao" && <RequisicaoTab cadastros={cadastros} transacoes={transacoes} />}
@@ -1971,6 +2035,9 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const [precoUnit, setPrecoUnit] = useState("");
   const [status, setStatus] = useState("Pendente");
   const [entregaVendaId, setEntregaVendaId] = useState(null);
+  const [editandoId, setEditandoId] = useState(null);
+  const [editQtd, setEditQtd] = useState("");
+  const [editPreco, setEditPreco] = useState("");
   const total = (Number(quantidade) || 0) * (Number(precoUnit) || 0);
 
   useEffect(() => {
@@ -2005,6 +2072,22 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
     setQuantidade("");
     showToast("Venda registrada");
     setEntregaVendaId(novaId);
+  };
+
+  const editar = async (vendaId) => {
+    if (!editQtd || !editPreco) return;
+    const novaQtd = Number(editQtd);
+    const novoPreco = Number(editPreco);
+    const nextVendas = transacoes.vendas.map((v) =>
+      v.id === vendaId 
+        ? { ...v, quantidade: novaQtd, precoUnit: novoPreco, valorTotal: novaQtd * novoPreco }
+        : v
+    );
+    await persistTransacoes({ ...transacoes, vendas: nextVendas });
+    setEditandoId(null);
+    setEditQtd("");
+    setEditPreco("");
+    showToast("✅ Venda atualizada!");
   };
 
   if (entregaVendaId) {
@@ -2075,6 +2158,55 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
       <PrimaryButton onClick={salvar} icon={ArrowUpCircle}>
         Registrar Venda
       </PrimaryButton>
+
+      <SectionTitle icon={ShoppingBasket} style={{ marginTop: 20 }}>Minhas Vendas do Dia</SectionTitle>
+
+      {transacoes.vendas.filter((v) => v.data === todayISO()).length === 0 ? (
+        <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma venda registrada hoje.</p></Card>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {transacoes.vendas.filter((v) => v.data === todayISO()).map((v) => {
+            const cliente = cadastros.clientes.find((c) => c.id === v.clienteId);
+            if (editandoId === v.id) {
+              return (
+                <Card key={v.id} style={{ background: C.amberSoft }}>
+                  <div className="mb-3 font-bold">Editando Venda</div>
+                  <Field label="Quantidade">
+                    <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={v.quantidade} />
+                  </Field>
+                  <Field label="Preço Unit (R$)">
+                    <TextInput type="number" value={editPreco} onChange={(e) => setEditPreco(e.target.value)} placeholder={v.precoUnit} />
+                  </Field>
+                  <div className="flex gap-2">
+                    <button onClick={() => editar(v.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
+                    <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
+                  </div>
+                </Card>
+              );
+            }
+            return (
+              <Card key={v.id} style={{ background: C.cardAlt }}>
+                <div className="flex justify-between mb-2">
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">{cliente?.nome || "—"}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>{v.produto} • {v.quantidade} un</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(v.valorTotal)}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>{v.status}</div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setEditandoId(v.id); setEditQtd(String(v.quantidade)); setEditPreco(String(v.precoUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
+                  {setRecibo && (
+                    <button onClick={() => setRecibo({ tipo: "venda", item: v, quemVe: "vendedor" })} className="text-xs font-bold" style={{ color: C.amber500 }}>🖨️ Vale</button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 }
