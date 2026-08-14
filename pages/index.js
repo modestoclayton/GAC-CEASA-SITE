@@ -1633,6 +1633,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [valorUnit, setValorUnit] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const [isEstoque, setIsEstoque] = useState(false);
+  const [view, setView] = useState("registrar");
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -1795,6 +1796,55 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         >
           Imprimir pedido desta compra
         </button>
+      )}
+    </Card>
+
+    {/* ABAS: Requisição, Folha Pedido, Folha Carga */}
+    <Card style={{ marginTop: 20 }}>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          onClick={() => setView("requisicao")}
+          className="px-4 py-2 rounded-lg font-bold text-xs"
+          style={{
+            background: view === "requisicao" ? C.green700 : C.cardAlt,
+            color: view === "requisicao" ? "#fff" : C.ink,
+            border: `1px solid ${view === "requisicao" ? C.green700 : C.line}`,
+          }}
+        >
+          📋 Requisição
+        </button>
+        <button
+          onClick={() => setView("folha-pedido")}
+          className="px-4 py-2 rounded-lg font-bold text-xs"
+          style={{
+            background: view === "folha-pedido" ? C.green700 : C.cardAlt,
+            color: view === "folha-pedido" ? "#fff" : C.ink,
+            border: `1px solid ${view === "folha-pedido" ? C.green700 : C.line}`,
+          }}
+        >
+          📄 Folha Pedido
+        </button>
+        <button
+          onClick={() => setView("folha-carga")}
+          className="px-4 py-2 rounded-lg font-bold text-xs"
+          style={{
+            background: view === "folha-carga" ? C.green700 : C.cardAlt,
+            color: view === "folha-carga" ? "#fff" : C.ink,
+            border: `1px solid ${view === "folha-carga" ? C.green700 : C.line}`,
+          }}
+        >
+          📦 Folha Carga
+        </button>
+      </div>
+
+      {view === "requisicao" && (
+        <RequisicaoTab cadastros={cadastros} transacoes={transacoes} persistTransacoes={persistTransacoes} showToast={showToast} />
+      )}
+      {view === "folha-pedido" && (
+        <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} persistTransacoes={persistTransacoes} showToast={showToast} />
+      )}
+      {view === "folha-carga" && (
+        <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />
       )}
     </Card>
   );
