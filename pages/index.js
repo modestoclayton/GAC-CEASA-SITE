@@ -1135,6 +1135,8 @@ export default function GacCeasaApp() {
             estoquePorProduto={estoquePorProduto}
             contaClientes={contaClientes}
             contaProdutores={contaProdutores}
+            transacoes={transacoes}
+            cadastros={cadastros}
           />
         )}
         {tab === "registrar" && (
@@ -1248,13 +1250,48 @@ function NavButton({ active, icon: Icon, label, onClick }) {
 /* ---------------------------------------------------------------------- */
 /* Dashboard Tab                                                          */
 /* ---------------------------------------------------------------------- */
-function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores }) {
+function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores, transacoes, cadastros }) {
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+  
+  // Calcula totais de CX para o dia selecionado
+  const comprasDodia = transacoes.compras.filter((c) => c.data === dataSelecionada);
+  const vendasDoDia = transacoes.vendas.filter((v) => v.data === dataSelecionada);
+  
+  const totalCxCompradas = comprasDodia.reduce((s, c) => s + Number(c.quantidade), 0);
+  const totalCxVendidas = vendasDoDia.reduce((s, v) => s + Number(v.quantidade), 0);
   const alertas = estoquePorProduto.filter((e) => e.saldo < e.estoqueMinimo);
   const clientesAcima = contaClientes.filter((c) => c.acima);
   const produtoresPendentes = contaProdutores.filter((p) => p.pendente);
 
   return (
     <div>
+      {/* Filtro de Data */}
+      <div className="mb-4">
+        <Field label="📅 Selecione a Data">
+          <TextInput 
+            type="date" 
+            value={dataSelecionada} 
+            onChange={(e) => setDataSelecionada(e.target.value)}
+            max={todayISO()}
+          />
+        </Field>
+      </div>
+
+      {/* Cards de CX Compradas e Vendidas */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <Card style={{ background: C.green700, borderLeft: "4px solid " + C.amber500 }}>
+          <div className="text-xs" style={{ color: C.inkSoft }}>📦 CX COMPRADAS</div>
+          <div className="text-2xl font-bold" style={{ color: C.amber500 }}>{totalCxCompradas}</div>
+          <div className="text-xs" style={{ color: C.inkSoft }}>{fmtDate(dataSelecionada)}</div>
+        </Card>
+        
+        <Card style={{ background: C.green700, borderLeft: "4px solid " + C.amber500 }}>
+          <div className="text-xs" style={{ color: C.inkSoft }}>🛒 CX VENDIDAS</div>
+          <div className="text-2xl font-bold" style={{ color: C.amber500 }}>{totalCxVendidas}</div>
+          <div className="text-xs" style={{ color: C.inkSoft }}>{fmtDate(dataSelecionada)}</div>
+        </Card>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <CrateTag
           label="Faturamento Hoje"
