@@ -203,7 +203,8 @@
         <strong>⚠️ Este arquivo tem TUDO pronto!</strong><br>
         Basta copiar e colar no GitHub.
     </div>
-    <script>
+   
+     <script>
         let codigoCompleto = '';
         
         async function carregarCodigo() {
