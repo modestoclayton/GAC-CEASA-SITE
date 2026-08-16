@@ -197,93 +197,75 @@
     
     <div class="code-label">Arquivo: index.js (3555 linhas - COMPLETO)</div>
     
-    <div class="code-container" id="codigo">
-        Carregando código...
-    </div>
+    <div class="code-container" id="codigo">Carregando código...</div>
     
     <div class="footer">
         <strong>⚠️ Este arquivo tem TUDO pronto!</strong><br>
         Basta copiar e colar no GitHub.
     </div>
-    
+
     <script>
         let codigoCompleto = '';
         
         async function carregarCodigo() {
+            const codigoElemento = document.getElementById('codigo');
             try {
-                // Tenta carregar o arquivo
+                // Tenta buscar o arquivo do servidor de forma limpa usando a API Fetch moderna
                 const response = await fetch('/index.js');
-                if (response.ok) {
-                    codigoCompleto = await response.text();
-                } else {
-                    throw new Error('Arquivo não encontrado');
+                if (!response.ok) {
+                    throw new Error('Arquivo index.js não foi encontrado no servidor.');
                 }
-            } catch (e) {
-                console.log('Tentando método alternativo...');
-                // Se falhar, carrega um arquivo base64 ou placeholder
-                codigoCompleto = document.getElementById('codigo').textContent;
-            }
-            
-            // Mostra o código
-            if (codigoCompleto) {
-                document.getElementById('codigo').textContent = codigoCompleto;
+                
+                codigoCompleto = await response.text();
+                codigoElemento.textContent = codigoCompleto;
+            } catch (error) {
+                console.error(error);
+                codigoElemento.textContent = '⚠️ Erro ao carregar o código automaticamente. Certifique-se de que o arquivo index.js está na mesma pasta.';
             }
         }
         
         function copiarCodigo() {
-            if (!codigoCompleto) {
-                codigoCompleto = document.getElementById('codigo').textContent;
-            }
-            
-            if (!codigoCompleto || codigoCompleto === 'Carregando código...') {
-                alert('❌ Código ainda não carregou. Aguarde...');
+            // Se a busca falhou ou ainda não aconteceu, não tenta copiar o texto de aviso
+            if (!codigoCompleto || codigoCompleto.trim() === '' || codigoCompleto.startsWith('⚠️') || codigoCompleto === 'Carregando código...') {
+                alert('❌ O código ainda não foi carregado do servidor ou não foi encontrado.');
                 return;
             }
             
-            // Tenta copiar via clipboard API
-            navigator.clipboard.writeText(codigoCompleto).then(() => {
-                mostrarSucesso();
-            }).catch(() => {
-                // Fallback para Android/Safari
-                const textArea = document.createElement('textarea');
-                textArea.value = codigoCompleto;
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-999999px';
-                document.body.appendChild(textArea);
-                textArea.select();
-                try {
-                    document.execCommand('copy');
+            // Clipboard API moderna
+            navigator.clipboard.writeText(codigoCompleto)
+                .then(() => {
                     mostrarSucesso();
-                } catch (err) {
-                    alert('❌ Erro ao copiar. Tente manualmente: pressione longo e selecione tudo.');
-                }
-                document.body.removeChild(textArea);
-            });
+                })
+                .catch(() => {
+                    // Fallback obrigatório para navegadores móveis (Android/Safari antigo)
+                    const textArea = document.createElement('textarea');
+                    textArea.value = codigoCompleto;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    
+                    try {
+                        document.execCommand('copy');
+                        mostrarSucesso();
+                    } catch (err) {
+                        alert('❌ Erro ao copiar. Toque e segure na caixa de código abaixo para selecionar tudo manualmente.');
+                    }
+                    
+                    document.body.removeChild(textArea);
+                });
         }
         
         function mostrarSucesso() {
-            const alert = document.getElementById('alert');
-            alert.classList.add('show');
+            const msgAlert = document.getElementById('alert');
+            msgAlert.classList.add('show');
             setTimeout(() => {
-                alert.classList.remove('show');
+                msgAlert.classList.remove('show');
             }, 3000);
         }
         
-        // Carrega ao abrir
-        window.addEventListener('load', carregarCodigo);
-        
-        // Também tenta via servidor
-        setTimeout(() => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', '/index.js', true);
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    codigoCompleto = xhr.responseText;
-                    document.getElementById('codigo').textContent = codigoCompleto;
-                }
-            };
-            xhr.send();
-        }, 500);
+        // Dispara o carregamento assim que a página estiver pronta
+        window.addEventListener('DOMContentLoaded', carregarCodigo);
     </script>
 </body>
 </html>
