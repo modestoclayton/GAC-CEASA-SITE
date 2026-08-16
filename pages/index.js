@@ -203,12 +203,13 @@
         <strong>⚠️ Este arquivo tem TUDO pronto!</strong><br>
         Basta copiar e colar no GitHub.
     </div>
-
     <script>
         let codigoCompleto = '';
         
         async function carregarCodigo() {
             const codigoElemento = document.getElementById('codigo');
+            if (!codigoElemento) return;
+            
             try {
                 // Tenta buscar o arquivo do servidor de forma limpa usando a API Fetch moderna
                 const response = await fetch('/index.js');
@@ -258,14 +259,18 @@
         
         function mostrarSucesso() {
             const msgAlert = document.getElementById('alert');
-            msgAlert.classList.add('show');
-            setTimeout(() => {
-                msgAlert.classList.remove('show');
-            }, 3000);
+            if (msgAlert) {
+                msgAlert.classList.add('show');
+                setTimeout(() => {
+                    msgAlert.classList.remove('show');
+                }, 3000);
+            }
         }
         
         // Dispara o carregamento assim que a página estiver pronta
         window.addEventListener('DOMContentLoaded', carregarCodigo);
     </script>
+
+  
 </body>
 </html>
