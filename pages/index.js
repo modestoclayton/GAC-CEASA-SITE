@@ -1778,6 +1778,94 @@ function RequisicaoTab({ cadastros, transacoes }) {
   );
 }
 
+/* GERADOR DE PDF - FOLHA PEDIDO */
+function gerarPDFFolhaPedido(compras, dataSelecionada, cadastros) {
+  const porCliente = {};
+  compras.forEach(c => {
+    if (!porCliente[c.clienteDestino]) porCliente[c.clienteDestino] = [];
+    porCliente[c.clienteDestino].push(c);
+  });
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Pedido</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}</style></head><body><h1>📋 FOLHA DE PEDIDO</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
+  
+  Object.entries(porCliente).forEach(([clienteId, itens]) => {
+    const cliente = cadastros.clientes.find(c => c.id === clienteId);
+    const itensOrdenados = [...itens].sort((a, b) => a.produto.localeCompare(b.produto));
+    html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Produto</th><th>Produtor</th><th>Qtd</th><th>V.Unit</th><th>Total</th></tr>`;
+    let total = 0;
+    itensOrdenados.forEach(item => {
+      const prod = cadastros.produtores.find(p => p.id === item.produtorId);
+      const valor = item.valorFinal || item.valorTotal;
+      total += valor;
+      html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade}</td><td>R$ ${(item.valorUnit||0).toFixed(2)}</td><td>R$ ${valor.toFixed(2)}</td></tr>`;
+    });
+    html += `</table><div class="total">Total: R$ ${total.toFixed(2)}</div>`;
+  });
+
+  html += `<p style="margin-top:40px;border-top:2px solid #1E4A30;padding-top:20px">☐ Conferido | ☐ Divergência</p></body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Folha-Pedido-${dataSelecionada}.html`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
+/* GERADOR DE PDF - FOLHA CARGA */
+function gerarPDFFolhaCarga(compras, dataSelecionada, cadastros) {
+  const porCliente = {};
+  compras.forEach(c => {
+    if (!porCliente[c.clienteDestino]) porCliente[c.clienteDestino] = [];
+    porCliente[c.clienteDestino].push(c);
+  });
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Carga</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}</style></head><body><h1>📦 FOLHA DE CARGA</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
+
+  Object.entries(porCliente).forEach(([clienteId, itens]) => {
+    const cliente = cadastros.clientes.find(c => c.id === clienteId);
+    const itensOrdenados = [...itens].sort((a, b) => a.produto.localeCompare(b.produto));
+    html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Produto</th><th>Produtor</th><th>Qtd (CX)</th></tr>`;
+    let totalCx = 0;
+    itensOrdenados.forEach(item => {
+      const prod = cadastros.produtores.find(p => p.id === item.produtorId);
+      totalCx += Number(item.quantidade);
+      html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade}</td></tr>`;
+    });
+    html += `</table><div class="total">Total: ${totalCx} CX</div>`;
+  });
+
+  html += `<p style="margin-top:40px;border-top:2px solid #1E4A30;padding-top:20px">☐ Conferido | ☐ Divergência</p></body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Folha-Carga-${dataSelecionada}.html`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
+/* GERADOR DE PDF - VALES */
+function gerarPDFVales(compras, dataSelecionada, cadastros) {
+  const comprasOrdenadas = [...compras].sort((a, b) => a.produto.localeCompare(b.produto));
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vales</title><style>body{font-family:Arial;margin:10px}.vale{border:2px dashed #1E4A30;padding:15px;margin-bottom:20px;page-break-inside:avoid}.vale-header{font-weight:bold;font-size:14px;margin-bottom:10px;color:#1E4A30;text-align:center}.cut-line{text-align:center;color:#ccc;margin:15px 0}</style></head><body>`;
+
+  comprasOrdenadas.forEach((c, i) => {
+    const prod = cadastros.produtores.find(p => p.id === c.produtorId);
+    const cliente = cadastros.clientes.find(cl => cl.id === c.clienteDestino);
+    html += `<div class="vale"><div class="vale-header">📝 VALE #${i+1}</div><p><b>Data:</b> ${new Date(c.data+'T00:00:00').toLocaleDateString('pt-BR')}<br><b>Produto:</b> ${c.produto}<br><b>Produtor:</b> ${prod?.nome || '—'}<br><b>Destino:</b> ${cliente?.nome || 'ESTOQUE'}</p><hr><p><b>Quantidade:</b> ${c.quantidade} CX<br><b>Valor Unit.:</b> R$ ${(c.valorUnit||0).toFixed(2)}<br><b>Total:</b> R$ ${(c.valorFinal||c.valorTotal).toFixed(2)}</p><div class="cut-line">✂️ ✂️ ✂️</div></div>`;
+  });
+
+  html += `</body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Vales-${dataSelecionada}.html`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
 /* ====================================================================== */
 /* Folha de Pedido Tab - Mostra compras por cliente com filtro de data   */
 /* ====================================================================== */
@@ -1827,13 +1915,28 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
           })}
         </Card>
       )}
+
+      {comprasDoCliente.length > 0 && (
+        <div className="flex flex-col gap-2 mt-4">
+          <button
+            onClick={() => gerarPDFFolhaPedido(comprasDoCliente.sort((a, b) => a.produto.localeCompare(b.produto)), dataSelecionada, cadastros)}
+            className="w-full px-4 py-3 rounded-lg font-bold text-sm"
+            style={{ background: C.amber500, color: C.ink }}
+          >
+            📥 Download Folha Pedido
+          </button>
+          <button
+            onClick={() => gerarPDFVales(comprasDoCliente.sort((a, b) => a.produto.localeCompare(b.produto)), dataSelecionada, cadastros)}
+            className="w-full px-4 py-3 rounded-lg font-bold text-sm"
+            style={{ background: C.green700, color: "#fff" }}
+          >
+            📄 Gerar Vales em PDF
+          </button>
+        </div>
+      )}
     </div>
   );
 }
-
-/* ====================================================================== */
-/* Folha de Carga Tab - Mostra compras sem valores, agrupadas por cliente */
-/* ====================================================================== */
 function FolhaDeCargaTab({ cadastros, transacoes }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [clienteSelecionado, setClienteSelecionado] = useState("");
@@ -1878,6 +1981,16 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
             );
           })}
         </Card>
+      )}
+
+      {comprasDoCliente.length > 0 && (
+        <button
+          onClick={() => gerarPDFFolhaCarga(comprasDoCliente.sort((a, b) => a.produto.localeCompare(b.produto)), dataSelecionada, cadastros)}
+          className="w-full px-4 py-3 rounded-lg font-bold text-sm mt-4"
+          style={{ background: C.amber500, color: C.ink }}
+        >
+          📥 Download Folha Carga
+        </button>
       )}
     </div>
   );
