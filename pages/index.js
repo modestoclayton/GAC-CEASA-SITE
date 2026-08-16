@@ -47,6 +47,7 @@ const C = {
   rustSoft: "#3A1C12",
   twine: "#2A4C39",
   line: "#254A36",
+  blue600: "#2563EB", // blue for client section
 };
 
 const displayFont =
@@ -2111,42 +2112,100 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       {transacoes.compras.filter((c) => c.data === todayISO()).length === 0 ? (
         <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma compra registrada hoje.</p></Card>
       ) : (
-        <div className="flex flex-col gap-2">
-          {transacoes.compras.filter((c) => c.data === todayISO()).map((c) => {
-            const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
-            if (editandoId === c.id) {
-              return (
-                <Card key={c.id} style={{ background: C.amberSoft }}>
-                  <div className="mb-3 font-bold">Editando Compra</div>
-                  <Field label="Quantidade">
-                    <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={c.quantidade} />
-                  </Field>
-                  <Field label="Valor Unit (R$)">
-                    <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} placeholder={c.valorUnit} />
-                  </Field>
-                  <div className="flex gap-2">
-                    <button onClick={() => editarCompra(c.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
-                    <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
-                  </div>
-                </Card>
-              );
-            }
-            return (
-              <Card key={c.id} style={{ background: C.cardAlt }}>
-                <div className="flex justify-between mb-2">
-                  <div className="flex-1">
-                    <div className="font-bold text-sm">{c.produto}</div>
-                    <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome || "—"}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold">{c.quantidade} CX</div>
-                    <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(c.valorFinal || c.valorTotal)}</div>
-                  </div>
-                </div>
-                <button onClick={() => { setEditandoId(c.id); setEditQtd(String(c.quantidade)); setEditValor(String(c.valorUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
-              </Card>
-            );
-          })}
+        <div className="flex flex-col gap-3">
+          {/* COMPRAS PARA ESTOQUE */}
+          {transacoes.compras.filter((c) => c.data === todayISO() && c.clienteDestino === "ESTOQUE").length > 0 && (
+            <div>
+              <div className="font-bold mb-2 p-2 rounded" style={{ background: C.green700, color: C.ink }}>
+                📦 COMPRA PARA ESTOQUE
+              </div>
+              <div className="flex flex-col gap-2">
+                {transacoes.compras.filter((c) => c.data === todayISO() && c.clienteDestino === "ESTOQUE").map((c) => {
+                  const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+                  if (editandoId === c.id) {
+                    return (
+                      <Card key={c.id} style={{ background: C.amberSoft }}>
+                        <div className="mb-3 font-bold">Editando Compra</div>
+                        <Field label="Quantidade">
+                          <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={c.quantidade} />
+                        </Field>
+                        <Field label="Valor Unit (R$)">
+                          <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} placeholder={c.valorUnit} />
+                        </Field>
+                        <div className="flex gap-2">
+                          <button onClick={() => editarCompra(c.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
+                          <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
+                        </div>
+                      </Card>
+                    );
+                  }
+                  return (
+                    <Card key={c.id} style={{ background: C.cardAlt }}>
+                      <div className="flex justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="font-bold text-sm">{c.produto}</div>
+                          <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome || "—"}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold">{c.quantidade} CX</div>
+                          <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(c.valorFinal || c.valorTotal)}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => { setEditandoId(c.id); setEditQtd(String(c.quantidade)); setEditValor(String(c.valorUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* COMPRAS PARA CLIENTES */}
+          {transacoes.compras.filter((c) => c.data === todayISO() && c.clienteDestino !== "ESTOQUE").length > 0 && (
+            <div>
+              <div className="font-bold mb-2 p-2 rounded" style={{ background: C.blue600, color: "white" }}>
+                👤 COMPRA PARA CLIENTE
+              </div>
+              <div className="flex flex-col gap-2">
+                {transacoes.compras.filter((c) => c.data === todayISO() && c.clienteDestino !== "ESTOQUE").map((c) => {
+                  const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+                  const cliente = cadastros.clientes.find((cl) => cl.id === c.clienteDestino);
+                  if (editandoId === c.id) {
+                    return (
+                      <Card key={c.id} style={{ background: C.amberSoft }}>
+                        <div className="mb-3 font-bold">Editando Compra</div>
+                        <Field label="Quantidade">
+                          <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={c.quantidade} />
+                        </Field>
+                        <Field label="Valor Unit (R$)">
+                          <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} placeholder={c.valorUnit} />
+                        </Field>
+                        <div className="flex gap-2">
+                          <button onClick={() => editarCompra(c.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
+                          <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
+                        </div>
+                      </Card>
+                    );
+                  }
+                  return (
+                    <Card key={c.id} style={{ background: C.cardAlt }}>
+                      <div className="mb-2 text-xs font-bold" style={{ color: C.blue600 }}>📍 {cliente?.nome || "—"}</div>
+                      <div className="flex justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="font-bold text-sm">{c.produto}</div>
+                          <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome || "—"}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold">{c.quantidade} CX</div>
+                          <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(c.valorFinal || c.valorTotal)}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => { setEditandoId(c.id); setEditQtd(String(c.quantidade)); setEditValor(String(c.valorUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
           </>
