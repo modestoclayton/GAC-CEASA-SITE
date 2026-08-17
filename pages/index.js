@@ -30,25 +30,26 @@ import {
 /* Design tokens — dark modern identity, same green/amber palette         */
 /* ---------------------------------------------------------------------- */
 const C = {
-  canvas: "#0B2417", // deep green base
-  canvasGlow: "#173A26", // gradient highlight
-  card: "#12301F",
-  cardAlt: "#1B4230",
-  ink: "#F3F1E8",
-  inkSoft: "#9FB8A9",
-  green900: "#081C11",
-  green800: "#123324",
-  green700: "#1E4A30",
-  green600: "#276642",
-  amber500: "#E0A526",
-  amber600: "#C48A16",
-  amberSoft: "#3A2E12",
-  rust: "#E0632E",
-  rustSoft: "#3A1C12",
-  twine: "#2A4C39",
-  line: "#254A36",
-  blue600: "#2563EB", // blue for client section
+  canvas: "#060B11",      // Preto azulado profundo oficial do fundo da logo
+  canvasGlow: "#0F1922",  // Tom intermediário estilo neon para destaques
+  card: "#0F1922",        // Fundo dos blocos internos (base da logo)
+  cardAlt: "#16222F",     // Variação de card ligeiramente mais clara
+  ink: "#E2E8F0",         // Prata/Cinza claro oficial da letra 'A' para textos principais
+  inkSoft: "#94A3B8",     // Cinza suave para descrições secundárias
+  green900: "#041C06",    // Verde escuro para fundos muito profundos
+  green800: "#09330D",    // Verde folha fechado
+  green700: "#3D7A00",    // Verde intermediário
+  green600: "#66CC00",    // Verde limão vivo oficial da letra 'C' e detalhes
+  amber500: "#E0A526",    // Mantido original
+  amber600: "#C48A16",    // Mantido original
+  amberSoft: "#3A2E12",   // Mantido original
+  rust: "#E0632E",        // Mantido original
+  rustSoft: "#3A1C12",    // Mantido original
+  twine: "#1E293B",       // Divisores neutros modernos
+  line: "#1F2937",        // Linhas de grade e bordas sutis
+  blue600: "#0076FF",     // Azul vibrante oficial da letra 'G' para a seção de clientes
 };
+
 
 const displayFont =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
