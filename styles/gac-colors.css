@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Cores oficiais do Guia de Design GAC-CEASA */
+:root {
+  --bg: #0B1F17;
+  --bg-elev: #112E24;
+  --card: #153B2D;
+  --verde: #00E676;
+  --verde-escuro: #009E5A;
+  --azul: #00B0FF;
+  --amarelo: #FFC107;
+  --laranja: #FF8A00;
+  --vermelho: #FF5252;
+  --texto: #E8F5E9;
+  --texto-sec: #A5D6A7;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--texto);
+}
