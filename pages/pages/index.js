@@ -51,10 +51,10 @@ export default function Home() {
         className="p-4 border-b flex justify-between items-center"
       >
         <div className="flex items-center gap-3">
-          {/* Logo Container com gradiente oficial */}
+          {/* Logo Container com gradiente oficial corrigido */}
           <div 
             style={{ 
-              background: "linear-gradient(145deg, #145deg, #1E2D22, #0D1C14)",
+              background: "linear-gradient(145deg, #1E2D22, #0D1C14)",
               borderColor: C.borda,
               boxShadow: "0 0 3px rgba(0,0,0,0.3)"
             }} 
