@@ -3,7 +3,7 @@ module.exports = {
   content: [
     "./pages/**/*.{js,ts,jsx,tsx}",
     "./components/**/*.{js,ts,jsx,tsx}",
-    "./gac-colors.css"
+    "./styles/**/*.{css,scss,js}" // Ajustado para ler a pasta styles
   ],
   theme: {
     extend: {},
