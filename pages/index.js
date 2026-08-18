@@ -3786,9 +3786,9 @@ function Extrato({ lancamentos }) {
             {fmtMoney(l.valor)}
           </span>
         </div>
-))}
-</div>
-);
-} // 
-} // 
+      ))}
+    </div>
+  );
+}
+}
 
