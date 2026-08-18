@@ -143,14 +143,14 @@ const SEED_TRANSACOES = {
   perdas: [],
 };
 
-const CAD_KEY = "gac-cadastros";
-const TX_KEY = "gac-transacoes";
-const PERFIL_KEY = "gac-perfil";
-
-/* ---------------------------------------------------------------------- */
+146 | const CAD_KEY = "gac-cadastros";
+147 | const TX_KEY = "gac-transacoes";
+148 | const PERFIL_KEY = "gac-perfil";
+149 | 
+150 | export function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
 /* Small UI atoms                                                         */
 /* ---------------------------------------------------------------------- */
-  },/* ---------------------------------------------------- */
+/* ---------------------------------------------------- */
 /* Small UI atoms                                       */
 /* ---------------------------------------------------- */
 
