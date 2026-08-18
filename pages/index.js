@@ -3786,9 +3786,9 @@ function Extrato({ lancamentos }) {
             {fmtMoney(l.valor)}
           </span>
         </div>
-3789 |       ))}
-3790 |     </div>
-3791 |   );
-3792 | } // Chave que fecha o .map
-3793 | } // Chave que fecha a function Extrato
+))}
+</div>
+);
+} // 
+} // 
 
