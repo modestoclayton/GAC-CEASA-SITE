@@ -150,19 +150,17 @@ const PERFIL_KEY = "gac-perfil";
 /* ---------------------------------------------------------------------- */
 /* Small UI atoms                                                         */
 /* ---------------------------------------------------------------------- */
-function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
-  const bg = tone === "amber" ? C.amber500 : tone === "rust" ? C.rust : C.green700;
-  const fg = "#FFFFFF";
-  return (
-   <Head>
-  <title>GAC CEASA Manager</title>
-  <link rel="icon" href="/GAC_CEASA.ico" type="image/x-icon" />
-</Head>
-     <div
-      className="relative rounded-2xl p-3.5 overflow-hidden"
-      style={{
-        background: bg,
-        color: fg,
+function CrateTag({ label, value, sub, tone = "amber", icon: Icon })
+        color: fg,/* Mude o bloco da linha 154 até 164 para ficar exatamente assim: */
+const bg = tone === "amber" ? C.amber500 : C.canvas; // ou suas cores
+const fg = "#FFFFFF";
+return (
+  <div
+    className="relative rounded-2xl p-3.5 ..."
+    style={{
+      background: bg,
+    }}
+  >
         boxShadow: "0 6px 18px rgba(0,0,0,0.28)",
       }}
     >
