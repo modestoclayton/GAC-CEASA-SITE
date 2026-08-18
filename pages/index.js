@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   LayoutGrid,
@@ -153,7 +154,11 @@ function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
   const bg = tone === "amber" ? C.amber500 : tone === "rust" ? C.rust : C.green700;
   const fg = "#FFFFFF";
   return (
-    <div
+   <Head>
+  <title>GAC CEASA Manager</title>
+  <link rel="icon" href="/GAC_CEASA.ico" type="image/x-icon" />
+</Head>
+     <div
       className="relative rounded-2xl p-3.5 overflow-hidden"
       style={{
         background: bg,
