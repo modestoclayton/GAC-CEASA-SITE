@@ -150,18 +150,30 @@ const PERFIL_KEY = "gac-perfil";
 /* ---------------------------------------------------------------------- */
 /* Small UI atoms                                                         */
 /* ---------------------------------------------------------------------- */
-function CrateTag({ label, value, sub, tone = "amber", icon: Icon })
-        color: fg,/* Mude o bloco da linha 154 até 164 para ficar exatamente assim: */
-const bg = tone === "amber" ? C.amber500 : C.canvas; // ou suas cores
-const fg = "#FFFFFF";
-return (
-  <div
-    className="relative rounded-2xl p-3.5 ..."
-    style={{
-      background: bg,
-    }}
-  >
-        boxShadow: "0 6px 18px rgba(0,0,0,0.28)",
+/*function CrateTag({ label, value, sub, tone = "amber", icon: Icon })
+function CrateTag({ label, value, sub, tone }) {/*
+  const bg = tone === "amber" ? C.amarelo : C.card;
+  return (
+    <div 
+      className="relative rounded-2xl p-4 border overflow-hidden shadow-lg" 
+      style={{ 
+        backgroundColor: C.card, 
+        borderColor: C.borda,
+        boxShadow: "0 6px 18px rgba(0,0,0,0.28)"
+      }}
+    >
+      <span className="text-[10px] uppercase font-bold tracking-wider block" style={{ color: C.textoSec }}>{label}</span>
+      <span className="text-3xl font-black block my-1" style={{ color: tone === "amber" ? C.amarelo : C.verde }}>{value}</span>
+      <span className="text-[9px]" style={{ color: C.textoSec }}>{sub}</span>      <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: tone === "amber" ? C.amarelo : C.verde }}></div>
+    </div>
+  );
+}
+
+      <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: tone === "amber" ? C.amarelo : C.verde }}></div>
+    </div>
+  );
+}
+
       }}
     >
       {Icon && (
