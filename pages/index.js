@@ -157,8 +157,8 @@ const fg = "#FFFFFF";
 <Head>
 ‹title>GAC CEASA Manager‹/title>
 <link rel="icon" href="/GAC_CEASA.ico" type="image/x-icon" />
-        backgr</Head>
-        border<div
+        </Head>
+        <div
         className="relative rounded-2x] p-3.5 overflow-hidden"
 style={{
     background: bg,
