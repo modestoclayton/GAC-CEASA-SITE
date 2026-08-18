@@ -3789,3 +3789,4 @@ function Extrato({ lancamentos }) {
       ))}
     </div>
   );
+  }
