@@ -150,63 +150,73 @@ const PERFIL_KEY = "gac-perfil";
 /* ---------------------------------------------------------------------- */
 /* Small UI atoms                                                         */
 /* ---------------------------------------------------------------------- */
-/*function CrateTag({ label, value, sub, tone = "amber", icon: Icon })
-const bg = tone === "amber" ? C. amber500 : tone === "rust" ? C.rust : C.green700;
-const fg = "#FFFFFF";
+  },/* ---------------------------------------------------- */
+/* Small UI atoms                                       */
+/* ---------------------------------------------------- */
+
+export function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
+  const bg = tone === "amber" ? C.amber500 : tone === "rust" ? C.rust : C.green700;
+  const fg = "#FFFFFF";
+
   return (
-<Head>
-‹title>GAC CEASA Manager‹/title>
-<link rel="icon" href="/GAC_CEASA.ico" type="image/x-icon" />
-        </Head>
-        <div
-        className="relative rounded-2x] p-3.5 overflow-hidden"
-style={{
-    background: bg,
-color: fg,
-      <span className="text-[10px] uppercase font-bold tracking-wider block" style={{ color: C.textoSec }}>{label}</span>
-      <span className="text-3xl font-black block my-1" style={{ color: tone === "amber" ? C.amarelo : C.verde }}>{value}</span>
-      <span className="text-[9px]" style={{ color: C.textoSec }}>{sub}</span>      <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: tone === "amber" ? C.amarelo : C.verde }}></div>
-    </div>
-  );
-}
+    <>
+      <Head>
+        <title>GAC CEASA Manager</title>
+        <link rel="icon" href="/GAC_CEASA.ico" type="image/x-icon" />
+      </Head>
 
-      <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: tone === "amber" ? C.amarelo : C.verde }}></div>
-    </div>
-  );
-}
+      <div 
+        className="relative rounded-2xl p-3.5 overflow-hidden" 
+        style={{ background: bg, color: fg }}
+      >
+        {/* Faixa lateral decorativa absoluta */}
+        <div 
+          className="absolute top-0 left-0 w-1 h-full" 
+          style={{ backgroundColor: tone === "amber" ? C.amber500 : bg }}
+        />
 
-      }}
-    >
-      {Icon && (
-        <div
-          className="flex items-center justify-center rounded-xl mb-2"
-          style={{
-            width: 30,
-            height: 30,
-            background: "rgba(255,255,255,0.18)",
-          }}
+        {/* Bloco do Ícone (Condicional) */}
+        {Icon && (
+          <div 
+            className="flex items-center justify-center rounded-xl mb-2"
+            style={{
+              width: "30px",
+              height: "30px",
+              background: "rgba(255, 255, 255, 0.18)",
+            }}
+          >
+            <Icon size={16} strokeWidth={2.25} />
+          </div>
+        )}
+
+        {/* Texto: Label */}
+        <div 
+          className="text-xs uppercase tracking-wide font-bold opacity-90 leading-tight"
+          style={{ fontFamily: displayFont }}
         >
-          <Icon size={16} strokeWidth={2.25} />
+          {label}
         </div>
-      )}
-      <div
-        className="text-xs uppercase tracking-wide font-bold opacity-90 leading-tight"
-        style={{ fontFamily: displayFont }}
-      >
-        {label}
+
+        {/* Texto: Value */}
+        <div 
+          className="text-lg font-bold leading-tight mt-0.5"
+          style={{ fontFamily: monoFont }}
+        >
+          {value}
+        </div>
+
+        {/* Texto: Sub (Condicional) */}
+        {!!sub && (
+          <div className="text-xs opacity-80 mt-0.5">
+            {sub}
+          </div>
+        )}
       </div>
-      <div
-        className="text-lg font-bold leading-tight mt-0.5"
-        style={{ fontFamily: monoFont }}
-      >
-        {value}
-      </div>
-      {sub && <div className="text-xs opacity-80 mt-0.5">{sub}</div>}
-    </div>
+    </>
   );
 }
 
-function Card({ children, className = "", ...rest }) {
+export function Card({ children, className = "", ...rest }) {
   return (
     <div
       className={`rounded-2xl border p-4 ${className}`}
@@ -222,13 +232,14 @@ function Card({ children, className = "", ...rest }) {
   );
 }
 
-function SectionTitle({ children, icon: Icon }) {
+export function SectionTitle({ children, icon: Icon }) {
   return (
     <div
       className="flex items-center gap-2 mb-2 mt-5 first:mt-0"
       style={{ color: C.ink }}
     >
       {Icon && <Icon size={16} style={{ color: C.amber500 }} />}
+      
       <h2
         className="text-xs uppercase tracking-widest font-bold"
         style={{ fontFamily: displayFont }}
@@ -239,9 +250,9 @@ function SectionTitle({ children, icon: Icon }) {
   );
 }
 
-function Badge({ children, tone = "ok" }) {
-  const color =
-    tone === "ok" ? "#6FCF97" : tone === "warn" ? C.amber500 : C.rust;
+export function Badge({ children, tone = "ok" }) {
+  const color = tone === "ok" ? "#6FCF97" : tone === "warn" ? C.amber500 : C.rust;
+
   return (
     <span
       className="inline-block px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap uppercase"
@@ -258,10 +269,10 @@ function Badge({ children, tone = "ok" }) {
   );
 }
 
-function Field({ label, children }) {
+export function Field({ label, children }) {
   return (
     <label className="block mb-3">
-      <span
+      <span 
         className="block text-xs uppercase tracking-wide font-bold mb-1"
         style={{ color: C.inkSoft }}
       >
@@ -283,10 +294,11 @@ const inputStyle = {
   outline: "none",
 };
 
-function TextInput(props) {
+export function TextInput(props) {
   return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />;
 }
-function Select(props) {
+
+export function Select(props) {
   return (
     <select {...props} style={{ ...inputStyle, ...(props.style || {}) }}>
       {props.children}
@@ -294,12 +306,12 @@ function Select(props) {
   );
 }
 
-function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
+export function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm active:scale-95 transition-transform"
+      className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm"
       style={{
         background: disabled ? "#3A4A41" : C.amber500,
         color: disabled ? C.inkSoft : C.green900,
@@ -315,7 +327,7 @@ function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
   );
 }
 
-function PerfilHeader({ perfil, titulo, onTrocar }) {
+export function PerfilHeader({ perfil, titulo, onTrocar }) {
   return (
     <header
       className="px-4 pt-6 pb-5 flex items-start gap-3"
@@ -328,20 +340,21 @@ function PerfilHeader({ perfil, titulo, onTrocar }) {
       <div
         className="rounded-2xl flex items-center justify-center flex-shrink-0"
         style={{
-          width: 42,
-          height: 42,
+          width: "42px",
+          height: "42px",
           background: `linear-gradient(135deg, ${C.amber500}, ${C.green600})`,
           color: "#fff",
           fontFamily: displayFont,
           fontWeight: 800,
           fontSize: 13,
           letterSpacing: 0.5,
-          marginTop: 2,
-          boxShadow: `0 0 16px rgba(224,165,38,0.4)`,
+          marginTop: "2px",
+          boxShadow: "0 0 16px rgba(224,165,38,0.4)",
         }}
       >
         GAC
       </div>
+      
       <div className="flex-1">
         <div
           className="text-xs uppercase tracking-widest font-bold opacity-70"
@@ -355,10 +368,16 @@ function PerfilHeader({ perfil, titulo, onTrocar }) {
         >
           {titulo}
         </div>
-        <div className="text-xs opacity-60 mt-0.5">{fmtDate(todayISO())}</div>
+        <div className="text-xs opacity-60 mt-0.5">
+          {fmtDate(todayISO())}
+        </div>
       </div>
-      <button onClick={onTrocar} className="text-xs font-bold opacity-70 flex-shrink-0 text-right">
-        {perfil.nome}
+      
+      <button 
+        onClick={onTrocar} 
+        className="text-xs font-bold opacity-70 flex-shrink-0 text-right"
+      >
+        {perfil?.nome}
         <br />
         Trocar
       </button>
@@ -366,10 +385,12 @@ function PerfilHeader({ perfil, titulo, onTrocar }) {
   );
 }
 
-function ToastBanner({ toast }) {
+export function ToastBanner({ toast }) {
+  if (!toast) return null;
+
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 bottom-6 px-4 py-2 rounded-full text-sm font-bold shadow-lg flex items-center gap-2 z-20"
+      className="fixed left-1/2 -translate-x-1/2 bottom-6 px-4 py-2 rounded-full text-sm font-medium z-50"
       style={{ background: C.green700, color: "#fff" }}
     >
       <Check size={14} /> {toast}
@@ -377,21 +398,11 @@ function ToastBanner({ toast }) {
   );
 }
 
-/* ---------------------------------------------------------------------- */
-/* Cadastro de Perfil (define acesso: Comprador/Vendedor, Conferente,     */
-/* Entregador)                                                            */
-/* ---------------------------------------------------------------------- */
-const FUNCOES = [
-  {
-    id: "gestor",
-    label: "Comprador / Vendedor",
-    desc: "Acesso completo: dashboard, compras, vendas, estoque e contas.",
-  },
-  {
-    id: "conferente",
-    label: "Conferente",
-    desc: "Acesso só à conferência de compras (chegada de mercadoria).",
-  },
+/* ----------------------------------------------------------------- */
+/* Cadastro de Perfil (define acesso: Comprador/Vendedor, Conferente, */
+/* Entregador)                                                       */
+/* ----------------------------------------------------------------- */
+
   {
     id: "entregador",
     label: "Entregador",
