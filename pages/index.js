@@ -1,4 +1,3 @@
-import Head from 'next/head';
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   LayoutGrid,
@@ -148,66 +147,50 @@ const TX_KEY = "gac-transacoes";
 const PERFIL_KEY = "gac-perfil";
 
 /* ---------------------------------------------------------------------- */
-/* Small UI*/
-export function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
+/* Small UI atoms                                                         */
+/* ---------------------------------------------------------------------- */
+function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
   const bg = tone === "amber" ? C.amber500 : tone === "rust" ? C.rust : C.green700;
   const fg = "#FFFFFF";
-
   return (
-    <>
-
-      <div 
-        className="relative rounded-2xl p-3.5 overflow-hidden" 
-        style={{ background: bg, color: fg }}
+    <div
+      className="relative rounded-2xl p-3.5 overflow-hidden"
+      style={{
+        background: bg,
+        color: fg,
+        boxShadow: "0 6px 18px rgba(0,0,0,0.28)",
+      }}
+    >
+      {Icon && (
+        <div
+          className="flex items-center justify-center rounded-xl mb-2"
+          style={{
+            width: 30,
+            height: 30,
+            background: "rgba(255,255,255,0.18)",
+          }}
+        >
+          <Icon size={16} strokeWidth={2.25} />
+        </div>
+      )}
+      <div
+        className="text-xs uppercase tracking-wide font-bold opacity-90 leading-tight"
+        style={{ fontFamily: displayFont }}
       >
-        {/* Faixa lateral decorativa absoluta */}
-        <div 
-          className="absolute top-0 left-0 w-1 h-full" 
-          style={{ backgroundColor: tone === "amber" ? C.amber500 : bg }}
-        />
-
-        {/* Bloco do Ícone (Condicional) */}
-        {Icon && (
-          <div 
-            className="flex items-center justify-center rounded-xl mb-2"
-            style={{
-              width: "30px",
-              height: "30px",
-              background: "rgba(255, 255, 255, 0.18)",
-            }}
-          >
-            <Icon size={16} strokeWidth={2.25} />
-          </div>
-        )}
-
-        {/* Texto: Label */}
-        <div 
-          className="text-xs uppercase tracking-wide font-bold opacity-90 leading-tight"
-          style={{ fontFamily: displayFont }}
-        >
-          {label}
-        </div>
-
-        {/* Texto: Value */}
-        <div 
-          className="text-lg font-bold leading-tight mt-0.5"
-          style={{ fontFamily: monoFont }}
-        >
-          {value}
-        </div>
-
-        {/* Texto: Sub (Condicional) */}
-        {!!sub && (
-          <div className="text-xs opacity-80 mt-0.5">
-            {sub}
-          </div>
-        )}
+        {label}
       </div>
-    </>
+      <div
+        className="text-lg font-bold leading-tight mt-0.5"
+        style={{ fontFamily: monoFont }}
+      >
+        {value}
+      </div>
+      {sub && <div className="text-xs opacity-80 mt-0.5">{sub}</div>}
+    </div>
   );
 }
 
-export function Card({ children, className = "", ...rest }) {
+function Card({ children, className = "", ...rest }) {
   return (
     <div
       className={`rounded-2xl border p-4 ${className}`}
@@ -223,14 +206,13 @@ export function Card({ children, className = "", ...rest }) {
   );
 }
 
-export function SectionTitle({ children, icon: Icon }) {
+function SectionTitle({ children, icon: Icon }) {
   return (
     <div
       className="flex items-center gap-2 mb-2 mt-5 first:mt-0"
       style={{ color: C.ink }}
     >
       {Icon && <Icon size={16} style={{ color: C.amber500 }} />}
-      
       <h2
         className="text-xs uppercase tracking-widest font-bold"
         style={{ fontFamily: displayFont }}
@@ -241,9 +223,9 @@ export function SectionTitle({ children, icon: Icon }) {
   );
 }
 
-export function Badge({ children, tone = "ok" }) {
-  const color = tone === "ok" ? "#6FCF97" : tone === "warn" ? C.amber500 : C.rust;
-
+function Badge({ children, tone = "ok" }) {
+  const color =
+    tone === "ok" ? "#6FCF97" : tone === "warn" ? C.amber500 : C.rust;
   return (
     <span
       className="inline-block px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap uppercase"
@@ -260,10 +242,10 @@ export function Badge({ children, tone = "ok" }) {
   );
 }
 
-export function Field({ label, children }) {
+function Field({ label, children }) {
   return (
     <label className="block mb-3">
-      <span 
+      <span
         className="block text-xs uppercase tracking-wide font-bold mb-1"
         style={{ color: C.inkSoft }}
       >
@@ -285,11 +267,10 @@ const inputStyle = {
   outline: "none",
 };
 
-export function TextInput(props) {
+function TextInput(props) {
   return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />;
 }
-
-export function Select(props) {
+function Select(props) {
   return (
     <select {...props} style={{ ...inputStyle, ...(props.style || {}) }}>
       {props.children}
@@ -297,12 +278,12 @@ export function Select(props) {
   );
 }
 
-export function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
+function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm"
+      className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm active:scale-95 transition-transform"
       style={{
         background: disabled ? "#3A4A41" : C.amber500,
         color: disabled ? C.inkSoft : C.green900,
@@ -318,7 +299,7 @@ export function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
   );
 }
 
-export function PerfilHeader({ perfil, titulo, onTrocar }) {
+function PerfilHeader({ perfil, titulo, onTrocar }) {
   return (
     <header
       className="px-4 pt-6 pb-5 flex items-start gap-3"
@@ -331,21 +312,20 @@ export function PerfilHeader({ perfil, titulo, onTrocar }) {
       <div
         className="rounded-2xl flex items-center justify-center flex-shrink-0"
         style={{
-          width: "42px",
-          height: "42px",
+          width: 42,
+          height: 42,
           background: `linear-gradient(135deg, ${C.amber500}, ${C.green600})`,
           color: "#fff",
           fontFamily: displayFont,
           fontWeight: 800,
           fontSize: 13,
           letterSpacing: 0.5,
-          marginTop: "2px",
-          boxShadow: "0 0 16px rgba(224,165,38,0.4)",
+          marginTop: 2,
+          boxShadow: `0 0 16px rgba(224,165,38,0.4)`,
         }}
       >
         GAC
       </div>
-      
       <div className="flex-1">
         <div
           className="text-xs uppercase tracking-widest font-bold opacity-70"
@@ -359,16 +339,10 @@ export function PerfilHeader({ perfil, titulo, onTrocar }) {
         >
           {titulo}
         </div>
-        <div className="text-xs opacity-60 mt-0.5">
-          {fmtDate(todayISO())}
-        </div>
+        <div className="text-xs opacity-60 mt-0.5">{fmtDate(todayISO())}</div>
       </div>
-      
-      <button 
-        onClick={onTrocar} 
-        className="text-xs font-bold opacity-70 flex-shrink-0 text-right"
-      >
-        {perfil?.nome}
+      <button onClick={onTrocar} className="text-xs font-bold opacity-70 flex-shrink-0 text-right">
+        {perfil.nome}
         <br />
         Trocar
       </button>
@@ -376,12 +350,10 @@ export function PerfilHeader({ perfil, titulo, onTrocar }) {
   );
 }
 
-export function ToastBanner({ toast }) {
-  if (!toast) return null;
-
+function ToastBanner({ toast }) {
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 bottom-6 px-4 py-2 rounded-full text-sm font-medium z-50"
+      className="fixed left-1/2 -translate-x-1/2 bottom-6 px-4 py-2 rounded-full text-sm font-bold shadow-lg flex items-center gap-2 z-20"
       style={{ background: C.green700, color: "#fff" }}
     >
       <Check size={14} /> {toast}
@@ -389,11 +361,21 @@ export function ToastBanner({ toast }) {
   );
 }
 
-/* ----------------------------------------------------------------- */
-/* Cadastro de Perfil (define acesso: Comprador/Vendedor, Conferente, */
-/* Entregador)                                                       */
-/* ----------------------------------------------------------------- */
-
+/* ---------------------------------------------------------------------- */
+/* Cadastro de Perfil (define acesso: Comprador/Vendedor, Conferente,     */
+/* Entregador)                                                            */
+/* ---------------------------------------------------------------------- */
+const FUNCOES = [
+  {
+    id: "gestor",
+    label: "Comprador / Vendedor",
+    desc: "Acesso completo: dashboard, compras, vendas, estoque e contas.",
+  },
+  {
+    id: "conferente",
+    label: "Conferente",
+    desc: "Acesso só à conferência de compras (chegada de mercadoria).",
+  },
   {
     id: "entregador",
     label: "Entregador",
@@ -407,33 +389,29 @@ export function ToastBanner({ toast }) {
 /* ---------------------------------------------------------------------- */
 function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   const isVenda = tipo === "venda";
-  
-  // Hooks isolados corretamente no topo do componente
   const [editandoId, setEditandoId] = useState(null);
   const [editQtd, setEditQtd] = useState("");
   const [editPreco, setEditPreco] = useState("");
-
-  // Resolvendo os dados de forma direta e segura no escopo
+  
+  // Para vendas: agrupa TODAS as vendas do mesmo cliente
+  // Para compras: agrupa TODAS as compras do mesmo clienteDestino
   const parte = isVenda
-    ? cadastros.clientes?.find((c) => c.id === item.clientId)
-    : cadastros.produtores?.find((p) => p.id === item.produtorId);
+    ? cadastros.clientes.find((c) => c.id === item.clienteId)
+    : cadastros.produtores.find((p) => p.id === item.produtorId);
 
-  const clienteDestinoId = !isVenda && item.entrega?.clienteDestinoId;
-
-  const clienteDestino = clienteDestinoId
-    ? cadastros.clientes?.find((c) => c.id === clienteDestinoId)
+  const clienteDestino = !isVenda && item.clienteDestino
+    ? cadastros.clientes.find((c) => c.id === item.clienteDestino)
     : null;
 
-  // Agregar vendas/compras do mesmo destino sem quebrar variáveis
+  // Agregar vendas/compras do mesmo destino
   const itens = isVenda
-    ? (transacoes?.vendas || []).filter((v) => v.clientId === item.clientId)
-    : (transacoes?.compras || []).filter((c) => c.entrega?.clienteDestinoId === clienteDestinoId);
+    ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId)
+    : (transacoes?.compras || []).filter(c => c.clienteDestino === item.clienteDestino);
 
-  // Inicialização das variáveis de cálculo
+  // Para compras: agrupar por fornecedor e calcular desconto individual
   let itensAgrupados = itens;
   let totalSubtotal = 0;
   let totalDesconto = 0;
-
 
   if (!isVenda) {
     // Compras: calcular desconto de cada fornecedor individualmente
