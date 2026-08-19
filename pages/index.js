@@ -407,32 +407,33 @@ export function ToastBanner({ toast }) {
 /* ---------------------------------------------------------------------- */
 function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   const isVenda = tipo === "venda";
+  
+  // Hooks isolados corretamente no topo do componente
   const [editandoId, setEditandoId] = useState(null);
   const [editQtd, setEditQtd] = useState("");
   const [editPreco, setEditPreco] = useState("");
-  
-  // Para vendas: agrupa TODAS as vendas do mesmo cliente
-  // Para compras: agrupa TODAS as compras do mesmo clienteDestino
-  const parte = isVenda
-    ? cadastros.clientes.find((c) => c.id === item.clienteId)
-    : cadastros.produtores.find((p) => p.id === item.produtorId);
 
-   const clienteDestinoId = !isVenda && item.entrega?.clienteDestinoId;
+  // Resolvendo os dados de forma direta e segura no escopo
+  const parte = isVenda
+    ? cadastros.clientes?.find((c) => c.id === item.clientId)
+    : cadastros.produtores?.find((p) => p.id === item.produtorId);
+
+  const clienteDestinoId = !isVenda && item.entrega?.clienteDestinoId;
 
   const clienteDestino = clienteDestinoId
-    ? cadastros.clientes.find((c) => c.id === clienteDestinoId)
+    ? cadastros.clientes?.find((c) => c.id === clienteDestinoId)
     : null;
 
-  // Agregar vendas/compras do mesmo destino
+  // Agregar vendas/compras do mesmo destino sem quebrar variáveis
   const itens = isVenda
-    ? (transacoes?.vendas || []).filter(v => v.clientId === item.clientId)
-    : (transacoes?.compras || []).filter(c => c.entrega?.clienteDestinoId === clienteDestinoId);
+    ? (transacoes?.vendas || []).filter((v) => v.clientId === item.clientId)
+    : (transacoes?.compras || []).filter((c) => c.entrega?.clienteDestinoId === clienteDestinoId);
 
-
-  // Para compras: agrupar por fornecedor e calcular desconto individual
+  // Inicialização das variáveis de cálculo
   let itensAgrupados = itens;
   let totalSubtotal = 0;
   let totalDesconto = 0;
+
 
   if (!isVenda) {
     // Compras: calcular desconto de cada fornecedor individualmente
