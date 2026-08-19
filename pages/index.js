@@ -148,7 +148,7 @@ const TX_KEY = "gac-transacoes";
 const PERFIL_KEY = "gac-perfil";
 
 /* ---------------------------------------------------------------------- */
-/* Small UI atoms                                                         */
+/* Small UI atoms*/                                                        
 export function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
   const bg = tone === "amber" ? C.amber500 : tone === "rust" ? C.rust : C.green700;
   const fg = "#FFFFFF";
