@@ -160,12 +160,13 @@ export function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
 
   return (
     <>
-      <Head>
-        <title>GAC CEASA Manager</title>
-        <link rel="icon" href="/GAC_CEASA.ico" type="image/x-icon" />
-      </Head>
+<Head>
+<title>GAC CEASA Manager</title>
+<link rel="icon" href="/GAC_CEASA.ico" ...
+</Head>  ← PERFEITO! ✅
 
-      <div 
+<div
+
         className="relative rounded-2xl p-3.5 overflow-hidden" 
         style={{ background: bg, color: fg }}
       >
