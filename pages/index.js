@@ -163,7 +163,7 @@ export function CrateTag({ label, value, sub, tone = "amber", icon: Icon }) {
 <Head>
 <title>GAC CEASA Manager</title>
 <link rel="icon" href="/GAC_CEASA.ico" ...
-</Head>  ← PERFEITO! ✅
+</Head>
 
 <div
 
