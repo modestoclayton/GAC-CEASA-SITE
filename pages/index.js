@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   LayoutGrid,
@@ -1067,6 +1068,11 @@ export default function GacCeasaApp() {
 
   /* ---------------- acesso completo: Comprador/Vendedor ---------------- */
   return (
+    <>
+      <Head>
+        <title>GAC CEASA Manager</title>
+        <link rel="icon" href="/GAC_CEASA.ico" type="image/x-icon" />
+      </Head>
     <div
       className="mx-auto max-w-md lg:max-w-2xl flex flex-col"
       style={{
@@ -3705,6 +3711,7 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
         </div>
       )}
     </div>
+      </>
   );
 }
 
