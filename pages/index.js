@@ -417,14 +417,17 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
     ? cadastros.clientes.find((c) => c.id === item.clienteId)
     : cadastros.produtores.find((p) => p.id === item.produtorId);
 
-  const clienteDestino = !isVenda && item.clienteDestino
-    ? cadastros.clientes.find((c) => c.id === item.clienteDestino)
+   const clienteDestinoId = !isVenda && item.entrega?.clienteDestinoId;
+
+  const clienteDestino = clienteDestinoId
+    ? cadastros.clientes.find((c) => c.id === clienteDestinoId)
     : null;
 
   // Agregar vendas/compras do mesmo destino
   const itens = isVenda
-    ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId)
-    : (transacoes?.compras || []).filter(c => c.clienteDestino === item.clienteDestino);
+    ? (transacoes?.vendas || []).filter(v => v.clientId === item.clientId)
+    : (transacoes?.compras || []).filter(c => c.entrega?.clienteDestinoId === clienteDestinoId);
+
 
   // Para compras: agrupar por fornecedor e calcular desconto individual
   let itensAgrupados = itens;
