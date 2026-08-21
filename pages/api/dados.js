@@ -27,7 +27,7 @@ function getAuth() {
   const email = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
   const key = normalizarChavePrivada(process.env.GOOGLE_PRIVATE_KEY);
   return new google.auth.JWT(email, null, key, [
-    "https://googleapis.com",
+    "https://www.googleapis.com/auth/spreadsheets",
   ]);
 }
 
