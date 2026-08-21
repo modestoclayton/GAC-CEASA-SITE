@@ -750,56 +750,9 @@ function CadastroPerfil({ onSalvar }) {
 /* Main App                                                                */
 /* ---------------------------------------------------------------------- */
 export default function GacCeasaApp() {
-
-  // ---- SISTEMA DE PERMISSÕES ----
-  const PERFIS = {
-    comprador: { nome: 'Comprador', nivel: 3, cor: '#276642' },
-    vendedor: { nome: 'Vendedor', nivel: 3, cor: '#276642' },
-    conferente: { nome: 'Conferente', nivel: 2, cor: '#E0A526' },
-    entregador: { nome: 'Entregador', nivel: 1, cor: '#2563EB' },
-  };
-  
-  const PERFIL_KEY = 'gac-perfil-usuario';
-  const [perfilAtual, setPerfilAtual] = useState(null);
-  
-  // Carrega perfil ao iniciar
-  useEffect(() => {
-    const perfilSalvo = localStorage.getItem(PERFIL_KEY);
-    if (perfilSalvo) {
-      setPerfilAtual(perfilSalvo);
-    }
-  }, []);
-  
-  // Verifica permissão para ação específica
-  const temPermissao = (acao) => {
-    if (!perfilAtual) return false;
-    const nivel = PERFIS[perfilAtual]?.nivel || 0;
-    const acoes = {
-      'editar_quantidade': nivel >= 2,
-      'editar_dados': nivel >= 3,
-      'gerar_pdf': nivel >= 3,
-      'imprimir': nivel >= 3,
-      'finalizar': nivel >= 3,
-    };
-    return acoes[acao] || false;
-  };
-  
-  // Verifica se pode ver aba
-  const podeVerAba = (nomeAba) => {
-    if (!perfilAtual) return false;
-    const abas = {
-      'dashboard': true,
-      'registrar': perfilAtual !== 'conferente' && perfilAtual !== 'entregador',
-      'estoque': perfilAtual !== 'conferente' && perfilAtual !== 'entregador',
-      'conferencia': perfilAtual === 'conferente',
-      'entregas': perfilAtual === 'entregador',
-      'contas': perfilAtual === 'comprador' || perfilAtual === 'vendedor',
-    };
-    return abas[nomeAba] || false;
-  };
-
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [cadastros, setCadastros] = useState(SEED_CADASTROS);
   const [transacoes, setTransacoes] = useState(SEED_TRANSACOES);
   const [toast, setToast] = useState(null);
@@ -814,58 +767,6 @@ export default function GacCeasaApp() {
       let tx = SEED_TRANSACOES;
 
       try {
-
-  // Se não tem perfil, mostra seleção
-  if (!perfilAtual) {
-    return (
-      <div style={{ 
-        background: C.canvas,
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px'
-      }}>
-        <div style={{
-          maxWidth: '400px',
-          background: C.card,
-          borderRadius: '16px',
-          padding: '30px',
-          textAlign: 'center'
-        }}>
-          <h1 style={{ color: C.ink, marginBottom: '20px', fontSize: '24px', fontWeight: 'bold' }}>
-            Selecione seu Perfil
-          </h1>
-          
-          {Object.entries(PERFIS).map(([id, perfil]) => (
-            <button
-              key={id}
-              onClick={() => {
-                localStorage.setItem(PERFIL_KEY, id);
-                setPerfilAtual(id);
-              }}
-              style={{
-                display: 'block',
-                width: '100%',
-                padding: '15px',
-                marginBottom: '10px',
-                background: perfil.cor,
-                color: C.ink,
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                cursor: 'pointer'
-              }}
-            >
-              {perfil.nome}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
         const res = await fetch("/api/dados");
         const json = await res.json();
         if (json.ok) {
@@ -1211,16 +1112,37 @@ export default function GacCeasaApp() {
           >
             CEASA Manager · Pátio
           </div>
-          <div
-            className="text-2xl font-bold leading-tight"
-            style={{ fontFamily: displayFont, letterSpacing: 0.5 }}
-          >
-            {tab === "dashboard" && "Hoje no Pátio"}
-            {tab === "registrar" && "Registrar Movimento"}
-            {tab === "estoque" && "Estoque"}
-            {tab === "conta" && "Conta Corrente"}
+          <div className="flex-1">
+            <div
+              className="text-2xl font-bold leading-tight"
+              style={{ fontFamily: displayFont, letterSpacing: 0.5 }}
+            >
+              {tab === "dashboard" && "Movimento de Pátio"}
+              {tab === "registrar" && "Registrar Movimento"}
+              {tab === "estoque" && "Estoque"}
+              {tab === "conta" && "Conta Corrente"}
+            </div>
+            {tab === "dashboard" && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs opacity-60">📅 Data:</span>
+                <input
+                  type="date"
+                  value={dataSelecionada}
+                  onChange={(e) => setDataSelecionada(e.target.value)}
+                  max={todayISO()}
+                  style={{
+                    background: C.cardAlt,
+                    border: `1px solid ${C.line}`,
+                    borderRadius: '6px',
+                    padding: '6px 8px',
+                    color: C.ink,
+                    fontSize: '13px',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            )}
           </div>
-          <div className="text-xs opacity-60 mt-0.5">{fmtDate(todayISO())}</div>
         </div>
         <button onClick={trocarPerfil} className="text-xs font-bold opacity-70 flex-shrink-0">
           {perfil.nome}
@@ -1239,6 +1161,8 @@ export default function GacCeasaApp() {
             contaProdutores={contaProdutores}
             transacoes={transacoes}
             cadastros={cadastros}
+            dataSelecionada={dataSelecionada}
+            setDataSelecionada={setDataSelecionada}
           />
         )}
         {tab === "registrar" && (
@@ -1352,8 +1276,7 @@ function NavButton({ active, icon: Icon, label, onClick }) {
 /* ---------------------------------------------------------------------- */
 /* Dashboard Tab                                                          */
 /* ---------------------------------------------------------------------- */
-function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores, transacoes, cadastros }) {
-  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores, transacoes, cadastros, dataSelecionada, setDataSelecionada }) {
   
   // Calcula totais de CX para o dia selecionado
   const comprasDodia = transacoes.compras.filter((c) => c.data === dataSelecionada);
