@@ -1,14 +1,11 @@
 import { google } from "googleapis";
 
 // Nomes das abas que servem como "tabelas" do banco de dados.
-// Precisam já existir na planilha (a mesma que você criou antes, com o
-// script do Apps Script — as abas já estão lá).
 const TABELAS_CADASTROS = ["produtos", "clientes", "produtores", "compradoresVendedores"];
 const TABELAS_TRANSACOES = ["compras", "vendas", "recebimentos", "pagamentos", "perdas"];
 
 function normalizarChavePrivada(bruta) {
   let key = (bruta || "").trim();
-  // remove aspas envolvendo o valor inteiro, se coladas por engano
   if (
     (key.startsWith('"') && key.endsWith('"')) ||
     (key.startsWith("'") && key.endsWith("'"))
@@ -16,10 +13,10 @@ function normalizarChavePrivada(bruta) {
     key = key.slice(1, -1);
   }
   key = key
-    .replace(/\\n/g, "\n") // \n literais (comum ao copiar do JSON)
-    .replace(/\r\n/g, "\n") // quebras de linha estilo Windows
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
-    .replace(/-----END PRIVATE KEY-----\s*\/n/g, "-----END PRIVATE KEY-----") // lixo "/n" (barra) colado sem querer
+    .replace(/-----END PRIVATE KEY-----\s*\/n/g, "-----END PRIVATE KEY-----")
     .replace(/-----BEGIN PRIVATE KEY-----\s*\/n/g, "-----BEGIN PRIVATE KEY-----\n")
     .trim();
   if (!key.endsWith("\n")) key += "\n";
@@ -30,7 +27,7 @@ function getAuth() {
   const email = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
   const key = normalizarChavePrivada(process.env.GOOGLE_PRIVATE_KEY);
   return new google.auth.JWT(email, null, key, [
-    "https://www.googleapis.com/auth/spreadsheets",
+    "https://googleapis.com",
   ]);
 }
 
@@ -47,8 +44,6 @@ async function garantirAbas(sheets, spreadsheetId, nomesNecessarios) {
       },
     });
   } catch (e) {
-    // se já existir (nome com diferença de maiúscula/espaço, ou corrida entre
-    // requisições), não trava o resto — segue em frente
     const msg = (e && e.message) || String(e);
     if (!msg.toLowerCase().includes("already exists")) throw e;
   }
@@ -58,7 +53,7 @@ async function lerTabela(sheets, spreadsheetId, nome) {
   try {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${nome}!A2:A`,
+      range: `${nome}!A2:A`, // O sistema continua lendo o JSON original guardado na coluna A
     });
     const linhas = res.data.values || [];
     return linhas
@@ -73,23 +68,108 @@ async function lerTabela(sheets, spreadsheetId, nome) {
       })
       .filter(Boolean);
   } catch (e) {
-    // aba pode não existir ainda, ou estar vazia — trata como lista vazia
     return [];
   }
 }
 
 async function escreverTabela(sheets, spreadsheetId, nome, registros) {
-  // limpa os dados atuais (mantém o cabeçalho da linha 1)
+  // Limpa o conteúdo antigo das colunas A até Z para reescrever de forma organizada
   await sheets.spreadsheets.values.clear({
     spreadsheetId,
-    range: `${nome}!A2:A`,
+    range: `${nome}!A2:Z`,
   });
+
   if (registros && registros.length > 0) {
-    const values = registros.map((r) => [JSON.stringify(r)]);
+    const values = registros.map((r) => {
+      const jsonString = JSON.stringify(r);
+
+      // --- MAPEAMENTO DAS ABAS DE CADASTROS ---
+      if (nome === "produtos") {
+        return [
+          jsonString,
+          r.id || "",
+          r.codigo || "",
+          r.nome || "",
+          r.unidade || "",
+          r.custoMedio || 0,
+          r.precoVenda || 0,
+          r.estoqueMinimo || 0,
+          r.status || ""
+        ];
+      }
+
+      if (nome === "clientes" || nome === "produtores" || nome === "compradoresVendedores") {
+        return [
+          jsonString,
+          r.id || "",
+          r.nome || "",
+          r.cpfCnpj || "",
+          r.telefone || "",
+          r.status || ""
+        ];
+      }
+
+      // --- MAPEAMENTO DAS ABAS DE TRANSAÇÕES ---
+      if (nome === "compras") {
+        return [
+          jsonString,
+          r.id || "",
+          r.data || "",
+          r.produtorId || r.produtor || "",
+          r.produtoId || r.produto || "",
+          r.quantidade || 0,
+          r.precoUnitario || 0,
+          r.total || 0,
+          r.status || ""
+        ];
+      }
+
+      if (nome === "vendas") {
+        return [
+          jsonString,
+          r.id || "",
+          r.data || "",
+          r.clienteId || r.cliente || "",
+          r.produtoId || r.produto || "",
+          r.quantidade || 0,
+          r.precoUnitario || 0,
+          r.total || 0,
+          r.status || ""
+        ];
+      }
+
+      if (nome === "recebimentos" || nome === "pagamentos") {
+        return [
+          jsonString,
+          r.id || "",
+          r.data || "",
+          r.referenciaId || r.descricao || r.historico || "",
+          r.valor || 0,
+          r.formaPagamento || r.metodo || "",
+          r.status || ""
+        ];
+      }
+
+      if (nome === "perdas") {
+        return [
+          jsonString,
+          r.id || "",
+          r.data || "",
+          r.produtoId || r.produto || "",
+          r.quantidade || 0,
+          r.motivo || "",
+          r.custoTotal || 0
+        ];
+      }
+
+      // Fallback caso apareça alguma aba nova futuramente
+      return [jsonString, JSON.stringify(r)];
+    });
+
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `${nome}!A2`,
-      valueInputOption: "RAW",
+      valueInputOption: "USER_ENTERED", // Permite que o Google Sheets reconheça números e datas corretamente
       requestBody: { values },
     });
   }
