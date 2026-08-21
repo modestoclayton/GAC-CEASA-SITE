@@ -750,6 +750,54 @@ function CadastroPerfil({ onSalvar }) {
 /* Main App                                                                */
 /* ---------------------------------------------------------------------- */
 export default function GacCeasaApp() {
+
+  // ---- SISTEMA DE PERMISSÕES ----
+  const PERFIS = {
+    comprador: { nome: 'Comprador', nivel: 3, cor: '#276642' },
+    vendedor: { nome: 'Vendedor', nivel: 3, cor: '#276642' },
+    conferente: { nome: 'Conferente', nivel: 2, cor: '#E0A526' },
+    entregador: { nome: 'Entregador', nivel: 1, cor: '#2563EB' },
+  };
+  
+  const PERFIL_KEY = 'gac-perfil-usuario';
+  const [perfilAtual, setPerfilAtual] = useState(null);
+  
+  // Carrega perfil ao iniciar
+  useEffect(() => {
+    const perfilSalvo = localStorage.getItem(PERFIL_KEY);
+    if (perfilSalvo) {
+      setPerfilAtual(perfilSalvo);
+    }
+  }, []);
+  
+  // Verifica permissão para ação específica
+  const temPermissao = (acao) => {
+    if (!perfilAtual) return false;
+    const nivel = PERFIS[perfilAtual]?.nivel || 0;
+    const acoes = {
+      'editar_quantidade': nivel >= 2,
+      'editar_dados': nivel >= 3,
+      'gerar_pdf': nivel >= 3,
+      'imprimir': nivel >= 3,
+      'finalizar': nivel >= 3,
+    };
+    return acoes[acao] || false;
+  };
+  
+  // Verifica se pode ver aba
+  const podeVerAba = (nomeAba) => {
+    if (!perfilAtual) return false;
+    const abas = {
+      'dashboard': true,
+      'registrar': perfilAtual !== 'conferente' && perfilAtual !== 'entregador',
+      'estoque': perfilAtual !== 'conferente' && perfilAtual !== 'entregador',
+      'conferencia': perfilAtual === 'conferente',
+      'entregas': perfilAtual === 'entregador',
+      'contas': perfilAtual === 'comprador' || perfilAtual === 'vendedor',
+    };
+    return abas[nomeAba] || false;
+  };
+
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
   const [cadastros, setCadastros] = useState(SEED_CADASTROS);
@@ -766,6 +814,58 @@ export default function GacCeasaApp() {
       let tx = SEED_TRANSACOES;
 
       try {
+
+  // Se não tem perfil, mostra seleção
+  if (!perfilAtual) {
+    return (
+      <div style={{ 
+        background: C.canvas,
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px'
+      }}>
+        <div style={{
+          maxWidth: '400px',
+          background: C.card,
+          borderRadius: '16px',
+          padding: '30px',
+          textAlign: 'center'
+        }}>
+          <h1 style={{ color: C.ink, marginBottom: '20px', fontSize: '24px', fontWeight: 'bold' }}>
+            Selecione seu Perfil
+          </h1>
+          
+          {Object.entries(PERFIS).map(([id, perfil]) => (
+            <button
+              key={id}
+              onClick={() => {
+                localStorage.setItem(PERFIL_KEY, id);
+                setPerfilAtual(id);
+              }}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '15px',
+                marginBottom: '10px',
+                background: perfil.cor,
+                color: C.ink,
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              {perfil.nome}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
         const res = await fetch("/api/dados");
         const json = await res.json();
         if (json.ok) {
