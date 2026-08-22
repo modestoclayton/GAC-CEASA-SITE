@@ -21,3 +21,11 @@ body {
   background-color: var(--bg);
   color: var(--texto);
 }
+
+/* Banner do cabeçalho "Hoje no Pátio" */
+.topo-dashboard {
+  background-image: url('/banner-patio.png');
+  background-position: right center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
