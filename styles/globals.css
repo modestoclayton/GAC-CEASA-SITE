@@ -15,7 +15,8 @@ body {
   min-height: 100vh;
 }
 .topo-dashboard {
-    background-image: url('nome-da-imagem.png');
+    background-image: url('/banner-patio.png');
+
     background-position: right center;
     background-repeat: no-repeat;
     background-size: cover;
