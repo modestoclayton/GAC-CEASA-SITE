@@ -140,6 +140,7 @@ const SEED_TRANSACOES = {
   recebimentos: [],
   pagamentos: [],
   perdas: [],
+  diasFinalizados: [], // datas (YYYY-MM-DD) já finalizadas na Conferência — Finalizar não roda 2x no mesmo dia
 };
 
 const CAD_KEY = "gac-cadastros";
@@ -404,9 +405,13 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
     : null;
 
   // Agregar vendas/compras do mesmo destino
+  // Vale de compra = específico por Fornecedor + Cliente Destino + Data (um vale = um fornecedor, um dia)
+  // Pedido de venda = específico por Cliente + Data
   const itens = isVenda
-    ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId)
-    : (transacoes?.compras || []).filter(c => c.clienteDestino === item.clienteDestino);
+    ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId && v.data === item.data)
+    : (transacoes?.compras || []).filter(
+        c => c.clienteDestino === item.clienteDestino && c.produtorId === item.produtorId && c.data === item.data
+      );
 
   // Para compras: agrupar por fornecedor e calcular desconto individual
   let itensAgrupados = itens;
@@ -433,10 +438,13 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   }
 
   const totalGeral = totalSubtotal - totalDesconto;
-  
-  // Calcula total com edições se existirem
-  const totalComEdicoes = editandoId === item.id && editQtd && editPreco
-    ? (Number(editQtd) * Number(editPreco)) - totalDesconto
+
+  // Edição afeta só o item selecionado (por id), não a lista toda
+  const itemEmEdicao = itens.find((i) => i.id === editandoId);
+  const totalComEdicoes = itemEmEdicao && editQtd && editPreco
+    ? totalGeral -
+      Number(itemEmEdicao.valorTotal) +
+      (Number(editQtd) * Number(editPreco))
     : totalGeral;
 
   const titulo = isVenda ? "Pedido de Venda" : "Vale de Compra";
@@ -524,12 +532,13 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
           </thead>
           <tbody>
             {itens.map((i, idx) => {
-              const qtdMostrada = editandoId === item.id && editQtd ? Number(editQtd) : i.quantidade;
-              const precoMostrado = editandoId === item.id && editPreco ? Number(editPreco) : (isVenda ? i.precoUnit : i.valorUnit);
+              const estaEditandoEsteItem = editandoId === i.id;
+              const qtdMostrada = estaEditandoEsteItem && editQtd ? Number(editQtd) : i.quantidade;
+              const precoMostrado = estaEditandoEsteItem && editPreco ? Number(editPreco) : (isVenda ? i.precoUnit : i.valorUnit);
               const totalMostrado = qtdMostrada * precoMostrado;
-              
+
               return (
-              <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0" }}>
+              <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0", background: estaEditandoEsteItem ? "#F0ECD8" : "transparent" }}>
                 <td className="py-2">{i.produto}</td>
                 <td className="text-right py-2">{qtdMostrada}</td>
                 <td className="text-right py-2">{fmtMoney(precoMostrado)}</td>
@@ -543,23 +552,24 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
         <div className="mb-4 print:hidden">
           <button
             onClick={() => {
-              if (editandoId) setEditandoId(null);
-              else {
+              if (editandoId === item.id) {
+                setEditandoId(null);
+              } else {
                 setEditandoId(item.id);
                 setEditQtd(String(item.quantidade || item.precoUnit));
                 setEditPreco(String(item.precoUnit || item.valorUnit));
               }
             }}
             className="w-full px-4 py-2 rounded-lg font-bold text-sm"
-            style={{ background: editandoId ? "#D9861C" : "#1F4A30", color: "white" }}
+            style={{ background: editandoId === item.id ? "#D9861C" : "#1F4A30", color: "white" }}
           >
-            {editandoId ? "✓ Pronto" : "✏️ Editar Quantidade/Valor"}
+            {editandoId === item.id ? "✓ Pronto" : "✏️ Editar Quantidade/Valor (item selecionado)"}
           </button>
         </div>
 
         {editandoId === item.id && (
           <div className="mb-4 p-3 rounded-lg print:hidden" style={{ background: "#EDEAE0" }}>
-            <div className="text-sm font-bold mb-2">Editando:</div>
+            <div className="text-sm font-bold mb-2">Editando: {item.produto}</div>
             <div className="flex gap-2">
               <input
                 type="number"
@@ -575,6 +585,9 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
                 placeholder="Valor"
                 className="flex-1 px-2 py-1 rounded border"
               />
+            </div>
+            <div className="text-xs mt-2" style={{ color: "#6E6650" }}>
+              Isso altera só a visualização/impressão deste recibo — não atualiza o registro salvo. Para corrigir o valor de verdade, edite em "Registrar".
             </div>
           </div>
         )}
@@ -856,10 +869,22 @@ export default function GacCeasaApp() {
       }
 
       setPerfil(novoPerfil);
+      let storageFalhou = false;
       try {
         localStorage.setItem(PERFIL_KEY, JSON.stringify(novoPerfil));
       } catch (e) {
-        /* ignore write failure, keep local state */
+        storageFalhou = true;
+      }
+      if (storageFalhou) {
+        // Perfil funciona nesta sessão, mas não vai lembrar após fechar o navegador
+        // (comum em modo anônimo/privado ou com armazenamento bloqueado).
+        setTimeout(
+          () =>
+            showToast(
+              "Atenção: não foi possível salvar o perfil neste aparelho. Você vai precisar escolher de novo ao reabrir."
+            ),
+          300
+        );
       }
       return { ok: true };
     },
@@ -901,7 +926,7 @@ export default function GacCeasaApp() {
     return cadastros.clientes.map((cl) => {
       const debito = transacoes.vendas
         .filter((v) => v.clienteId === cl.id)
-        .reduce((s, v) => s + Number(v.valorTotal), 0);
+        .reduce((s, v) => s + Number(v.valorFinal ?? v.valorTotal), 0);
       const credito = transacoes.recebimentos
         .filter((r) => r.clienteId === cl.id)
         .reduce((s, r) => s + Number(r.valor), 0);
@@ -915,7 +940,7 @@ export default function GacCeasaApp() {
     return cadastros.produtores.map((pr) => {
       const debito = transacoes.compras
         .filter((c) => c.produtorId === pr.id)
-        .reduce((s, c) => s + Number(c.valorTotal), 0);
+        .reduce((s, c) => s + Number(c.valorFinal ?? c.valorTotal), 0);
       const credito = transacoes.pagamentos
         .filter((p) => p.produtorId === pr.id)
         .reduce((s, p) => s + Number(p.valor), 0);
@@ -1023,12 +1048,12 @@ export default function GacCeasaApp() {
         {bannerErro}
         <PerfilHeader perfil={perfil} titulo="Conferência de Compras" onTrocar={trocarPerfil} />
         <main className="flex-1 px-4 py-4 overflow-y-auto">
+          {/* Conferente só confere quantidade — sem acesso a impressão/PDF/valores extras */}
           <ConferenciaComprasTab
             cadastros={cadastros}
             transacoes={transacoes}
             persistTransacoes={persistTransacoes}
             showToast={showToast}
-            setRecibo={setRecibo}
           />
         </main>
         {toast && <ToastBanner toast={toast} />}
@@ -1051,13 +1076,13 @@ export default function GacCeasaApp() {
         {bannerErro}
         <PerfilHeader perfil={perfil} titulo="Minhas Entregas" onTrocar={trocarPerfil} />
         <main className="flex-1 px-4 py-4 overflow-y-auto">
+          {/* Entregador só vê pra onde a mercadoria vai — sem valores e sem impressão/PDF */}
           <EntregasTab
             cadastros={cadastros}
             transacoes={transacoes}
             persistTransacoes={persistTransacoes}
             showToast={showToast}
             soMeuNome={perfil.nome}
-            setRecibo={setRecibo}
           />
         </main>
         {toast && <ToastBanner toast={toast} />}
@@ -1079,55 +1104,17 @@ export default function GacCeasaApp() {
     >
       {bannerErro}
       {/* Header */}
-      <header
-        className="px-4 pt-6 pb-5 flex items-start gap-3"
-        style={{
-          background: `linear-gradient(135deg, ${C.canvasGlow} 0%, ${C.green900} 100%)`,
-          color: "#fff",
-          borderBottom: `1px solid ${C.line}`,
-        }}
-      >
-        <div
-          className="rounded-2xl flex items-center justify-center flex-shrink-0"
-          style={{
-            width: 42,
-            height: 42,
-            background: `linear-gradient(135deg, ${C.amber500}, ${C.green600})`,
-            color: "#fff",
-            fontFamily: displayFont,
-            fontWeight: 800,
-            fontSize: 13,
-            letterSpacing: 0.5,
-            marginTop: 2,
-            boxShadow: `0 0 16px rgba(224,165,38,0.4)`,
-          }}
-        >
-          GAC
-        </div>
-        <div className="flex-1">
-          <div
-            className="text-xs uppercase tracking-widest font-bold opacity-70 flex items-center gap-1.5"
-            style={{ fontFamily: displayFont }}
-          >
-            CEASA Manager · Pátio
-          </div>
-          <div
-            className="text-2xl font-bold leading-tight"
-            style={{ fontFamily: displayFont, letterSpacing: 0.5 }}
-          >
-            {tab === "dashboard" && "Hoje no Pátio"}
-            {tab === "registrar" && "Registrar Movimento"}
-            {tab === "estoque" && "Estoque"}
-            {tab === "conta" && "Conta Corrente"}
-          </div>
-          <div className="text-xs opacity-60 mt-0.5">{fmtDate(todayISO())}</div>
-        </div>
-        <button onClick={trocarPerfil} className="text-xs font-bold opacity-70 flex-shrink-0">
-          {perfil.nome}
-          <br />
-          Trocar
-        </button>
-      </header>
+      <PerfilHeader
+        perfil={perfil}
+        titulo={
+          (tab === "dashboard" && "Hoje no Pátio") ||
+          (tab === "registrar" && "Registrar Movimento") ||
+          (tab === "estoque" && "Estoque") ||
+          (tab === "conta" && "Conta Corrente") ||
+          ""
+        }
+        onTrocar={trocarPerfil}
+      />
 
       {/* Content */}
       <main className="flex-1 px-4 py-4 pb-24 overflow-y-auto">
@@ -1168,6 +1155,7 @@ export default function GacCeasaApp() {
             cadastros={cadastros}
             persistCadastros={persistCadastros}
             showToast={showToast}
+            setRecibo={setRecibo}
           />
         )}
       </main>
@@ -1738,39 +1726,74 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
 /* ====================================================================== */
 /* Requisição Tab - Mostra compras por produtor com filtro de data       */
 /* ====================================================================== */
-function RequisicaoTab({ cadastros, transacoes }) {
+function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
 
+  // Cada compra vira automaticamente uma requisição: agrupada por cliente destino
+  // e, dentro de cada cliente, um vale por fornecedor.
   const comprasHoje = transacoes.compras.filter((c) => c.data === dataSelecionada && c.clienteDestino !== "ESTOQUE");
-  const produtoresUnicos = [...new Set(comprasHoje.map((c) => c.produtorId))];
-  
+  const clientesUnicos = [...new Set(comprasHoje.map((c) => c.clienteDestino))];
+
   return (
     <div>
       <Field label="Data">
         <TextInput type="date" value={dataSelecionada} onChange={(e) => setDataSelecionada(e.target.value)} />
       </Field>
 
-      <SectionTitle icon={Package}>Requisições por Produtor</SectionTitle>
+      <SectionTitle icon={Package}>Requisições por Cliente</SectionTitle>
 
-      {produtoresUnicos.length === 0 ? (
+      {clientesUnicos.length === 0 ? (
         <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma compra nesta data.</p></Card>
       ) : (
-        produtoresUnicos.map((produtorId) => {
-          const produtor = cadastros.produtores.find((p) => p.id === produtorId);
-          const comprasProdutor = comprasHoje.filter((c) => c.produtorId === produtorId);
-          const totalQtd = comprasProdutor.reduce((s, c) => s + Number(c.quantidade), 0);
-          const totalValor = comprasProdutor.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
+        clientesUnicos.map((clienteId) => {
+          const cliente = cadastros.clientes.find((c) => c.id === clienteId);
+          const comprasCliente = comprasHoje.filter((c) => c.clienteDestino === clienteId);
+          const produtoresUnicos = [...new Set(comprasCliente.map((c) => c.produtorId))];
+          const totalClienteQtd = comprasCliente.reduce((s, c) => s + Number(c.quantidade), 0);
+          const totalClienteValor = comprasCliente.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
 
           return (
-            <Card key={produtorId} style={{ marginBottom: 12 }}>
-              <div className="font-bold mb-2" style={{ color: C.green700 }}>{produtor?.nome}</div>
-              <div className="text-xs mb-2" style={{ color: C.inkSoft }}>Total: {totalQtd} CX | {fmtMoney(totalValor)}</div>
-              {comprasProdutor.map((c) => (
-                <div key={c.id} className="text-xs mb-1 flex justify-between">
-                  <span>{c.produto} - {c.quantidade} CX</span>
-                  <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorFinal || c.valorTotal)}</span>
+            <Card key={clienteId} style={{ marginBottom: 14 }}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="font-bold text-sm" style={{ color: C.blue600 }}>👤 {cliente?.nome || clienteId}</div>
+                <div className="text-xs" style={{ color: C.inkSoft, fontFamily: monoFont }}>
+                  {totalClienteQtd} CX · {fmtMoney(totalClienteValor)}
                 </div>
-              ))}
+              </div>
+              <div className="flex flex-col gap-2 mt-2">
+                {produtoresUnicos.map((produtorId) => {
+                  const produtor = cadastros.produtores.find((p) => p.id === produtorId);
+                  const comprasProdutor = comprasCliente.filter((c) => c.produtorId === produtorId);
+                  const totalQtd = comprasProdutor.reduce((s, c) => s + Number(c.quantidade), 0);
+                  const totalValor = comprasProdutor.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
+
+                  return (
+                    <div key={produtorId} className="rounded-lg p-2.5" style={{ background: C.cardAlt }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="font-bold text-xs">{produtor?.nome || "—"}</div>
+                        <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
+                          {totalQtd} CX · {fmtMoney(totalValor)}
+                        </div>
+                      </div>
+                      {comprasProdutor.map((c) => (
+                        <div key={c.id} className="text-xs mb-0.5 flex justify-between" style={{ color: C.inkSoft }}>
+                          <span>{c.produto} - {c.quantidade} CX</span>
+                          <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorFinal || c.valorTotal)}</span>
+                        </div>
+                      ))}
+                      {setRecibo && (
+                        <button
+                          onClick={() => setRecibo({ tipo: "compra", item: comprasProdutor[0] })}
+                          className="text-xs font-bold mt-1.5"
+                          style={{ color: C.amber500 }}
+                        >
+                          🖨️ Ver vale deste fornecedor
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </Card>
           );
         })
@@ -1787,8 +1810,9 @@ function gerarPDFFolhaPedido(compras, dataSelecionada, cadastros) {
     porCliente[c.clienteDestino].push(c);
   });
 
-  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Pedido</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}</style></head><body><h1>📋 FOLHA DE PEDIDO</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
-  
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Pedido</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}.total-geral{font-weight:bold;text-align:right;padding:14px;font-size:16px;border-top:3px solid #1E4A30;margin-top:20px}</style></head><body><h1>📋 FOLHA DE PEDIDO</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
+
+  let totalGeral = 0;
   Object.entries(porCliente).forEach(([clienteId, itens]) => {
     const cliente = cadastros.clientes.find(c => c.id === clienteId);
     const itensOrdenados = [...itens].sort((a, b) => a.produto.localeCompare(b.produto));
@@ -1800,8 +1824,13 @@ function gerarPDFFolhaPedido(compras, dataSelecionada, cadastros) {
       total += valor;
       html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade}</td><td>R$ ${(item.valorUnit||0).toFixed(2)}</td><td>R$ ${valor.toFixed(2)}</td></tr>`;
     });
+    totalGeral += total;
     html += `</table><div class="total">Total: R$ ${total.toFixed(2)}</div>`;
   });
+
+  if (Object.keys(porCliente).length > 1) {
+    html += `<div class="total-geral">Total Geral (todos os clientes): R$ ${totalGeral.toFixed(2)}</div>`;
+  }
 
   html += `<p style="margin-top:40px;border-top:2px solid #1E4A30;padding-top:20px">☐ Conferido | ☐ Divergência</p></body></html>`;
   const blob = new Blob([html], { type: 'text/html' });
@@ -1899,21 +1928,33 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
 
       {clienteSelecionado && (
         <Card style={{ marginTop: 16 }}>
-          <div className="mb-3 font-bold" style={{ color: C.green700 }}>Total de Itens: {totalQtd} CX</div>
-          {comprasDoCliente.map((c) => {
-            const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
-            return (
-              <Card key={c.id} style={{ marginBottom: 12, background: C.cardAlt }}>
-                <div className="flex justify-between">
-                  <div className="flex-1">
-                    <div className="font-bold text-sm">{c.produto}</div>
-                    <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome}</div>
+          <div className="flex justify-between items-center mb-3">
+            <div className="font-bold" style={{ color: C.green700 }}>Total de Itens: {totalQtd} CX</div>
+            <div className="font-bold" style={{ color: C.green700, fontFamily: monoFont }}>{fmtMoney(totalValor)}</div>
+          </div>
+          {comprasDoCliente
+            .slice()
+            .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"))
+            .map((c) => {
+              const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+              const valorItem = c.valorFinal || c.valorTotal;
+              return (
+                <Card key={c.id} style={{ marginBottom: 12, background: C.cardAlt }}>
+                  <div className="flex justify-between">
+                    <div className="flex-1">
+                      <div className="font-bold text-sm">{c.produto}</div>
+                      <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold">{c.quantidade} CX</div>
+                      <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
+                        {fmtMoney(c.valorUnit)} un · {fmtMoney(valorItem)}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right"><div className="font-bold">{c.quantidade} CX</div></div>
-                </div>
-              </Card>
-            );
-          })}
+                </Card>
+              );
+            })}
         </Card>
       )}
 
@@ -1924,14 +1965,7 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
             className="w-full px-4 py-3 rounded-lg font-bold text-sm"
             style={{ background: C.amber500, color: C.ink }}
           >
-            📥 Download Folha Pedido
-          </button>
-          <button
-            onClick={() => gerarPDFVales(comprasDoCliente.sort((a, b) => a.produto.localeCompare(b.produto)), dataSelecionada, cadastros)}
-            className="w-full px-4 py-3 rounded-lg font-bold text-sm"
-            style={{ background: C.green700, color: "#fff" }}
-          >
-            📄 Gerar Vales em PDF
+            🖨️ Imprimir Folha Pedido
           </button>
         </div>
       )}
@@ -2096,6 +2130,21 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     showToast("✅ Compra atualizada!");
   };
 
+  const excluirCompra = async (compra) => {
+    // Excluir aqui remove a compra de tudo que lê dessa mesma lista:
+    // Requisição, Conferência, Folha de Pedido/Carga, Estoque e Conta Corrente do fornecedor.
+    const jaFinalizado = (transacoes.diasFinalizados || []).includes(compra.data);
+    const aviso = compra.entregaConfirmada
+      ? `Essa compra já foi conferida${jaFinalizado ? " e o dia já foi finalizado" : ""}. Confirma excluir mesmo assim?\n\n${compra.produto} · ${compra.quantidade} CX`
+      : `Excluir esta compra?\n\n${compra.produto} · ${compra.quantidade} CX`;
+    const confirmado = window.confirm(aviso);
+    if (!confirmado) return;
+
+    const nextCompras = transacoes.compras.filter((c) => c.id !== compra.id);
+    await persistTransacoes({ ...transacoes, compras: nextCompras });
+    showToast("Compra excluída");
+  };
+
   return (
     <>
       <Card>
@@ -2119,13 +2168,13 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         <QuickAddProdutor onAdd={addProdutor} />
       </Field>
       {produtorSelecionado && (
-        <div className="mb-3 p-2 rounded-lg" style={{ background: temDesconto ? "#FFEBEE" : "#E8F5E9" }}>
-          <div className="text-xs font-bold" style={{ color: temDesconto ? "#C62828" : "#2E7D32" }}>
-            {temDesconto ? "⚠ Produtor sem CNPJ (CPF)" : "✓ Produtor com CNPJ"}
+        <div className="mb-3 p-2 rounded-lg" style={{ background: produtorSelecionado.temCNPJ ? "#E8F5E9" : "#FFEBEE" }}>
+          <div className="text-xs font-bold" style={{ color: produtorSelecionado.temCNPJ ? "#2E7D32" : "#C62828" }}>
+            {produtorSelecionado.temCNPJ ? "✓ Produtor com CNPJ" : "⚠ Produtor sem CNPJ (CPF)"}
           </div>
           {temDesconto && (
             <div className="text-xs mt-1" style={{ color: "#C62828" }}>
-              Desconto de 1.63% será aplicado
+              Desconto Fundo Rural de 1.63% será aplicado
             </div>
           )}
         </div>
@@ -2180,6 +2229,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           <TextInput
             type="number"
             inputMode="decimal"
+            min="0"
             value={quantidade}
             onChange={(e) => setQuantidade(e.target.value)}
             placeholder="0"
@@ -2189,6 +2239,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           <TextInput
             type="number"
             inputMode="decimal"
+            min="0"
             value={valorUnit}
             onChange={(e) => setValorUnit(e.target.value)}
             placeholder="0,00"
@@ -2208,7 +2259,11 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           Total a Pagar: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
         </div>
       </div>
-      <PrimaryButton onClick={salvar} icon={ArrowDownCircle}>
+      <PrimaryButton
+        onClick={salvar}
+        icon={ArrowDownCircle}
+        disabled={!produtorId || !produto || !quantidade || !valorUnit || Number(quantidade) <= 0 || Number(valorUnit) <= 0}
+      >
         Registrar Compra
       </PrimaryButton>
       {ultimaCompra && setRecibo && (
@@ -2226,105 +2281,126 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       {transacoes.compras.filter((c) => c.data === todayISO()).length === 0 ? (
         <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma compra registrada hoje.</p></Card>
       ) : (
-        <div className="flex flex-col gap-3">
-          {/* COMPRAS PARA ESTOQUE */}
-          {transacoes.compras.filter((c) => c.data === todayISO() && c.clienteDestino === "ESTOQUE").length > 0 && (
-            <div>
-              <div className="font-bold mb-2 p-2 rounded" style={{ background: C.green700, color: C.ink }}>
-                📦 COMPRA PARA ESTOQUE
-              </div>
-              <div className="flex flex-col gap-2">
-                {transacoes.compras.filter((c) => c.data === todayISO() && c.clienteDestino === "ESTOQUE").map((c) => {
-                  const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
-                  if (editandoId === c.id) {
-                    return (
-                      <Card key={c.id} style={{ background: C.amberSoft }}>
-                        <div className="mb-3 font-bold">Editando Compra</div>
-                        <Field label="Quantidade">
-                          <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={c.quantidade} />
-                        </Field>
-                        <Field label="Valor Unit (R$)">
-                          <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} placeholder={c.valorUnit} />
-                        </Field>
-                        <div className="flex gap-2">
-                          <button onClick={() => editarCompra(c.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
-                          <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
-                        </div>
-                      </Card>
-                    );
-                  }
-                  return (
-                    <Card key={c.id} style={{ background: C.cardAlt }}>
-                      <div className="flex justify-between mb-2">
-                        <div className="flex-1">
-                          <div className="font-bold text-sm">{c.produto}</div>
-                          <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome || "—"}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-bold">{c.quantidade} CX</div>
-                          <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(c.valorFinal || c.valorTotal)}</div>
-                        </div>
-                      </div>
-                      <button onClick={() => { setEditandoId(c.id); setEditQtd(String(c.quantidade)); setEditValor(String(c.valorUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+        (() => {
+          const comprasHojeTodas = transacoes.compras.filter((c) => c.data === todayISO());
+          // Agrupa por destino (ESTOQUE fica sempre em primeiro, depois clientes em ordem alfabética)
+          const gruposDestino = [...new Set(comprasHojeTodas.map((c) => c.clienteDestino))].sort((a, b) => {
+            if (a === "ESTOQUE") return -1;
+            if (b === "ESTOQUE") return 1;
+            const nomeA = cadastros.clientes.find((cl) => cl.id === a)?.nome || "";
+            const nomeB = cadastros.clientes.find((cl) => cl.id === b)?.nome || "";
+            return nomeA.localeCompare(nomeB, "pt-BR");
+          });
 
-          {/* COMPRAS PARA CLIENTES */}
-          {transacoes.compras.filter((c) => c.data === todayISO() && c.clienteDestino !== "ESTOQUE").length > 0 && (
-            <div>
-              <div className="font-bold mb-2 p-2 rounded" style={{ background: C.blue600, color: "white" }}>
-                👤 COMPRA PARA CLIENTE
-              </div>
-              <div className="flex flex-col gap-2">
-                {transacoes.compras.filter((c) => c.data === todayISO() && c.clienteDestino !== "ESTOQUE").map((c) => {
-                  const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
-                  const cliente = cadastros.clientes.find((cl) => cl.id === c.clienteDestino);
-                  if (editandoId === c.id) {
-                    return (
-                      <Card key={c.id} style={{ background: C.amberSoft }}>
-                        <div className="mb-3 font-bold">Editando Compra</div>
-                        <Field label="Quantidade">
-                          <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={c.quantidade} />
-                        </Field>
-                        <Field label="Valor Unit (R$)">
-                          <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} placeholder={c.valorUnit} />
-                        </Field>
-                        <div className="flex gap-2">
-                          <button onClick={() => editarCompra(c.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
-                          <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
-                        </div>
-                      </Card>
-                    );
-                  }
-                  return (
-                    <Card key={c.id} style={{ background: C.cardAlt }}>
-                      <div className="mb-2 text-xs font-bold" style={{ color: C.blue600 }}>📍 {cliente?.nome || "—"}</div>
-                      <div className="flex justify-between mb-2">
-                        <div className="flex-1">
-                          <div className="font-bold text-sm">{c.produto}</div>
-                          <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome || "—"}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-bold">{c.quantidade} CX</div>
-                          <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(c.valorFinal || c.valorTotal)}</div>
-                        </div>
-                      </div>
-                      <button onClick={() => { setEditandoId(c.id); setEditQtd(String(c.quantidade)); setEditValor(String(c.valorUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
-                    </Card>
-                  );
-                })}
-              </div>
+          return (
+            <div className="flex flex-col gap-3">
+              {gruposDestino.map((destinoId) => {
+                const isEstoqueGrupo = destinoId === "ESTOQUE";
+                const cliente = isEstoqueGrupo ? null : cadastros.clientes.find((cl) => cl.id === destinoId);
+                const comprasDoGrupo = comprasHojeTodas.filter((c) => c.clienteDestino === destinoId);
+                // Fornecedores em ordem alfabética também
+                const produtoresDoGrupo = [...new Set(comprasDoGrupo.map((c) => c.produtorId))].sort((a, b) => {
+                  const nomeA = cadastros.produtores.find((p) => p.id === a)?.nome || "";
+                  const nomeB = cadastros.produtores.find((p) => p.id === b)?.nome || "";
+                  return nomeA.localeCompare(nomeB, "pt-BR");
+                });
+
+                return (
+                  <div key={destinoId}>
+                    <div
+                      className="font-bold mb-2 p-2 rounded"
+                      style={{
+                        background: isEstoqueGrupo ? C.green700 : C.blue600,
+                        color: isEstoqueGrupo ? C.ink : "white",
+                      }}
+                    >
+                      {isEstoqueGrupo ? "📦 COMPRA PARA ESTOQUE" : `👤 ${cliente?.nome || "—"}`}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {produtoresDoGrupo.map((produtorId) => {
+                        const produtor = cadastros.produtores.find((p) => p.id === produtorId);
+                        // Dentro de cada fornecedor, produtos em ordem alfabética (A-Z) pra achar mais fácil
+                        const comprasDoFornecedor = comprasDoGrupo
+                          .filter((c) => c.produtorId === produtorId)
+                          .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"));
+
+                        return (
+                          <Card key={produtorId} style={{ background: C.cardAlt }}>
+                            <div className="text-xs font-bold mb-2 uppercase tracking-wide" style={{ color: C.green700 }}>
+                              {produtor?.nome || "—"}
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              {comprasDoFornecedor.map((c, idx) => {
+                                if (editandoId === c.id) {
+                                  return (
+                                    <div
+                                      key={c.id}
+                                      className="p-2 rounded"
+                                      style={{ background: C.amberSoft }}
+                                    >
+                                      <div className="mb-2 font-bold text-xs">Editando: {c.produto}</div>
+                                      <Field label="Quantidade">
+                                        <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={c.quantidade} />
+                                      </Field>
+                                      <Field label="Valor Unit (R$)">
+                                        <TextInput type="number" value={editValor} onChange={(e) => setEditValor(e.target.value)} placeholder={c.valorUnit} />
+                                      </Field>
+                                      <div className="flex gap-3">
+                                        <button onClick={() => editarCompra(c.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
+                                        <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <div
+                                    key={c.id}
+                                    className="flex justify-between items-start"
+                                    style={{
+                                      paddingBottom: 8,
+                                      borderBottom: idx < comprasDoFornecedor.length - 1 ? `1px solid ${C.line}` : "none",
+                                    }}
+                                  >
+                                    <div className="flex-1">
+                                      <div className="font-bold text-sm">{c.produto}</div>
+                                      <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
+                                        {c.quantidade} CX · {fmtMoney(c.valorFinal || c.valorTotal)}
+                                      </div>
+                                      <div className="flex gap-3 mt-1">
+                                        <button
+                                          onClick={() => { setEditandoId(c.id); setEditQtd(String(c.quantidade)); setEditValor(String(c.valorUnit)); }}
+                                          className="text-xs font-bold"
+                                          style={{ color: C.green700 }}
+                                        >
+                                          ✏️ Editar
+                                        </button>
+                                        <button
+                                          onClick={() => excluirCompra(c)}
+                                          className="text-xs font-bold"
+                                          style={{ color: C.rust }}
+                                        >
+                                          🗑️ Excluir
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </div>
+          );
+        })()
       )}
           </>
         )}
-        {view === "requisicao" && <RequisicaoTab cadastros={cadastros} transacoes={transacoes} />}
+        {view === "requisicao" && <RequisicaoTab cadastros={cadastros} transacoes={transacoes} setRecibo={setRecibo} />}
         {view === "folha-pedido" && <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} />}
         {view === "folha-carga" && <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />}
       </Card>
@@ -2390,7 +2466,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
     const novoPreco = Number(editPreco);
     const nextVendas = transacoes.vendas.map((v) =>
       v.id === vendaId 
-        ? { ...v, quantidade: novaQtd, precoUnit: novoPreco, valorTotal: novaQtd * novoPreco }
+        ? { ...v, quantidade: novaQtd, precoUnit: novoPreco, valorTotal: novaQtd * novoPreco, valorFinal: (novaQtd * novoPreco) - (v.desconto || 0) }
         : v
     );
     await persistTransacoes({ ...transacoes, vendas: nextVendas });
@@ -2398,6 +2474,20 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
     setEditQtd("");
     setEditPreco("");
     showToast("✅ Venda atualizada!");
+  };
+
+  const excluirVenda = async (venda) => {
+    // Excluir aqui remove a venda de tudo que lê dessa mesma lista:
+    // Entregas, Conta Corrente do cliente e Dashboard.
+    const aviso = venda.entrega
+      ? `Essa venda já tem dados de entrega preenchidos. Confirma excluir mesmo assim?\n\n${venda.produto} · ${venda.quantidade} un`
+      : `Excluir esta venda?\n\n${venda.produto} · ${venda.quantidade} un`;
+    const confirmado = window.confirm(aviso);
+    if (!confirmado) return;
+
+    const nextVendas = transacoes.vendas.filter((v) => v.id !== venda.id);
+    await persistTransacoes({ ...transacoes, vendas: nextVendas });
+    showToast("Venda excluída");
   };
 
   if (entregaVendaId) {
@@ -2427,6 +2517,13 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
         </Select>
         <QuickAddCliente onAdd={addCliente} />
       </Field>
+      {clienteSelecionado && temDescontoFundoRural && (
+        <div className="mb-3 p-2 rounded-lg" style={{ background: "#FFEBEE" }}>
+          <div className="text-xs font-bold" style={{ color: "#C62828" }}>
+            📋 Cliente com Desconto Fundo Rural (1.63%)
+          </div>
+        </div>
+      )}
       <Field label="Produto">
         <Select value={produto} onChange={(e) => setProduto(e.target.value)}>
           {cadastros.produtos.map((p) => (
@@ -2441,6 +2538,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
           <TextInput
             type="number"
             inputMode="decimal"
+            min="0"
             value={quantidade}
             onChange={(e) => setQuantidade(e.target.value)}
             placeholder="0"
@@ -2450,6 +2548,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
           <TextInput
             type="number"
             inputMode="decimal"
+            min="0"
             value={precoUnit}
             onChange={(e) => setPrecoUnit(e.target.value)}
             placeholder="0,00"
@@ -2462,10 +2561,24 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
           <option value="Pago">Pago</option>
         </Select>
       </Field>
-      <div className="text-sm font-bold mb-3" style={{ color: C.green700 }}>
-        Total: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
+      <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
+        <div className="text-sm font-bold mb-2" style={{ color: C.ink }}>
+          Subtotal: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
+        </div>
+        {desconto > 0 && (
+          <div className="text-sm mb-2" style={{ color: C.amber500 }}>
+            Desconto (-1.63%): <span style={{ fontFamily: monoFont }}>{fmtMoney(desconto)}</span>
+          </div>
+        )}
+        <div className="text-sm font-bold" style={{ color: C.green700 }}>
+          Total: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
+        </div>
       </div>
-      <PrimaryButton onClick={salvar} icon={ArrowUpCircle}>
+      <PrimaryButton
+        onClick={salvar}
+        icon={ArrowUpCircle}
+        disabled={!clienteId || !produto || !quantidade || !precoUnit || Number(quantidade) <= 0 || Number(precoUnit) <= 0}
+      >
         Registrar Venda
       </PrimaryButton>
 
@@ -2502,7 +2615,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
                     <div className="text-xs" style={{ color: C.inkSoft }}>{v.produto} • {v.quantidade} un</div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(v.valorTotal)}</div>
+                    <div className="font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(v.valorFinal ?? v.valorTotal)}</div>
                     <div className="text-xs" style={{ color: C.inkSoft }}>{v.status}</div>
                   </div>
                 </div>
@@ -2511,6 +2624,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
                   {setRecibo && (
                     <button onClick={() => setRecibo({ tipo: "venda", item: v, quemVe: "vendedor" })} className="text-xs font-bold" style={{ color: C.amber500 }}>🖨️ Vale</button>
                   )}
+                  <button onClick={() => excluirVenda(v)} className="text-xs font-bold" style={{ color: C.rust }}>🗑️ Excluir</button>
                 </div>
               </Card>
             );
@@ -2651,6 +2765,7 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
         <TextInput
           type="number"
           inputMode="decimal"
+          min="0"
           value={valor}
           onChange={(e) => setValor(e.target.value)}
           placeholder="0,00"
@@ -2659,7 +2774,7 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
       <Field label="Observação (opcional)">
         <TextInput value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex: PIX, boleto nº..." />
       </Field>
-      <PrimaryButton onClick={salvar} icon={HandCoins}>
+      <PrimaryButton onClick={salvar} icon={HandCoins} disabled={!clienteId || !valor || Number(valor) <= 0}>
         Registrar Recebimento
       </PrimaryButton>
     </Card>
@@ -2698,6 +2813,7 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
         <TextInput
           type="number"
           inputMode="decimal"
+          min="0"
           value={valor}
           onChange={(e) => setValor(e.target.value)}
           placeholder="0,00"
@@ -2706,7 +2822,7 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
       <Field label="Observação (opcional)">
         <TextInput value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex: PIX, dinheiro..." />
       </Field>
-      <PrimaryButton onClick={salvar} icon={Landmark}>
+      <PrimaryButton onClick={salvar} icon={Landmark} disabled={!produtorId || !valor || Number(valor) <= 0}>
         Registrar Pagamento
       </PrimaryButton>
     </Card>
@@ -2896,6 +3012,42 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const pendentes = transacoes.compras.filter((c) => !c.entregaConfirmada);
   const confirmadas = transacoes.compras.filter((c) => c.entregaConfirmada);
 
+  // Dados de hoje pra liberar o "Finalizar Conferência"
+  const hoje = todayISO();
+  const comprasHoje = transacoes.compras.filter((c) => c.data === hoje && c.clienteDestino !== "ESTOQUE");
+  const pendentesHoje = comprasHoje.filter((c) => !c.entregaConfirmada);
+  const diasFinalizados = transacoes.diasFinalizados || [];
+  const jaFinalizadoHoje = diasFinalizados.includes(hoje);
+  const podeFinalizarHoje = comprasHoje.length > 0 && pendentesHoje.length === 0 && !jaFinalizadoHoje;
+
+  const finalizarConferencia = async () => {
+    if (jaFinalizadoHoje) {
+      showToast("A conferência de hoje já foi finalizada");
+      return;
+    }
+    if (comprasHoje.length === 0) {
+      showToast("Nenhuma compra hoje pra finalizar");
+      return;
+    }
+    if (pendentesHoje.length > 0) {
+      showToast("Ainda tem compra pendente de conferência hoje");
+      return;
+    }
+    // 1) Folha de Pedido — todos os clientes do dia, agrupados
+    gerarPDFFolhaPedido(comprasHoje, hoje, cadastros);
+    // 2) Vales só das compras cujo cliente destino paga PIX ou Dinheiro (sem boleto)
+    const comprasSemBoleto = comprasHoje.filter((c) => {
+      const cliente = cadastros.clientes.find((cl) => cl.id === c.clienteDestino);
+      return cliente && cliente.pagamento !== "BOLETO";
+    });
+    if (comprasSemBoleto.length > 0) {
+      gerarPDFVales(comprasSemBoleto, hoje, cadastros);
+    }
+    // Trava: marca o dia como finalizado pra não gerar os documentos de novo
+    await persistTransacoes({ ...transacoes, diasFinalizados: [...diasFinalizados, hoje] });
+    showToast("Conferência finalizada — documentos gerados");
+  };
+
   const confirmar = async (compraId, quantidadeRecebida) => {
     const nextCompras = transacoes.compras.map((c) => {
       if (c.id !== compraId) return c;
@@ -3034,6 +3186,52 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
         Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
         mercadoria chegar no pátio.
       </p>
+
+      {setRecibo && (
+        <Card
+          className="mb-4"
+          style={{ background: jaFinalizadoHoje ? C.cardAlt : podeFinalizarHoje ? C.green700 : C.cardAlt }}
+        >
+          <div
+            className="text-sm font-bold mb-1"
+            style={{ color: jaFinalizadoHoje ? C.green700 : podeFinalizarHoje ? "#fff" : C.ink }}
+          >
+            {jaFinalizadoHoje ? "✅ Conferência de Hoje Finalizada" : "Finalizar Conferência de Hoje"}
+          </div>
+          <div
+            className="text-xs mb-3"
+            style={{ color: podeFinalizarHoje ? "rgba(255,255,255,0.75)" : C.inkSoft }}
+          >
+            {jaFinalizadoHoje
+              ? "Os documentos já foram gerados hoje. Se excluir ou adicionar compras depois disso, baixe de novo manualmente pela Requisição."
+              : comprasHoje.length === 0
+              ? "Nenhuma compra registrada hoje ainda."
+              : podeFinalizarHoje
+              ? `${comprasHoje.length} compra(s) já conferida(s). Pronto pra finalizar.`
+              : `Faltam ${pendentesHoje.length} compra(s) pra conferir hoje.`}
+          </div>
+          {!jaFinalizadoHoje && (
+            <button
+              onClick={finalizarConferencia}
+              disabled={!podeFinalizarHoje}
+              className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm"
+              style={{
+                background: podeFinalizarHoje ? C.amber500 : "#3A4A41",
+                color: podeFinalizarHoje ? C.green900 : C.inkSoft,
+              }}
+            >
+              <ClipboardCheck size={16} />
+              Finalizar e Gerar Documentos
+            </button>
+          )}
+          {!jaFinalizadoHoje && (
+            <div className="text-xs mt-2" style={{ color: podeFinalizarHoje ? "rgba(255,255,255,0.6)" : C.inkSoft }}>
+              Gera a Folha de Pedido de todos os clientes do dia + os Vales dos clientes que pagam PIX ou Dinheiro (sem boleto). Só funciona quando tudo estiver conferido, e só roda uma vez por dia.
+            </div>
+          )}
+        </Card>
+      )}
+
       <SectionTitle icon={ClipboardCheck}>A conferir</SectionTitle>
       {pendentes.length === 0 ? (
         <Card>
@@ -3255,6 +3453,7 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
               <TextInput
                 type="number"
                 inputMode="decimal"
+                min="0"
                 value={quantidade}
                 onChange={(e) => setQuantidade(e.target.value)}
                 placeholder="0"
@@ -3276,7 +3475,7 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
             <span style={{ fontFamily: monoFont }}>{fmtMoney(valorEstimado)}</span>
           </div>
           <div className="flex gap-2">
-            <PrimaryButton onClick={salvar} icon={AlertTriangle}>
+            <PrimaryButton onClick={salvar} icon={AlertTriangle} disabled={!produto || !quantidade || Number(quantidade) <= 0}>
               Salvar Perda
             </PrimaryButton>
           </div>
@@ -3535,7 +3734,7 @@ function GerenciarAcessoView({ cadastros, persistCadastros, showToast }) {
 /* ---------------------------------------------------------------------- */
 /* Conta Corrente Tab                                                     */
 /* ---------------------------------------------------------------------- */
-function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastros, persistCadastros, showToast }) {
+function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastros, persistCadastros, showToast, setRecibo }) {
   const [view, setView] = useState("clientes");
   const [expanded, setExpanded] = useState(null);
   const [novoOpen, setNovoOpen] = useState(false);
@@ -3654,7 +3853,7 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
                 </div>
               </div>
               {expanded === c.id && (
-                <ExtratoCliente clienteId={c.id} transacoes={transacoes} />
+                <ExtratoCliente clienteId={c.id} transacoes={transacoes} setRecibo={setRecibo} />
               )}
             </Card>
           ))}
@@ -3698,7 +3897,7 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
                 </div>
               </div>
               {expanded === p.id && (
-                <ExtratoProdutor produtorId={p.id} transacoes={transacoes} />
+                <ExtratoProdutor produtorId={p.id} transacoes={transacoes} setRecibo={setRecibo} />
               )}
             </Card>
           ))}
@@ -3708,33 +3907,47 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
   );
 }
 
-function ExtratoCliente({ clienteId, transacoes }) {
+function ExtratoCliente({ clienteId, transacoes, setRecibo }) {
   const lancamentos = [
     ...transacoes.vendas
       .filter((v) => v.clienteId === clienteId)
-      .map((v) => ({ data: v.data, tipo: "Venda", valor: v.valorTotal, sinal: 1 })),
+      .map((v) => ({
+        data: v.data,
+        tipo: "Venda",
+        valor: v.valorFinal ?? v.valorTotal,
+        sinal: 1,
+        item: v,
+        tipoRecibo: "venda",
+      })),
     ...transacoes.recebimentos
       .filter((r) => r.clienteId === clienteId)
-      .map((r) => ({ data: r.data, tipo: "Recebimento", valor: r.valor, sinal: -1 })),
+      .map((r) => ({ data: r.data, tipo: "Recebimento", valor: r.valor, sinal: -1, item: null, tipoRecibo: null })),
   ].sort((a, b) => (a.data < b.data ? 1 : -1));
 
-  return <Extrato lancamentos={lancamentos} />;
+  return <Extrato lancamentos={lancamentos} setRecibo={setRecibo} />;
 }
 
-function ExtratoProdutor({ produtorId, transacoes }) {
+function ExtratoProdutor({ produtorId, transacoes, setRecibo }) {
   const lancamentos = [
     ...transacoes.compras
       .filter((c) => c.produtorId === produtorId)
-      .map((c) => ({ data: c.data, tipo: "Compra", valor: c.valorTotal, sinal: 1 })),
+      .map((c) => ({
+        data: c.data,
+        tipo: "Compra",
+        valor: c.valorFinal ?? c.valorTotal,
+        sinal: 1,
+        item: c,
+        tipoRecibo: "compra",
+      })),
     ...transacoes.pagamentos
       .filter((p) => p.produtorId === produtorId)
-      .map((p) => ({ data: p.data, tipo: "Pagamento", valor: p.valor, sinal: -1 })),
+      .map((p) => ({ data: p.data, tipo: "Pagamento", valor: p.valor, sinal: -1, item: null, tipoRecibo: null })),
   ].sort((a, b) => (a.data < b.data ? 1 : -1));
 
-  return <Extrato lancamentos={lancamentos} />;
+  return <Extrato lancamentos={lancamentos} setRecibo={setRecibo} />;
 }
 
-function Extrato({ lancamentos }) {
+function Extrato({ lancamentos, setRecibo }) {
   if (lancamentos.length === 0)
     return (
       <p className="text-xs mt-2 pt-2 border-t" style={{ color: C.inkSoft, borderColor: C.line }}>
@@ -3743,23 +3956,39 @@ function Extrato({ lancamentos }) {
     );
   return (
     <div className="mt-2 pt-2 border-t flex flex-col gap-1.5" style={{ borderColor: C.line }}>
-      {lancamentos.map((l, i) => (
-        <div key={i} className="flex justify-between text-xs">
-          <span style={{ color: C.inkSoft }}>
-            {fmtDate(l.data)} · {l.tipo}
-          </span>
-          <span
-            style={{
-              fontFamily: monoFont,
-              fontWeight: 700,
-              color: l.sinal > 0 ? C.rust : C.green700,
-            }}
+      {lancamentos.map((l, i) => {
+        const clicavel = Boolean(setRecibo && l.item && l.tipoRecibo);
+        return (
+          <div
+            key={i}
+            className="flex justify-between text-xs"
+            onClick={
+              clicavel
+                ? (e) => {
+                    e.stopPropagation(); // não deixa fechar o card ao clicar no lançamento
+                    setRecibo({ tipo: l.tipoRecibo, item: l.item });
+                  }
+                : undefined
+            }
+            style={clicavel ? { cursor: "pointer" } : undefined}
           >
-            {l.sinal > 0 ? "+" : "−"}
-            {fmtMoney(l.valor)}
-          </span>
-        </div>
-      ))}
+            <span style={{ color: C.inkSoft, textDecoration: clicavel ? "underline" : "none" }}>
+              {fmtDate(l.data)} · {l.tipo}
+              {clicavel && " (ver vale)"}
+            </span>
+            <span
+              style={{
+                fontFamily: monoFont,
+                fontWeight: 700,
+                color: l.sinal > 0 ? C.rust : C.green700,
+              }}
+            >
+              {l.sinal > 0 ? "+" : "−"}
+              {fmtMoney(l.valor)}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
