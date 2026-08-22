@@ -3768,4 +3768,4 @@ function Extrato({ lancamentos }) {
     background-position: right center;
     background-repeat: no-repeat;
     background-size: cover;
-}
+
