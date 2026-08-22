@@ -3763,9 +3763,9 @@ function Extrato({ lancamentos }) {
     </div>
   );
 }
-.topo-dashboard {
+topo-dashboard {
     background-image: url('/banner-patio.png');
     background-position: right center;
     background-repeat: no-repeat;
     background-size: cover;
-
+}
