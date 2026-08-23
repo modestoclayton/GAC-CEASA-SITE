@@ -1113,7 +1113,7 @@ export default function GacCeasaApp() {
           (tab === "conta" && "Conta Corrente") ||
           ""
         }
-        onTrocar={trocarPerfil}className={tab === "dashboard" ? "topo-dashboard" : ""}
+        onTrocar={trocarPerfil} className={tab === "dashboard" ? "topo-dashboard" : ""}
       />
 
       {/* Content */}
