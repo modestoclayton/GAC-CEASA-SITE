@@ -300,16 +300,19 @@ function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
   );
 }
 
-function PerfilHeader({ perfil, titulo, onTrocar }) {
+function PerfilHeader({ perfil, titulo, onTrocar, className = "" }) {
+  const temBanner = className.includes("topo-dashboard");
   return (
     <header
-      className="px-4 pt-6 pb-5 flex items-start gap-3"
+      className={`px-4 pt-6 pb-5 flex items-start gap-3 ${className}`}
       style={{
-        background: `linear-gradient(135deg, ${C.canvasGlow} 0%, ${C.green900} 100%)`,
+        ...(temBanner ? {} : { background: `linear-gradient(135deg, ${C.canvasGlow} 0%, ${C.green900} 100%)` }),
         color: "#fff",
         borderBottom: `1px solid ${C.line}`,
       }}
     >
+
+
       <div
         className="rounded-2xl flex items-center justify-center flex-shrink-0"
         style={{
