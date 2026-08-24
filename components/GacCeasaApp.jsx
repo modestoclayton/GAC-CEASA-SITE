@@ -301,6 +301,9 @@ function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
 }
 
 function PerfilHeader({ perfil, titulo, onTrocar, className = "" }) {
+  // Estilo inline sempre vence sobre classe CSS. Então quando usamos o banner
+  // (classe topo-dashboard), tiramos o gradiente inline pra deixar o
+  // background-image do CSS aparecer por baixo do texto.
   const temBanner = className.includes("topo-dashboard");
   return (
     <header
@@ -311,8 +314,6 @@ function PerfilHeader({ perfil, titulo, onTrocar, className = "" }) {
         borderBottom: `1px solid ${C.line}`,
       }}
     >
-
-
       <div
         className="rounded-2xl flex items-center justify-center flex-shrink-0"
         style={{
@@ -1057,6 +1058,7 @@ export default function GacCeasaApp() {
             transacoes={transacoes}
             persistTransacoes={persistTransacoes}
             showToast={showToast}
+            soMeuNome={perfil.nome}
           />
         </main>
         {toast && <ToastBanner toast={toast} />}
@@ -1116,7 +1118,8 @@ export default function GacCeasaApp() {
           (tab === "conta" && "Conta Corrente") ||
           ""
         }
-        onTrocar={trocarPerfil} className={tab === "dashboard" ? "topo-dashboard" : ""}
+        onTrocar={trocarPerfil}
+        className={tab === "dashboard" ? "topo-dashboard" : ""}
       />
 
       {/* Content */}
@@ -2041,6 +2044,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [quantidade, setQuantidade] = useState("");
   const [valorUnit, setValorUnit] = useState("");
   const [cargueiro, setCargueiro] = useState("");
+  const [conferenteResponsavel, setConferenteResponsavel] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const [isEstoque, setIsEstoque] = useState(false);
   const [view, setView] = useState("registrar");
@@ -2098,6 +2102,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       paraEstoque: isEstoque,
       produto,
       cargueiro,
+      conferenteResponsavel: conferenteResponsavel.trim(),
       quantidade: Number(quantidade),
       valorUnit: Number(valorUnit),
       valorTotal: total,
@@ -2111,6 +2116,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     setQuantidade("");
     setValorUnit("");
     setCargueiro("");
+    setConferenteResponsavel("");
     setIsEstoque(false);
     setUltimaCompra(nova);
     showToast("Compra registrada");
@@ -2226,6 +2232,16 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           ))}
         </Select>
         <QuickAddInline placeholder="Adicionar novo cargueiro" onAdd={addCargueiro} />
+      </Field>
+      <Field label="Conferente Responsável (opcional)">
+        <TextInput
+          placeholder="Nome de quem vai conferir esta entrega"
+          value={conferenteResponsavel}
+          onChange={(e) => setConferenteResponsavel(e.target.value)}
+        />
+        <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+          Deixe em branco se qualquer conferente puder confirmar. Preenchido, só aparece pra quem digitar esse mesmo nome ao entrar como Conferente.
+        </div>
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Quantidade">
@@ -3008,14 +3024,45 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 /* ---------------------------------------------------------------------- */
 /* Conferência de Compras (cargueiro tica recebimento)                    */
 /* ---------------------------------------------------------------------- */
-function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast, setRecibo }) {
+function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast, setRecibo, soMeuNome }) {
   const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
   const [conferindoId, setConferindoId] = useState(null);
+  const [filtroCliente, setFiltroCliente] = useState(""); // "" = mostrar todas as empresas
 
-  const pendentes = transacoes.compras.filter((c) => !c.entregaConfirmada);
-  const confirmadas = transacoes.compras.filter((c) => c.entregaConfirmada);
+  const norm = (s) => (s || "").trim().toLowerCase();
+  // Se a compra tem conferente responsável definido, só ele (por nome) vê essa compra.
+  // Compras sem responsável definido continuam visíveis pra qualquer conferente (compatibilidade).
+  const ehMinha = (c) =>
+    !soMeuNome || !c.conferenteResponsavel || norm(c.conferenteResponsavel) === norm(soMeuNome);
 
-  // Dados de hoje pra liberar o "Finalizar Conferência"
+  const nomeCliente = (id) =>
+    id === "ESTOQUE" ? "Estoque" : cadastros.clientes.find((cl) => cl.id === id)?.nome || "—";
+
+  const ordenarClientes = (ids) =>
+    [...ids].sort((a, b) => {
+      if (a === "ESTOQUE") return -1;
+      if (b === "ESTOQUE") return 1;
+      return nomeCliente(a).localeCompare(nomeCliente(b), "pt-BR");
+    });
+
+  const todasMinhas = transacoes.compras.filter(ehMinha);
+  const pendentesTodas = todasMinhas.filter((c) => !c.entregaConfirmada);
+  const confirmadasTodas = todasMinhas.filter((c) => c.entregaConfirmada);
+
+  // Empresas/clientes disponíveis pra filtrar (a partir do que está pendente pra este conferente)
+  const empresasDisponiveis = ordenarClientes([...new Set(pendentesTodas.map((c) => c.clienteDestino))]);
+
+  const pendentes = filtroCliente ? pendentesTodas.filter((c) => c.clienteDestino === filtroCliente) : pendentesTodas;
+  const confirmadas = filtroCliente ? confirmadasTodas.filter((c) => c.clienteDestino === filtroCliente) : confirmadasTodas;
+
+  const agruparPorCliente = (lista) =>
+    ordenarClientes([...new Set(lista.map((c) => c.clienteDestino))]).map((id) => ({
+      id,
+      nome: nomeCliente(id),
+      itens: lista.filter((c) => c.clienteDestino === id),
+    }));
+
+  // Dados de hoje pra liberar o "Finalizar Conferência" (sempre olha tudo, não só o filtrado)
   const hoje = todayISO();
   const comprasHoje = transacoes.compras.filter((c) => c.data === hoje && c.clienteDestino !== "ESTOQUE");
   const pendentesHoje = comprasHoje.filter((c) => !c.entregaConfirmada);
@@ -3183,12 +3230,62 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
     );
   };
 
+  const GrupoClienteBloco = ({ grupo }) => (
+    <div key={grupo.id} className="mb-3">
+      <div
+        className="font-bold text-xs uppercase tracking-wide mb-2 px-2 py-1.5 rounded flex items-center gap-1.5"
+        style={{
+          background: grupo.id === "ESTOQUE" ? C.green700 : C.blue600,
+          color: "#fff",
+        }}
+      >
+        {grupo.id === "ESTOQUE" ? "📦" : "👤"} {grupo.nome}
+      </div>
+      <div className="flex flex-col gap-2">
+        {grupo.itens.map((c) => (
+          <CompraRow key={c.id} c={c} />
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
-        Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a
-        mercadoria chegar no pátio.
+        {soMeuNome
+          ? "Suas compras pra conferir, separadas por empresa/cliente."
+          : "Lista de compras pra o cargueiro conferir a quantidade recebida e marcar quando a mercadoria chegar no pátio."}
       </p>
+
+      {soMeuNome && empresasDisponiveis.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto mb-4 pb-1">
+          <button
+            onClick={() => setFiltroCliente("")}
+            className="px-3 py-2 rounded-lg text-xs font-bold flex-shrink-0"
+            style={{
+              background: !filtroCliente ? C.green700 : C.cardAlt,
+              color: !filtroCliente ? "#fff" : C.ink,
+              border: `1px solid ${!filtroCliente ? C.green700 : C.line}`,
+            }}
+          >
+            Todas as empresas
+          </button>
+          {empresasDisponiveis.map((id) => (
+            <button
+              key={id}
+              onClick={() => setFiltroCliente(id)}
+              className="px-3 py-2 rounded-lg text-xs font-bold flex-shrink-0"
+              style={{
+                background: filtroCliente === id ? C.green700 : C.cardAlt,
+                color: filtroCliente === id ? "#fff" : C.ink,
+                border: `1px solid ${filtroCliente === id ? C.green700 : C.line}`,
+              }}
+            >
+              {nomeCliente(id)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {setRecibo && (
         <Card
@@ -3239,25 +3336,21 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
       {pendentes.length === 0 ? (
         <Card>
           <p className="text-sm" style={{ color: C.inkSoft }}>
-            Nenhuma compra pendente de conferência.
+            {soMeuNome
+              ? "Nenhuma compra pendente atribuída a você."
+              : "Nenhuma compra pendente de conferência."}
           </p>
         </Card>
       ) : (
-        <div className="flex flex-col gap-2">
-          {pendentes.map((c) => (
-            <CompraRow key={c.id} c={c} />
-          ))}
-        </div>
+        agruparPorCliente(pendentes).map((grupo) => <GrupoClienteBloco key={grupo.id} grupo={grupo} />)
       )}
 
       {confirmadas.length > 0 && (
         <>
           <SectionTitle icon={Check}>Conferidas</SectionTitle>
-          <div className="flex flex-col gap-2">
-            {confirmadas.map((c) => (
-              <CompraRow key={c.id} c={c} />
-            ))}
-          </div>
+          {agruparPorCliente(confirmadas).map((grupo) => (
+            <GrupoClienteBloco key={grupo.id} grupo={grupo} />
+          ))}
         </>
       )}
     </div>
