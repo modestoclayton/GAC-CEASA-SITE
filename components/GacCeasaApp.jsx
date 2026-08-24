@@ -105,6 +105,7 @@ const SEED_CADASTROS = {
       temCNPJ: true,
       temDescontoFundoRural: false,
       pagamento: "PIX",
+      chavePix: "44998942726",
     },
   ],
   compradoresVendedores: [], // nomes autorizados a ter acesso completo (gestor)
@@ -395,10 +396,7 @@ const FUNCOES = [
 /* ---------------------------------------------------------------------- */
 function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   const isVenda = tipo === "venda";
-  const [editandoId, setEditandoId] = useState(null);
-  const [editQtd, setEditQtd] = useState("");
-  const [editPreco, setEditPreco] = useState("");
-  
+
   // Para vendas: agrupa TODAS as vendas do mesmo cliente
   // Para compras: agrupa TODAS as compras do mesmo clienteDestino
   const parte = isVenda
@@ -443,14 +441,6 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   }
 
   const totalGeral = totalSubtotal - totalDesconto;
-
-  // Edição afeta só o item selecionado (por id), não a lista toda
-  const itemEmEdicao = itens.find((i) => i.id === editandoId);
-  const totalComEdicoes = itemEmEdicao && editQtd && editPreco
-    ? totalGeral -
-      Number(itemEmEdicao.valorTotal) +
-      (Number(editQtd) * Number(editPreco))
-    : totalGeral;
 
   const titulo = isVenda ? "Pedido de Venda" : "Vale de Compra";
   const rotuloParte = isVenda ? "Cliente" : "Fornecedor";
@@ -505,6 +495,21 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
               Tel: {parte.telefone}
             </div>
           )}
+          {parte && parte.pagamento && (
+            <div className="mt-2 p-2 rounded" style={{ background: "#EDEAE0" }}>
+              <div className="text-xs uppercase font-bold" style={{ color: "#6E6650" }}>
+                Forma de Pagamento
+              </div>
+              <div className="text-sm font-bold" style={{ color: "#1F4A30" }}>
+                {parte.pagamento}
+              </div>
+              {parte.pagamento === "PIX" && parte.chavePix && (
+                <div className="text-sm mt-1" style={{ color: "#1F4A30" }}>
+                  <span className="font-bold">Chave Pix:</span> {parte.chavePix}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {!isVenda && clienteDestino && (
@@ -537,65 +542,19 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
           </thead>
           <tbody>
             {itens.map((i, idx) => {
-              const estaEditandoEsteItem = editandoId === i.id;
-              const qtdMostrada = estaEditandoEsteItem && editQtd ? Number(editQtd) : i.quantidade;
-              const precoMostrado = estaEditandoEsteItem && editPreco ? Number(editPreco) : (isVenda ? i.precoUnit : i.valorUnit);
-              const totalMostrado = qtdMostrada * precoMostrado;
-
+              const precoUnitario = isVenda ? i.precoUnit : i.valorUnit;
+              const totalItem = Number(i.quantidade) * Number(precoUnitario);
               return (
-              <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0", background: estaEditandoEsteItem ? "#F0ECD8" : "transparent" }}>
+              <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0" }}>
                 <td className="py-2">{i.produto}</td>
-                <td className="text-right py-2">{qtdMostrada}</td>
-                <td className="text-right py-2">{fmtMoney(precoMostrado)}</td>
-                <td className="text-right py-2 font-bold">{fmtMoney(totalMostrado)}</td>
+                <td className="text-right py-2">{i.quantidade}</td>
+                <td className="text-right py-2">{fmtMoney(precoUnitario)}</td>
+                <td className="text-right py-2 font-bold">{fmtMoney(totalItem)}</td>
               </tr>
             );
             })}
           </tbody>
         </table>
-
-        <div className="mb-4 print:hidden">
-          <button
-            onClick={() => {
-              if (editandoId === item.id) {
-                setEditandoId(null);
-              } else {
-                setEditandoId(item.id);
-                setEditQtd(String(item.quantidade || item.precoUnit));
-                setEditPreco(String(item.precoUnit || item.valorUnit));
-              }
-            }}
-            className="w-full px-4 py-2 rounded-lg font-bold text-sm"
-            style={{ background: editandoId === item.id ? "#D9861C" : "#1F4A30", color: "white" }}
-          >
-            {editandoId === item.id ? "✓ Pronto" : "✏️ Editar Quantidade/Valor (item selecionado)"}
-          </button>
-        </div>
-
-        {editandoId === item.id && (
-          <div className="mb-4 p-3 rounded-lg print:hidden" style={{ background: "#EDEAE0" }}>
-            <div className="text-sm font-bold mb-2">Editando: {item.produto}</div>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                value={editQtd}
-                onChange={(e) => setEditQtd(e.target.value)}
-                placeholder="Qtd"
-                className="flex-1 px-2 py-1 rounded border"
-              />
-              <input
-                type="number"
-                value={editPreco}
-                onChange={(e) => setEditPreco(e.target.value)}
-                placeholder="Valor"
-                className="flex-1 px-2 py-1 rounded border"
-              />
-            </div>
-            <div className="text-xs mt-2" style={{ color: "#6E6650" }}>
-              Isso altera só a visualização/impressão deste recibo — não atualiza o registro salvo. Para corrigir o valor de verdade, edite em "Registrar".
-            </div>
-          </div>
-        )}
 
         <div className="flex justify-end mb-6">
           <div className="text-right">
@@ -619,7 +578,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
               Total {isVenda ? "do Pedido" : "do Vale"}
             </div>
             <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
-              {fmtMoney(totalComEdicoes)}
+              {fmtMoney(totalGeral)}
             </div>
           </div>
         </div>
@@ -1520,6 +1479,7 @@ function QuickAddCliente({ onAdd, standalone = false }) {
   const [limiteCredito, setLimiteCredito] = useState("");
   const [pagamento, setPagamento] = useState("BOLETO");
   const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(false);
+  const [chavePix, setChavePix] = useState("");
 
   const reset = () => {
     setNome("");
@@ -1527,6 +1487,7 @@ function QuickAddCliente({ onAdd, standalone = false }) {
     setLimiteCredito("");
     setPagamento("BOLETO");
     setTemDescontoFundoRural(false);
+    setChavePix("");
   };
 
   if (!open)
@@ -1579,6 +1540,15 @@ function QuickAddCliente({ onAdd, standalone = false }) {
           </Select>
         </Field>
       </div>
+      {pagamento === "PIX" && (
+        <Field label="Chave Pix">
+          <TextInput
+            value={chavePix}
+            onChange={(e) => setChavePix(e.target.value)}
+            placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+          />
+        </Field>
+      )}
       <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -1601,6 +1571,7 @@ function QuickAddCliente({ onAdd, standalone = false }) {
               limiteCredito: Number(limiteCredito) || 0,
               pagamento,
               temDescontoFundoRural,
+              chavePix: chavePix.trim(),
             });
             reset();
             if (!standalone) setOpen(false);
@@ -1633,6 +1604,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
   const [temCNPJ, setTemCNPJ] = useState(false);
   const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(true);
   const [pagamento, setPagamento] = useState("DINHEIRO");
+  const [chavePix, setChavePix] = useState("");
 
   const reset = () => {
     setNome("");
@@ -1641,6 +1613,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
     setTemCNPJ(false);
     setTemDescontoFundoRural(true);
     setPagamento("DINHEIRO");
+    setChavePix("");
   };
 
   if (!open)
@@ -1710,6 +1683,15 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
               : "✓ Gera vale de requisição na Finalização"}
           </div>
         </Field>
+        {pagamento === "PIX" && (
+          <Field label="Chave Pix">
+            <TextInput
+              value={chavePix}
+              onChange={(e) => setChavePix(e.target.value)}
+              placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+            />
+          </Field>
+        )}
       </div>
       <div className="flex gap-2 mt-4">
         <button
@@ -1724,6 +1706,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
               temCNPJ,
               temDescontoFundoRural,
               pagamento,
+              chavePix: chavePix.trim(),
             });
             reset();
             if (!standalone) setOpen(false);
