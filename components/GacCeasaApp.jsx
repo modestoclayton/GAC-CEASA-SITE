@@ -913,8 +913,10 @@ export default function GacCeasaApp() {
   /* ---------------- derived data ---------------- */
   const estoquePorProduto = useMemo(() => {
     return [...cadastros.produtos].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR")).map((p) => {
+      // Só entra no saldo de estoque a compra marcada "Para Estoque".
+      // Compra destinada direto a um cliente (rancho) não deve contar como entrada de estoque.
       const entradas = transacoes.compras
-        .filter((c) => c.produto === p.nome)
+        .filter((c) => c.produto === p.nome && c.clienteDestino === "ESTOQUE")
         .reduce((s, c) => s + Number(c.quantidade), 0);
       const saidas = transacoes.vendas
         .filter((v) => v.produto === p.nome)
@@ -2189,6 +2191,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [editandoId, setEditandoId] = useState(null);
   const [editQtd, setEditQtd] = useState("");
   const [editValor, setEditValor] = useState("");
+  const [expandidoDestino, setExpandidoDestino] = useState(null);
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -2459,17 +2462,28 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
                   return nomeA.localeCompare(nomeB, "pt-BR");
                 });
 
+                const aberto = expandidoDestino === destinoId || gruposDestino.length === 1;
+
                 return (
                   <div key={destinoId}>
-                    <div
-                      className="font-bold mb-2 p-2 rounded"
+                    <button
+                      onClick={() => setExpandidoDestino(aberto && gruposDestino.length > 1 ? null : destinoId)}
+                      className="w-full font-bold mb-2 p-2.5 rounded flex items-center justify-between gap-1.5"
                       style={{
                         background: isEstoqueGrupo ? C.green700 : C.blue600,
                         color: isEstoqueGrupo ? C.ink : "white",
                       }}
                     >
-                      {isEstoqueGrupo ? "📦 COMPRA PARA ESTOQUE" : `👤 ${cliente?.nome || "—"}`}
-                    </div>
+                      <span>{isEstoqueGrupo ? "📦 COMPRA PARA ESTOQUE" : `👤 ${cliente?.nome || "—"}`}</span>
+                      <span className="flex items-center gap-1.5 text-xs font-bold" style={{ opacity: 0.9 }}>
+                        {comprasDoGrupo.length} {comprasDoGrupo.length === 1 ? "item" : "itens"}
+                        <ChevronRight
+                          size={16}
+                          style={{ transform: aberto ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
+                        />
+                      </span>
+                    </button>
+                    {aberto && (
                     <div className="flex flex-col gap-2">
                       {produtoresDoGrupo.map((produtorId) => {
                         const produtor = cadastros.produtores.find((p) => p.id === produtorId);
@@ -2545,6 +2559,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
                         );
                       })}
                     </div>
+                    )}
                   </div>
                 );
               })}
