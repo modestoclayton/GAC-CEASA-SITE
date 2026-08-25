@@ -447,7 +447,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto"
+      className="fixed inset-0 z-50 overflow-y-auto recibo-imprimir"
       style={{ background: "#F4F2EA" }}
     >
       <div className="mx-auto max-w-md py-6 px-6" style={{ color: "#1C1B18" }}>
@@ -608,10 +608,23 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
       </div>
 
       <style jsx global>{`
+        @page {
+          margin: 15mm;
+        }
         @media print {
           nav,
           header {
             display: none !important;
+          }
+          body {
+            margin: 0;
+          }
+          .recibo-imprimir {
+            position: static !important;
+            inset: auto !important;
+            overflow: visible !important;
+            height: auto !important;
+            background: #fff !important;
           }
         }
       `}</style>
@@ -1884,19 +1897,129 @@ function gerarPDFFolhaCarga(compras, dataSelecionada, cadastros) {
 
 /* GERADOR DE PDF - VALES */
 function gerarPDFVales(compras, dataSelecionada, cadastros) {
-  const comprasOrdenadas = [...compras].sort((a, b) => a.produto.localeCompare(b.produto));
-  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vales</title><style>body{font-family:Arial;margin:10px}.vale{border:2px dashed #1E4A30;padding:15px;margin-bottom:20px;page-break-inside:avoid}.vale-header{font-weight:bold;font-size:14px;margin-bottom:10px;color:#1E4A30;text-align:center}.cut-line{text-align:center;color:#ccc;margin:15px 0}</style></head><body>`;
-
-  comprasOrdenadas.forEach((c, i) => {
-    const prod = cadastros.produtores.find(p => p.id === c.produtorId);
-    const cliente = cadastros.clientes.find(cl => cl.id === c.clienteDestino);
-    html += `<div class="vale"><div class="vale-header">📝 VALE #${i+1}</div><p><b>Data:</b> ${new Date(c.data+'T00:00:00').toLocaleDateString('pt-BR')}<br><b>Produto:</b> ${c.produto}<br><b>Produtor:</b> ${prod?.nome || '—'}<br><b>Destino:</b> ${cliente?.nome || 'ESTOQUE'}</p><hr><p><b>Quantidade:</b> ${c.quantidade} CX<br><b>Valor Unit.:</b> R$ ${(c.valorUnit||0).toFixed(2)}<br><b>Total:</b> R$ ${(c.valorFinal||c.valorTotal).toFixed(2)}</p><div class="cut-line">✂️ ✂️ ✂️</div></div>`;
+  // Agrupa exatamente como o recibo manual: um vale = um Fornecedor + um Cliente Destino + um Dia
+  const grupos = {};
+  compras.forEach((c) => {
+    const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
+    if (!grupos[chave]) grupos[chave] = [];
+    grupos[chave].push(c);
   });
 
-  html += `</body></html>`;
-  const blob = new Blob([html], { type: 'text/html' });
+  const blocosHtml = Object.values(grupos)
+    .map((itensGrupo, idx, arr) => {
+      const primeiro = itensGrupo[0];
+      const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
+      const cliente = cadastros.clientes.find((c) => c.id === primeiro.clienteDestino);
+      const itensOrdenados = [...itensGrupo].sort((a, b) => a.produto.localeCompare(b.produto, "pt-BR"));
+
+      const subtotal = itensGrupo.reduce((s, c) => s + Number(c.valorTotal), 0);
+      const desconto = produtor?.temDescontoFundoRural ? subtotal * 0.0163 : 0;
+      const total = subtotal - desconto;
+
+      const linhasTabela = itensOrdenados
+        .map(
+          (i) => `
+        <tr>
+          <td style="padding:8px;border-bottom:1px solid #D8CBA0;">${i.produto}</td>
+          <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${i.quantidade}</td>
+          <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">R$ ${(i.valorUnit || 0).toFixed(2)}</td>
+          <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</td>
+        </tr>`
+        )
+        .join("");
+
+      const boxPagamento =
+        produtor && produtor.pagamento
+          ? `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
+              <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Forma de Pagamento</div>
+              <div style="font-size:15px;font-weight:bold;color:#1F4A30;">${produtor.pagamento}</div>
+              ${
+                produtor.pagamento === "PIX" && produtor.chavePix
+                  ? `<div style="font-size:14px;margin-top:4px;color:#1F4A30;"><b>Chave Pix:</b> ${produtor.chavePix}</div>`
+                  : ""
+              }
+            </div>`
+          : "";
+
+      const boxCliente = `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
+        <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Para Quem (Cliente Destino)</div>
+        <div style="font-size:18px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "—"}</div>
+        ${cliente?.cidade ? `<div style="font-size:14px;color:#6E6650;">${cliente.cidade}</div>` : ""}
+      </div>`;
+
+      const quebraPagina = idx < arr.length - 1 ? "page-break-after:always;" : "";
+
+      return `
+        <div style="max-width:480px;margin:0 auto 0;padding:24px 24px 40px;color:#1C1B18;${quebraPagina}">
+          <div style="border-bottom:2px solid #1F4A30;padding-bottom:16px;margin-bottom:16px;">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">GAC CEASA MANAGER</div>
+            <div style="font-size:26px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
+            <div style="font-size:12px;color:#6E6650;margin-top:4px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
+            <div style="font-size:18px;font-weight:bold;">${produtor?.nome || "—"}</div>
+            ${produtor?.cidade ? `<div style="font-size:14px;color:#6E6650;">${produtor.cidade}</div>` : ""}
+            ${produtor?.telefone ? `<div style="font-size:14px;color:#6E6650;">Tel: ${produtor.telefone}</div>` : ""}
+          </div>
+
+          ${boxPagamento}
+          ${boxCliente}
+
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+            <thead>
+              <tr style="border-bottom:2px solid #1F4A30;">
+                <th style="text-align:left;padding:8px 8px 8px 0;">Produto</th>
+                <th style="text-align:right;padding:8px;">Qtd.</th>
+                <th style="text-align:right;padding:8px;">Valor Unit.</th>
+                <th style="text-align:right;padding:8px 0 8px 8px;">Total</th>
+              </tr>
+            </thead>
+            <tbody>${linhasTabela}</tbody>
+          </table>
+
+          <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
+            <div style="text-align:right;">
+              <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Subtotal</div>
+              <div style="font-size:16px;font-family:monospace;">R$ ${subtotal.toFixed(2)}</div>
+              ${
+                desconto > 0
+                  ? `<div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#D9861C;margin-top:8px;">Desconto (-1.63%)</div>
+                     <div style="font-size:16px;font-family:monospace;color:#D9861C;">-R$ ${desconto.toFixed(2)}</div>`
+                  : ""
+              }
+              <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;margin-top:10px;padding-top:8px;border-top:1px solid #D8CBA0;">Total do Vale</div>
+              <div style="font-size:22px;font-weight:bold;color:#1F4A30;">R$ ${total.toFixed(2)}</div>
+            </div>
+          </div>
+
+          <div style="font-size:11px;text-align:center;margin-top:24px;padding-top:14px;border-top:1px solid #D8CBA0;color:#6E6650;">
+            Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vales de Compra</title>
+    <style>
+      @page { margin: 15mm; }
+      body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
+      .barra-topo { position: sticky; top: 0; background: #fff; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: right; }
+      .botao-imprimir { background: #1F4A30; color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 14px; cursor: pointer; }
+      @media print {
+        .barra-topo { display: none !important; }
+        body { background: #fff; }
+      }
+    </style>
+    </head><body>
+    <div class="barra-topo"><button class="botao-imprimir" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>
+    ${blocosHtml}
+    </body></html>`;
+
+  const blob = new Blob([html], { type: "text/html" });
   const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
   link.download = `Vales-${dataSelecionada}.html`;
   link.click();
@@ -3176,6 +3299,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const [filtroCliente, setFiltroCliente] = useState(""); // "" = mostrar todas as empresas
   const [expandidoPendente, setExpandidoPendente] = useState(null); // id do cliente aberto em "A conferir"
   const [expandidoConferida, setExpandidoConferida] = useState(null); // id do cliente aberto em "Conferidas"
+  const [dataConferidas, setDataConferidas] = useState(todayISO()); // Conferidas só mostra o dia selecionado, começando em hoje
 
   const norm = (s) => (s || "").trim().toLowerCase();
   const nomeCargueiro = (cargueiroId) =>
@@ -3198,7 +3322,9 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
 
   const todasMinhas = transacoes.compras.filter(ehMinha);
   const pendentesTodas = todasMinhas.filter((c) => !c.entregaConfirmada);
-  const confirmadasTodas = todasMinhas.filter((c) => c.entregaConfirmada);
+  // "Conferidas" só mostra o dia selecionado — o que já foi finalizado não fica
+  // acumulando aqui pra sempre; pra revisar um dia anterior, é só trocar a data.
+  const confirmadasTodas = todasMinhas.filter((c) => c.entregaConfirmada && c.data === dataConferidas);
 
   // Empresas/clientes disponíveis pra filtrar (a partir do que está pendente pra este conferente)
   const empresasDisponiveis = ordenarClientes([...new Set(pendentesTodas.map((c) => c.clienteDestino))]);
@@ -3529,22 +3655,34 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
         })()
       )}
 
-      {confirmadas.length > 0 && (
-        <>
-          <SectionTitle icon={Check}>Conferidas</SectionTitle>
-          {(() => {
-            const gruposConferidas = agruparPorCliente(confirmadas);
-            const forcarUnico = gruposConferidas.length === 1 ? gruposConferidas[0].id : null;
-            return gruposConferidas.map((grupo) => (
-              <GrupoClienteBloco
-                key={grupo.id}
-                grupo={grupo}
-                expandido={forcarUnico || expandidoConferida}
-                onToggle={setExpandidoConferida}
-              />
-            ));
-          })()}
-        </>
+      <SectionTitle icon={Check}>Conferidas</SectionTitle>
+      <Field label="Ver conferidas do dia">
+        <TextInput
+          type="date"
+          value={dataConferidas}
+          onChange={(e) => setDataConferidas(e.target.value)}
+          max={todayISO()}
+        />
+      </Field>
+      {confirmadas.length === 0 ? (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            Nenhuma compra conferida em {fmtDate(dataConferidas)}.
+          </p>
+        </Card>
+      ) : (
+        (() => {
+          const gruposConferidas = agruparPorCliente(confirmadas);
+          const forcarUnico = gruposConferidas.length === 1 ? gruposConferidas[0].id : null;
+          return gruposConferidas.map((grupo) => (
+            <GrupoClienteBloco
+              key={grupo.id}
+              grupo={grupo}
+              expandido={forcarUnico || expandidoConferida}
+              onToggle={setExpandidoConferida}
+            />
+          ));
+        })()
       )}
     </div>
   );
