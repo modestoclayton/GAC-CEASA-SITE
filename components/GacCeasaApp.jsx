@@ -503,7 +503,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
               <div className="text-sm font-bold" style={{ color: "#1F4A30" }}>
                 {parte.pagamento}
               </div>
-              {parte.pagamento === "PIX" && parte.chavePix && (
+              {parte.pagamento !== "BOLETO" && parte.chavePix && (
                 <div className="text-sm mt-1" style={{ color: "#1F4A30" }}>
                   <span className="font-bold">Chave Pix:</span> {parte.chavePix}
                 </div>
@@ -1492,7 +1492,6 @@ function QuickAddCliente({ onAdd, standalone = false }) {
   const [limiteCredito, setLimiteCredito] = useState("");
   const [pagamento, setPagamento] = useState("BOLETO");
   const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(false);
-  const [chavePix, setChavePix] = useState("");
 
   const reset = () => {
     setNome("");
@@ -1500,7 +1499,6 @@ function QuickAddCliente({ onAdd, standalone = false }) {
     setLimiteCredito("");
     setPagamento("BOLETO");
     setTemDescontoFundoRural(false);
-    setChavePix("");
   };
 
   if (!open)
@@ -1553,15 +1551,6 @@ function QuickAddCliente({ onAdd, standalone = false }) {
           </Select>
         </Field>
       </div>
-      {pagamento === "PIX" && (
-        <Field label="Chave Pix">
-          <TextInput
-            value={chavePix}
-            onChange={(e) => setChavePix(e.target.value)}
-            placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
-          />
-        </Field>
-      )}
       <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -1584,7 +1573,6 @@ function QuickAddCliente({ onAdd, standalone = false }) {
               limiteCredito: Number(limiteCredito) || 0,
               pagamento,
               temDescontoFundoRural,
-              chavePix: chavePix.trim(),
             });
             reset();
             if (!standalone) setOpen(false);
@@ -1696,7 +1684,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
               : "✓ Gera vale de requisição na Finalização"}
           </div>
         </Field>
-        {pagamento === "PIX" && (
+        {pagamento !== "BOLETO" && (
           <Field label="Chave Pix">
             <TextInput
               value={chavePix}
@@ -1934,7 +1922,7 @@ function gerarPDFVales(compras, dataSelecionada, cadastros) {
               <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Forma de Pagamento</div>
               <div style="font-size:15px;font-weight:bold;color:#1F4A30;">${produtor.pagamento}</div>
               ${
-                produtor.pagamento === "PIX" && produtor.chavePix
+                produtor.pagamento !== "BOLETO" && produtor.chavePix
                   ? `<div style="font-size:14px;margin-top:4px;color:#1F4A30;"><b>Chave Pix:</b> ${produtor.chavePix}</div>`
                   : ""
               }
@@ -4187,10 +4175,184 @@ function GerenciarAcessoView({ cadastros, persistCadastros, showToast }) {
 /* ---------------------------------------------------------------------- */
 /* Conta Corrente Tab                                                     */
 /* ---------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------- */
+/* Edição de cadastro existente — Cliente e Produtor                      */
+/* ---------------------------------------------------------------------- */
+function EditarCliente({ cliente, onSalvar, onCancelar }) {
+  const [nome, setNome] = useState(cliente.nome || "");
+  const [cidade, setCidade] = useState(cliente.cidade || "");
+  const [limiteCredito, setLimiteCredito] = useState(String(cliente.limiteCredito || ""));
+  const [pagamento, setPagamento] = useState(cliente.pagamento || "BOLETO");
+  const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(!!cliente.temDescontoFundoRural);
+
+  return (
+    <div className="mt-2 rounded-lg p-3" style={{ background: C.cardAlt, border: `1px solid ${C.line}` }} onClick={(e) => e.stopPropagation()}>
+      <div className="text-xs font-bold mb-2 uppercase tracking-wide" style={{ color: C.amber500 }}>
+        Editando Cliente
+      </div>
+      <Field label="Nome do cliente">
+        <TextInput value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+      </Field>
+      <Field label="Cidade">
+        <TextInput value={cidade} onChange={(e) => setCidade(e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Limite de Crédito (R$)">
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            value={limiteCredito}
+            onChange={(e) => setLimiteCredito(e.target.value)}
+          />
+        </Field>
+        <Field label="Forma de Pagamento">
+          <Select value={pagamento} onChange={(e) => setPagamento(e.target.value)}>
+            <option value="BOLETO">Boleto</option>
+            <option value="PIX">PIX</option>
+            <option value="DINHEIRO">Dinheiro</option>
+            <option value="OUTRO">Outro</option>
+          </Select>
+        </Field>
+      </div>
+      <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={temDescontoFundoRural}
+            onChange={(e) => setTemDescontoFundoRural(e.target.checked)}
+          />
+          <span style={{ color: C.ink, fontSize: "14px" }}>📋 Aplica Desconto Fundo Rural (1.63%)?</span>
+        </label>
+      </div>
+      <div className="flex gap-2 mt-1">
+        <button
+          className="flex-1 px-3 py-2.5 rounded-lg font-bold text-sm"
+          style={{ background: C.amber500, color: C.green900 }}
+          onClick={() => {
+            if (!nome.trim()) return;
+            onSalvar({
+              id: cliente.id,
+              codigo: cliente.codigo,
+              nome: nome.trim(),
+              cidade: cidade.trim(),
+              limiteCredito: Number(limiteCredito) || 0,
+              pagamento,
+              temDescontoFundoRural,
+            });
+          }}
+        >
+          Salvar Alterações
+        </button>
+        <button className="px-3 rounded-lg" style={{ color: C.inkSoft }} onClick={onCancelar}>
+          <X size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditarProdutor({ produtor, onSalvar, onCancelar }) {
+  const [nome, setNome] = useState(produtor.nome || "");
+  const [cidade, setCidade] = useState(produtor.cidade || "");
+  const [telefone, setTelefone] = useState(produtor.telefone || "");
+  const [temCNPJ, setTemCNPJ] = useState(!!produtor.temCNPJ);
+  const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(!!produtor.temDescontoFundoRural);
+  const [pagamento, setPagamento] = useState(produtor.pagamento || "DINHEIRO");
+  const [chavePix, setChavePix] = useState(produtor.chavePix || "");
+
+  return (
+    <Card style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+      <div className="text-xs font-bold mb-2 uppercase tracking-wide" style={{ color: C.amber500 }}>
+        Editando Produtor
+      </div>
+      <div className="grid grid-cols-1 gap-3">
+        <Field label="Nome do Produtor">
+          <TextInput value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+        </Field>
+        <Field label="Cidade">
+          <TextInput value={cidade} onChange={(e) => setCidade(e.target.value)} />
+        </Field>
+        <Field label="Telefone">
+          <TextInput value={telefone} onChange={(e) => setTelefone(e.target.value)} />
+        </Field>
+        <div>
+          <label className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={temCNPJ}
+              onChange={(e) => setTemCNPJ(e.target.checked)}
+              style={{ width: "16px", height: "16px", cursor: "pointer" }}
+            />
+            <span className="text-sm" style={{ color: C.ink }}>
+              Tem CNPJ
+            </span>
+          </label>
+        </div>
+        <div>
+          <label className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={temDescontoFundoRural}
+              onChange={(e) => setTemDescontoFundoRural(e.target.checked)}
+              style={{ width: "16px", height: "16px", cursor: "pointer" }}
+            />
+            <span className="text-sm" style={{ color: C.ink }}>
+              Desconto Fundo Rural (1.63%)
+            </span>
+          </label>
+        </div>
+        <Field label="Forma de Pagamento">
+          <Select value={pagamento} onChange={(e) => setPagamento(e.target.value)}>
+            <option value="BOLETO">Boleto</option>
+            <option value="PIX">PIX</option>
+            <option value="DINHEIRO">Dinheiro</option>
+          </Select>
+        </Field>
+        {pagamento !== "BOLETO" && (
+          <Field label="Chave Pix">
+            <TextInput
+              value={chavePix}
+              onChange={(e) => setChavePix(e.target.value)}
+              placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+            />
+          </Field>
+        )}
+      </div>
+      <div className="flex gap-2 mt-4">
+        <button
+          className="flex-1 px-3 py-2.5 rounded-lg font-bold text-sm"
+          style={{ background: C.amber500, color: C.green900 }}
+          onClick={() => {
+            if (!nome.trim()) return;
+            onSalvar({
+              id: produtor.id,
+              codigo: produtor.codigo,
+              nome: nome.trim(),
+              cidade: cidade.trim(),
+              telefone: telefone.trim(),
+              temCNPJ,
+              temDescontoFundoRural,
+              pagamento,
+              chavePix: chavePix.trim(),
+            });
+          }}
+        >
+          Salvar Alterações
+        </button>
+        <button onClick={onCancelar} style={{ color: C.inkSoft }}>
+          <X size={18} />
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastros, persistCadastros, showToast, setRecibo }) {
   const [view, setView] = useState("clientes");
   const [expanded, setExpanded] = useState(null);
   const [novoOpen, setNovoOpen] = useState(false);
+  const [editandoClienteId, setEditandoClienteId] = useState(null);
+  const [editandoProdutorId, setEditandoProdutorId] = useState(null);
 
   const addCliente = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
@@ -4198,6 +4360,26 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
     await persistCadastros(next);
     setNovoOpen(false);
     if (showToast) showToast("Cliente cadastrado");
+  };
+
+  const editarCliente = async (dadosAtualizados) => {
+    const next = {
+      ...cadastros,
+      clientes: cadastros.clientes.map((c) => (c.id === dadosAtualizados.id ? dadosAtualizados : c)),
+    };
+    await persistCadastros(next);
+    setEditandoClienteId(null);
+    if (showToast) showToast("Cliente atualizado");
+  };
+
+  const editarProdutor = async (dadosAtualizados) => {
+    const next = {
+      ...cadastros,
+      produtores: cadastros.produtores.map((p) => (p.id === dadosAtualizados.id ? dadosAtualizados : p)),
+    };
+    await persistCadastros(next);
+    setEditandoProdutorId(null);
+    if (showToast) showToast("Produtor atualizado");
   };
 
   return (
@@ -4306,7 +4488,30 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
                 </div>
               </div>
               {expanded === c.id && (
-                <ExtratoCliente clienteId={c.id} transacoes={transacoes} setRecibo={setRecibo} />
+                <>
+                  <ExtratoCliente clienteId={c.id} transacoes={transacoes} setRecibo={setRecibo} />
+                  {editandoClienteId === c.id ? (
+                    <EditarCliente
+                      cliente={c}
+                      onSalvar={editarCliente}
+                      onCancelar={(e) => {
+                        e?.stopPropagation?.();
+                        setEditandoClienteId(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditandoClienteId(c.id);
+                      }}
+                      className="text-xs font-bold mt-2"
+                      style={{ color: C.amber500 }}
+                    >
+                      ✏️ Editar Cadastro
+                    </button>
+                  )}
+                </>
               )}
             </Card>
           ))}
@@ -4350,7 +4555,30 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
                 </div>
               </div>
               {expanded === p.id && (
-                <ExtratoProdutor produtorId={p.id} transacoes={transacoes} setRecibo={setRecibo} />
+                <>
+                  <ExtratoProdutor produtorId={p.id} transacoes={transacoes} setRecibo={setRecibo} />
+                  {editandoProdutorId === p.id ? (
+                    <EditarProdutor
+                      produtor={p}
+                      onSalvar={editarProdutor}
+                      onCancelar={(e) => {
+                        e?.stopPropagation?.();
+                        setEditandoProdutorId(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditandoProdutorId(p.id);
+                      }}
+                      className="text-xs font-bold mt-2"
+                      style={{ color: C.amber500 }}
+                    >
+                      ✏️ Editar Cadastro
+                    </button>
+                  )}
+                </>
               )}
             </Card>
           ))}
