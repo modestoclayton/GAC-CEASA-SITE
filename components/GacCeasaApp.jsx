@@ -73,6 +73,60 @@ const fmtDate = (iso) => {
   return `${d}/${m}/${y}`;
 };
 
+const PRAZO_VENCIMENTO_DIAS = 35;
+
+// Calcula o status de cada débito (compra ou venda) contra os pagamentos/recebimentos
+// já lançados, usando FIFO: o total pago vai quitando os débitos mais antigos primeiro.
+// "ajuste" (desconto) conta igual pagamento pra fins de quitação, mas é sinalizado à parte.
+function calcularStatusPagamentos(debitos, pagamentos, hojeISO) {
+  const debitosOrdenados = [...debitos].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  const pagamentosOrdenados = [...pagamentos]
+    .sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0))
+    .map((p) => ({ ...p, restante: Number(p.valor) || 0 }));
+
+  let idxPagamento = 0;
+  const hoje = new Date(hojeISO + "T00:00:00");
+
+  return debitosOrdenados.map((d) => {
+    let faltaAlocar = Number(d.valor) || 0;
+    let dataQuitacao = null;
+    let tipoQuitacao = null; // "pagamento" | "ajuste" | "misto"
+
+    while (faltaAlocar > 0.009 && idxPagamento < pagamentosOrdenados.length) {
+      const pag = pagamentosOrdenados[idxPagamento];
+      if (pag.restante <= 0.009) {
+        idxPagamento++;
+        continue;
+      }
+      const usar = Math.min(pag.restante, faltaAlocar);
+      pag.restante -= usar;
+      faltaAlocar -= usar;
+      dataQuitacao = pag.data;
+      tipoQuitacao = tipoQuitacao && tipoQuitacao !== (pag.tipo || "pagamento") ? "misto" : pag.tipo || "pagamento";
+      if (pag.restante <= 0.009) idxPagamento++;
+    }
+
+    const pago = faltaAlocar <= 0.009;
+    const dataDebito = new Date(d.data + "T00:00:00");
+    const diasDesde = Math.floor((hoje - dataDebito) / 86400000);
+    let status;
+    if (pago) status = "pago";
+    else if (diasDesde > PRAZO_VENCIMENTO_DIAS) status = "vencido";
+    else status = "a_vencer";
+
+    return {
+      ...d,
+      pago,
+      status,
+      dataQuitacao,
+      tipoQuitacao,
+      diasDesde,
+      diasParaVencer: PRAZO_VENCIMENTO_DIAS - diasDesde,
+      saldoAberto: Math.max(faltaAlocar, 0),
+    };
+  });
+}
+
 const SEED_CADASTROS = {
   produtos: [
     {
@@ -3011,19 +3065,30 @@ function EntregaVendaForm({ vendaId, initial, venda, transacoes, persistTransaco
 
 function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }) {
   const [clienteId, setClienteId] = useState(cadastros.clientes[0]?.id || "");
+  const [data, setData] = useState(todayISO());
+  const [tipo, setTipo] = useState("pagamento"); // "pagamento" | "ajuste"
+  const [formaPagamento, setFormaPagamento] = useState("PIX");
   const [valor, setValor] = useState("");
   const [obs, setObs] = useState("");
 
   const salvar = async () => {
     if (!clienteId || !valor) return;
-    const novo = { id: uid(), data: todayISO(), clienteId, valor: Number(valor), obs };
+    const novo = {
+      id: uid(),
+      data,
+      clienteId,
+      valor: Number(valor),
+      tipo,
+      formaPagamento: tipo === "pagamento" ? formaPagamento : null,
+      obs,
+    };
     await persistTransacoes({
       ...transacoes,
       recebimentos: [novo, ...transacoes.recebimentos],
     });
     setValor("");
     setObs("");
-    showToast("Recebimento registrado");
+    showToast(tipo === "pagamento" ? "Recebimento registrado" : "Desconto/Ajuste registrado");
   };
 
   return (
@@ -3037,7 +3102,26 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
           ))}
         </Select>
       </Field>
-      <Field label="Valor Recebido (R$)">
+      <Field label="Data">
+        <TextInput type="date" value={data} onChange={(e) => setData(e.target.value)} max={todayISO()} />
+      </Field>
+      <Field label="Tipo de Lançamento">
+        <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <option value="pagamento">Recebimento (dinheiro entrou de verdade)</option>
+          <option value="ajuste">Desconto / Ajuste (abate a dívida, sem receber)</option>
+        </Select>
+      </Field>
+      {tipo === "pagamento" && (
+        <Field label="Forma de Pagamento">
+          <Select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)}>
+            <option value="PIX">PIX</option>
+            <option value="DINHEIRO">Dinheiro</option>
+            <option value="BOLETO">Boleto</option>
+            <option value="CHEQUE">Cheque</option>
+          </Select>
+        </Field>
+      )}
+      <Field label={tipo === "pagamento" ? "Valor Recebido (R$)" : "Valor do Desconto (R$)"}>
         <TextInput
           type="number"
           inputMode="decimal"
@@ -3048,10 +3132,18 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
         />
       </Field>
       <Field label="Observação (opcional)">
-        <TextInput value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex: PIX, boleto nº..." />
+        <TextInput
+          value={obs}
+          onChange={(e) => setObs(e.target.value)}
+          placeholder={tipo === "pagamento" ? "Ex: referente a boleto nº..." : "Ex: motivo do desconto"}
+        />
       </Field>
-      <PrimaryButton onClick={salvar} icon={HandCoins} disabled={!clienteId || !valor || Number(valor) <= 0}>
-        Registrar Recebimento
+      <PrimaryButton
+        onClick={salvar}
+        icon={HandCoins}
+        disabled={!clienteId || !valor || Number(valor) <= 0}
+      >
+        {tipo === "pagamento" ? "Registrar Recebimento" : "Registrar Desconto/Ajuste"}
       </PrimaryButton>
     </Card>
   );
@@ -3059,19 +3151,30 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
 
 function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) {
   const [produtorId, setProdutorId] = useState(cadastros.produtores[0]?.id || "");
+  const [data, setData] = useState(todayISO());
+  const [tipo, setTipo] = useState("pagamento"); // "pagamento" | "ajuste"
+  const [formaPagamento, setFormaPagamento] = useState("PIX");
   const [valor, setValor] = useState("");
   const [obs, setObs] = useState("");
 
   const salvar = async () => {
     if (!produtorId || !valor) return;
-    const novo = { id: uid(), data: todayISO(), produtorId, valor: Number(valor), obs };
+    const novo = {
+      id: uid(),
+      data,
+      produtorId,
+      valor: Number(valor),
+      tipo,
+      formaPagamento: tipo === "pagamento" ? formaPagamento : null,
+      obs,
+    };
     await persistTransacoes({
       ...transacoes,
       pagamentos: [novo, ...transacoes.pagamentos],
     });
     setValor("");
     setObs("");
-    showToast("Pagamento registrado");
+    showToast(tipo === "pagamento" ? "Pagamento registrado" : "Desconto/Ajuste registrado");
   };
 
   return (
@@ -3085,7 +3188,26 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
           ))}
         </Select>
       </Field>
-      <Field label="Valor Pago (R$)">
+      <Field label="Data">
+        <TextInput type="date" value={data} onChange={(e) => setData(e.target.value)} max={todayISO()} />
+      </Field>
+      <Field label="Tipo de Lançamento">
+        <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <option value="pagamento">Pagamento (dinheiro saiu de verdade)</option>
+          <option value="ajuste">Desconto / Ajuste (abate a dívida, sem pagar)</option>
+        </Select>
+      </Field>
+      {tipo === "pagamento" && (
+        <Field label="Forma de Pagamento">
+          <Select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)}>
+            <option value="PIX">PIX</option>
+            <option value="DINHEIRO">Dinheiro</option>
+            <option value="BOLETO">Boleto</option>
+            <option value="CHEQUE">Cheque</option>
+          </Select>
+        </Field>
+      )}
+      <Field label={tipo === "pagamento" ? "Valor Pago (R$)" : "Valor do Desconto (R$)"}>
         <TextInput
           type="number"
           inputMode="decimal"
@@ -3096,10 +3218,18 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
         />
       </Field>
       <Field label="Observação (opcional)">
-        <TextInput value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex: PIX, dinheiro..." />
+        <TextInput
+          value={obs}
+          onChange={(e) => setObs(e.target.value)}
+          placeholder={tipo === "pagamento" ? "Ex: referente a nota nº..." : "Ex: mercadoria com problema"}
+        />
       </Field>
-      <PrimaryButton onClick={salvar} icon={Landmark} disabled={!produtorId || !valor || Number(valor) <= 0}>
-        Registrar Pagamento
+      <PrimaryButton
+        onClick={salvar}
+        icon={Landmark}
+        disabled={!produtorId || !valor || Number(valor) <= 0}
+      >
+        {tipo === "pagamento" ? "Registrar Pagamento" : "Registrar Desconto/Ajuste"}
       </PrimaryButton>
     </Card>
   );
@@ -4588,88 +4718,137 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
   );
 }
 
+function badgeStatusInfo(status) {
+  if (status === "pago") return { label: "Pago", bg: C.green700, fg: "#fff" };
+  if (status === "vencido") return { label: "Vencido", bg: C.rust, fg: "#fff" };
+  return { label: "A vencer", bg: C.amber500, fg: "#1a1a1a" };
+}
+
+function LinhaDebito({ d, rotuloTipo, tipoRecibo, setRecibo }) {
+  const info = badgeStatusInfo(d.status);
+  const clicavel = Boolean(setRecibo && d.id && tipoRecibo);
+  return (
+    <div
+      className="rounded-lg p-2 mb-1.5"
+      style={{ background: C.cardAlt, border: `1px solid ${C.line}` }}
+      onClick={
+        clicavel
+          ? (e) => {
+              e.stopPropagation();
+              setRecibo({ tipo: tipoRecibo, item: d });
+            }
+          : undefined
+      }
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs" style={{ color: C.inkSoft, textDecoration: clicavel ? "underline" : "none" }}>
+          {fmtDate(d.data)} · {rotuloTipo}
+          {clicavel && " (ver vale)"}
+        </span>
+        <span
+          className="text-xs font-bold px-2 py-0.5 rounded-full uppercase"
+          style={{ background: info.bg, color: info.fg, flexShrink: 0 }}
+        >
+          {info.label}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2 mt-1">
+        <span className="text-xs" style={{ color: C.inkSoft }}>
+          {d.status === "pago"
+            ? d.dataQuitacao
+              ? `Quitado em ${fmtDate(d.dataQuitacao)}${d.tipoQuitacao === "ajuste" ? " (via desconto)" : d.tipoQuitacao === "misto" ? " (pgto + desconto)" : ""}`
+              : "Quitado"
+            : d.status === "vencido"
+            ? `Vencido há ${d.diasDesde - PRAZO_VENCIMENTO_DIAS} dia(s)`
+            : `Vence em ${d.diasParaVencer} dia(s)`}
+        </span>
+        <span style={{ fontFamily: monoFont, fontWeight: 700, color: C.ink }}>{fmtMoney(d.valor)}</span>
+      </div>
+      {!d.pago && d.saldoAberto < d.valor && (
+        <div className="text-xs mt-0.5" style={{ color: C.amber500 }}>
+          Parcialmente coberto — falta {fmtMoney(d.saldoAberto)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ListaPagamentos({ pagamentos, rotuloPagamento }) {
+  if (pagamentos.length === 0) return null;
+  const ordenados = [...pagamentos].sort((a, b) => (a.data < b.data ? 1 : -1));
+  return (
+    <div className="mt-3 pt-2 border-t" style={{ borderColor: C.line }}>
+      <div className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: C.inkSoft }}>
+        Histórico de {rotuloPagamento}
+      </div>
+      {ordenados.map((p, i) => (
+        <div key={p.id || i} className="flex items-center justify-between text-xs mb-1">
+          <span style={{ color: C.inkSoft }}>
+            {fmtDate(p.data)} ·{" "}
+            {p.tipo === "ajuste" ? "Desconto/Ajuste" : p.formaPagamento || "Pagamento"}
+            {p.obs ? ` · ${p.obs}` : ""}
+          </span>
+          <span style={{ fontFamily: monoFont, fontWeight: 700, color: p.tipo === "ajuste" ? C.amber500 : C.green700 }}>
+            −{fmtMoney(p.valor)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ExtratoCliente({ clienteId, transacoes, setRecibo }) {
-  const lancamentos = [
-    ...transacoes.vendas
-      .filter((v) => v.clienteId === clienteId)
-      .map((v) => ({
-        data: v.data,
-        tipo: "Venda",
-        valor: v.valorFinal ?? v.valorTotal,
-        sinal: 1,
-        item: v,
-        tipoRecibo: "venda",
-      })),
-    ...transacoes.recebimentos
-      .filter((r) => r.clienteId === clienteId)
-      .map((r) => ({ data: r.data, tipo: "Recebimento", valor: r.valor, sinal: -1, item: null, tipoRecibo: null })),
-  ].sort((a, b) => (a.data < b.data ? 1 : -1));
+  const vendasCliente = transacoes.vendas
+    .filter((v) => v.clienteId === clienteId)
+    .map((v) => ({ ...v, valor: v.valorFinal ?? v.valorTotal }));
+  const recebimentosCliente = transacoes.recebimentos.filter((r) => r.clienteId === clienteId);
 
-  return <Extrato lancamentos={lancamentos} setRecibo={setRecibo} />;
-}
-
-function ExtratoProdutor({ produtorId, transacoes, setRecibo }) {
-  const lancamentos = [
-    ...transacoes.compras
-      .filter((c) => c.produtorId === produtorId)
-      .map((c) => ({
-        data: c.data,
-        tipo: "Compra",
-        valor: c.valorFinal ?? c.valorTotal,
-        sinal: 1,
-        item: c,
-        tipoRecibo: "compra",
-      })),
-    ...transacoes.pagamentos
-      .filter((p) => p.produtorId === produtorId)
-      .map((p) => ({ data: p.data, tipo: "Pagamento", valor: p.valor, sinal: -1, item: null, tipoRecibo: null })),
-  ].sort((a, b) => (a.data < b.data ? 1 : -1));
-
-  return <Extrato lancamentos={lancamentos} setRecibo={setRecibo} />;
-}
-
-function Extrato({ lancamentos, setRecibo }) {
-  if (lancamentos.length === 0)
+  if (vendasCliente.length === 0 && recebimentosCliente.length === 0) {
     return (
       <p className="text-xs mt-2 pt-2 border-t" style={{ color: C.inkSoft, borderColor: C.line }}>
         Sem lançamentos.
       </p>
     );
+  }
+
+  const debitosComStatus = calcularStatusPagamentos(vendasCliente, recebimentosCliente, todayISO()).sort(
+    (a, b) => (a.data < b.data ? 1 : -1)
+  );
+
   return (
-    <div className="mt-2 pt-2 border-t flex flex-col gap-1.5" style={{ borderColor: C.line }}>
-      {lancamentos.map((l, i) => {
-        const clicavel = Boolean(setRecibo && l.item && l.tipoRecibo);
-        return (
-          <div
-            key={i}
-            className="flex justify-between text-xs"
-            onClick={
-              clicavel
-                ? (e) => {
-                    e.stopPropagation(); // não deixa fechar o card ao clicar no lançamento
-                    setRecibo({ tipo: l.tipoRecibo, item: l.item });
-                  }
-                : undefined
-            }
-            style={clicavel ? { cursor: "pointer" } : undefined}
-          >
-            <span style={{ color: C.inkSoft, textDecoration: clicavel ? "underline" : "none" }}>
-              {fmtDate(l.data)} · {l.tipo}
-              {clicavel && " (ver vale)"}
-            </span>
-            <span
-              style={{
-                fontFamily: monoFont,
-                fontWeight: 700,
-                color: l.sinal > 0 ? C.rust : C.green700,
-              }}
-            >
-              {l.sinal > 0 ? "+" : "−"}
-              {fmtMoney(l.valor)}
-            </span>
-          </div>
-        );
-      })}
+    <div className="mt-2 pt-2 border-t" style={{ borderColor: C.line }}>
+      {debitosComStatus.map((d) => (
+        <LinhaDebito key={d.id} d={d} rotuloTipo="Venda" tipoRecibo="venda" setRecibo={setRecibo} />
+      ))}
+      <ListaPagamentos pagamentos={recebimentosCliente} rotuloPagamento="Recebimentos" />
+    </div>
+  );
+}
+
+function ExtratoProdutor({ produtorId, transacoes, setRecibo }) {
+  const comprasProdutor = transacoes.compras
+    .filter((c) => c.produtorId === produtorId)
+    .map((c) => ({ ...c, valor: c.valorFinal ?? c.valorTotal }));
+  const pagamentosProdutor = transacoes.pagamentos.filter((p) => p.produtorId === produtorId);
+
+  if (comprasProdutor.length === 0 && pagamentosProdutor.length === 0) {
+    return (
+      <p className="text-xs mt-2 pt-2 border-t" style={{ color: C.inkSoft, borderColor: C.line }}>
+        Sem lançamentos.
+      </p>
+    );
+  }
+
+  const debitosComStatus = calcularStatusPagamentos(comprasProdutor, pagamentosProdutor, todayISO()).sort(
+    (a, b) => (a.data < b.data ? 1 : -1)
+  );
+
+  return (
+    <div className="mt-2 pt-2 border-t" style={{ borderColor: C.line }}>
+      {debitosComStatus.map((d) => (
+        <LinhaDebito key={d.id} d={d} rotuloTipo="Compra" tipoRecibo="compra" setRecibo={setRecibo} />
+      ))}
+      <ListaPagamentos pagamentos={pagamentosProdutor} rotuloPagamento="Pagamentos" />
     </div>
   );
 }
