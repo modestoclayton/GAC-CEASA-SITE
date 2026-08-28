@@ -75,6 +75,23 @@ const fmtDate = (iso) => {
 
 const PRAZO_VENCIMENTO_DIAS = 35;
 
+// A "equipe" (compradoresVendedores) guarda nome + função + empresa que atende
+// (só relevante pra Conferente/Entregador). Entradas antigas eram só texto puro
+// (nome do gestor autorizado) — aqui a gente trata os dois formatos.
+function normalizarEquipe(lista) {
+  return (lista || []).map((item) => {
+    if (typeof item === "string") {
+      return { id: item, nome: item, funcao: "gestor", clienteId: "" };
+    }
+    return {
+      id: item.id || item.nome,
+      nome: item.nome || "",
+      funcao: item.funcao || "gestor",
+      clienteId: item.clienteId || "",
+    };
+  });
+}
+
 // Calcula o status de cada débito (compra ou venda) contra os pagamentos/recebimentos
 // já lançados, usando FIFO: o total pago vai quitando os débitos mais antigos primeiro.
 // "ajuste" (desconto) conta igual pagamento pra fins de quitação, mas é sinalizado à parte.
@@ -881,14 +898,18 @@ export default function GacCeasaApp() {
       const nomeNorm = novoPerfil.nome.trim().toLowerCase();
 
       if (novoPerfil.funcao === "gestor") {
-        const lista = cadastros.compradoresVendedores || [];
-        const jaAutorizado = lista.some((n) => n.trim().toLowerCase() === nomeNorm);
+        const equipe = normalizarEquipe(cadastros.compradoresVendedores);
+        const gestores = equipe.filter((e) => e.funcao === "gestor");
+        const jaAutorizado = gestores.some((e) => e.nome.trim().toLowerCase() === nomeNorm);
 
-        if (lista.length === 0) {
-          // ninguém cadastrado ainda: este nome vira a base da lista de autorizados
+        if (gestores.length === 0) {
+          // ninguém cadastrado ainda como gestor: este nome vira a base da lista de autorizados
           await persistCadastros({
             ...cadastros,
-            compradoresVendedores: [novoPerfil.nome.trim()],
+            compradoresVendedores: [
+              ...equipe,
+              { id: uid(), nome: novoPerfil.nome.trim(), funcao: "gestor", clienteId: "" },
+            ],
           });
         } else if (!jaAutorizado) {
           return {
@@ -1189,6 +1210,7 @@ export default function GacCeasaApp() {
             transacoes={transacoes}
             cadastros={cadastros}
             persistCadastros={persistCadastros}
+            persistTransacoes={persistTransacoes}
             showToast={showToast}
             setRecibo={setRecibo}
           />
@@ -1938,112 +1960,98 @@ function gerarPDFFolhaCarga(compras, dataSelecionada, cadastros) {
 }
 
 /* GERADOR DE PDF - VALES */
-function gerarPDFVales(compras, dataSelecionada, cadastros) {
-  // Agrupa exatamente como o recibo manual: um vale = um Fornecedor + um Cliente Destino + um Dia
-  const grupos = {};
-  compras.forEach((c) => {
-    const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
-    if (!grupos[chave]) grupos[chave] = [];
-    grupos[chave].push(c);
-  });
+function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
+  const primeiro = itensGrupo[0];
+  const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
+  const cliente = cadastros.clientes.find((c) => c.id === primeiro.clienteDestino);
+  const itensOrdenados = [...itensGrupo].sort((a, b) => a.produto.localeCompare(b.produto, "pt-BR"));
 
-  const blocosHtml = Object.values(grupos)
-    .map((itensGrupo, idx, arr) => {
-      const primeiro = itensGrupo[0];
-      const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
-      const cliente = cadastros.clientes.find((c) => c.id === primeiro.clienteDestino);
-      const itensOrdenados = [...itensGrupo].sort((a, b) => a.produto.localeCompare(b.produto, "pt-BR"));
+  const subtotal = itensGrupo.reduce((s, c) => s + Number(c.valorTotal), 0);
+  const desconto = produtor?.temDescontoFundoRural ? subtotal * 0.0163 : 0;
+  const total = subtotal - desconto;
 
-      const subtotal = itensGrupo.reduce((s, c) => s + Number(c.valorTotal), 0);
-      const desconto = produtor?.temDescontoFundoRural ? subtotal * 0.0163 : 0;
-      const total = subtotal - desconto;
-
-      const linhasTabela = itensOrdenados
-        .map(
-          (i) => `
-        <tr>
-          <td style="padding:8px;border-bottom:1px solid #D8CBA0;">${i.produto}</td>
-          <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${i.quantidade}</td>
-          <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">R$ ${(i.valorUnit || 0).toFixed(2)}</td>
-          <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</td>
-        </tr>`
-        )
-        .join("");
-
-      const boxPagamento =
-        produtor && produtor.pagamento
-          ? `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
-              <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Forma de Pagamento</div>
-              <div style="font-size:15px;font-weight:bold;color:#1F4A30;">${produtor.pagamento}</div>
-              ${
-                produtor.pagamento !== "BOLETO" && produtor.chavePix
-                  ? `<div style="font-size:14px;margin-top:4px;color:#1F4A30;"><b>Chave Pix:</b> ${produtor.chavePix}</div>`
-                  : ""
-              }
-            </div>`
-          : "";
-
-      const boxCliente = `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
-        <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Para Quem (Cliente Destino)</div>
-        <div style="font-size:18px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "—"}</div>
-        ${cliente?.cidade ? `<div style="font-size:14px;color:#6E6650;">${cliente.cidade}</div>` : ""}
-      </div>`;
-
-      const quebraPagina = idx < arr.length - 1 ? "page-break-after:always;" : "";
-
-      return `
-        <div style="max-width:480px;margin:0 auto 0;padding:24px 24px 40px;color:#1C1B18;${quebraPagina}">
-          <div style="border-bottom:2px solid #1F4A30;padding-bottom:16px;margin-bottom:16px;">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">GAC CEASA MANAGER</div>
-            <div style="font-size:26px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
-            <div style="font-size:12px;color:#6E6650;margin-top:4px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
-          </div>
-
-          <div style="margin-bottom:16px;">
-            <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
-            <div style="font-size:18px;font-weight:bold;">${produtor?.nome || "—"}</div>
-            ${produtor?.cidade ? `<div style="font-size:14px;color:#6E6650;">${produtor.cidade}</div>` : ""}
-            ${produtor?.telefone ? `<div style="font-size:14px;color:#6E6650;">Tel: ${produtor.telefone}</div>` : ""}
-          </div>
-
-          ${boxPagamento}
-          ${boxCliente}
-
-          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
-            <thead>
-              <tr style="border-bottom:2px solid #1F4A30;">
-                <th style="text-align:left;padding:8px 8px 8px 0;">Produto</th>
-                <th style="text-align:right;padding:8px;">Qtd.</th>
-                <th style="text-align:right;padding:8px;">Valor Unit.</th>
-                <th style="text-align:right;padding:8px 0 8px 8px;">Total</th>
-              </tr>
-            </thead>
-            <tbody>${linhasTabela}</tbody>
-          </table>
-
-          <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
-            <div style="text-align:right;">
-              <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Subtotal</div>
-              <div style="font-size:16px;font-family:monospace;">R$ ${subtotal.toFixed(2)}</div>
-              ${
-                desconto > 0
-                  ? `<div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#D9861C;margin-top:8px;">Desconto (-1.63%)</div>
-                     <div style="font-size:16px;font-family:monospace;color:#D9861C;">-R$ ${desconto.toFixed(2)}</div>`
-                  : ""
-              }
-              <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;margin-top:10px;padding-top:8px;border-top:1px solid #D8CBA0;">Total do Vale</div>
-              <div style="font-size:22px;font-weight:bold;color:#1F4A30;">R$ ${total.toFixed(2)}</div>
-            </div>
-          </div>
-
-          <div style="font-size:11px;text-align:center;margin-top:24px;padding-top:14px;border-top:1px solid #D8CBA0;color:#6E6650;">
-            Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
-          </div>
-        </div>`;
-    })
+  const linhasTabela = itensOrdenados
+    .map(
+      (i) => `
+    <tr>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;">${i.produto}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${i.quantidade}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">R$ ${(i.valorUnit || 0).toFixed(2)}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</td>
+    </tr>`
+    )
     .join("");
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vales de Compra</title>
+  const boxPagamento =
+    produtor && produtor.pagamento
+      ? `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Forma de Pagamento</div>
+          <div style="font-size:15px;font-weight:bold;color:#1F4A30;">${produtor.pagamento}</div>
+          ${
+            produtor.pagamento !== "BOLETO" && produtor.chavePix
+              ? `<div style="font-size:14px;margin-top:4px;color:#1F4A30;"><b>Chave Pix:</b> ${produtor.chavePix}</div>`
+              : ""
+          }
+        </div>`
+      : "";
+
+  const boxCliente = `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
+    <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Para Quem (Cliente Destino)</div>
+    <div style="font-size:18px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "—"}</div>
+    ${cliente?.cidade ? `<div style="font-size:14px;color:#6E6650;">${cliente.cidade}</div>` : ""}
+  </div>`;
+
+  const corpoVale = `
+    <div style="max-width:480px;margin:0 auto;padding:24px 24px 40px;color:#1C1B18;">
+      <div style="border-bottom:2px solid #1F4A30;padding-bottom:16px;margin-bottom:16px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">GAC CEASA MANAGER</div>
+        <div style="font-size:26px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
+        <div style="font-size:12px;color:#6E6650;margin-top:4px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
+        <div style="font-size:18px;font-weight:bold;">${produtor?.nome || "—"}</div>
+        ${produtor?.cidade ? `<div style="font-size:14px;color:#6E6650;">${produtor.cidade}</div>` : ""}
+        ${produtor?.telefone ? `<div style="font-size:14px;color:#6E6650;">Tel: ${produtor.telefone}</div>` : ""}
+      </div>
+
+      ${boxPagamento}
+      ${boxCliente}
+
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+        <thead>
+          <tr style="border-bottom:2px solid #1F4A30;">
+            <th style="text-align:left;padding:8px 8px 8px 0;">Produto</th>
+            <th style="text-align:right;padding:8px;">Qtd.</th>
+            <th style="text-align:right;padding:8px;">Valor Unit.</th>
+            <th style="text-align:right;padding:8px 0 8px 8px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>${linhasTabela}</tbody>
+      </table>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
+        <div style="text-align:right;">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Subtotal</div>
+          <div style="font-size:16px;font-family:monospace;">R$ ${subtotal.toFixed(2)}</div>
+          ${
+            desconto > 0
+              ? `<div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#D9861C;margin-top:8px;">Desconto (-1.63%)</div>
+                 <div style="font-size:16px;font-family:monospace;color:#D9861C;">-R$ ${desconto.toFixed(2)}</div>`
+              : ""
+          }
+          <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;margin-top:10px;padding-top:8px;border-top:1px solid #D8CBA0;">Total do Vale</div>
+          <div style="font-size:22px;font-weight:bold;color:#1F4A30;">R$ ${total.toFixed(2)}</div>
+        </div>
+      </div>
+
+      <div style="font-size:11px;text-align:center;margin-top:24px;padding-top:14px;border-top:1px solid #D8CBA0;color:#6E6650;">
+        Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
+      </div>
+    </div>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vale de Compra - ${produtor?.nome || ""}</title>
     <style>
       @page { margin: 15mm; }
       body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
@@ -2056,16 +2064,52 @@ function gerarPDFVales(compras, dataSelecionada, cadastros) {
     </style>
     </head><body>
     <div class="barra-topo"><button class="botao-imprimir" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>
-    ${blocosHtml}
+    ${corpoVale}
     </body></html>`;
+}
 
+function baixarHtml(html, nomeArquivo) {
   const blob = new Blob([html], { type: "text/html" });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `Vales-${dataSelecionada}.html`;
+  link.download = nomeArquivo;
   link.click();
   window.URL.revokeObjectURL(url);
+}
+
+function slugify(texto) {
+  return (texto || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toUpperCase();
+}
+
+function gerarPDFVales(compras, dataSelecionada, cadastros) {
+  // Agrupa exatamente como o recibo manual: um vale = um Fornecedor + um Cliente Destino + um Dia.
+  // Cada grupo vira um ARQUIVO SEPARADO — não junta vários vales num único PDF.
+  const grupos = {};
+  compras.forEach((c) => {
+    const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
+    if (!grupos[chave]) grupos[chave] = [];
+    grupos[chave].push(c);
+  });
+
+  const listaGrupos = Object.values(grupos);
+
+  listaGrupos.forEach((itensGrupo, idx) => {
+    const primeiro = itensGrupo[0];
+    const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
+    const cliente = cadastros.clientes.find((c) => c.id === primeiro.clienteDestino);
+    const html = montarHtmlVale(itensGrupo, dataSelecionada, cadastros);
+    const nomeArquivo = `Vale-${slugify(produtor?.nome)}-${slugify(cliente?.nome || primeiro.clienteDestino)}-${dataSelecionada}.html`;
+
+    // Pequeno atraso entre cada download pra evitar que o navegador bloqueie
+    // downloads múltiplos disparados muito rápido um atrás do outro.
+    setTimeout(() => baixarHtml(html, nomeArquivo), idx * 350);
+  });
 }
 
 /* GERADOR DE PDF - RELATÓRIO DE VENDAS DO DIA */
@@ -2340,6 +2384,16 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [editQtd, setEditQtd] = useState("");
   const [editValor, setEditValor] = useState("");
   const [expandidoDestino, setExpandidoDestino] = useState(null);
+
+  // Conferente fixo por empresa: quando muda o cliente destino, se essa empresa
+  // tem um conferente vinculado em Contas → Gerenciar Acesso, já pré-seleciona
+  // ele sozinho. Compra Para Estoque não tem empresa, então não auto-preenche.
+  useEffect(() => {
+    if (isEstoque || !clienteDestino) return;
+    const equipe = normalizarEquipe(cadastros.compradoresVendedores);
+    const fixo = equipe.find((e) => e.funcao === "conferente" && e.clienteId === clienteDestino);
+    if (fixo) setCargueiro(fixo.nome);
+  }, [clienteDestino, isEstoque]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -2369,12 +2423,21 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     setProduto(novo.nome);
   };
 
+  // Conferente/cargueiro guarda o NOME direto (não um ID de cadastro separado —
+  // isso elimina a dependência de uma coluna nova que não persistia no backend).
+  // Cadastrar aqui já vincula a empresa atual (clienteDestino) automaticamente.
   const addCargueiro = async (nome) => {
-    if (!nome.trim()) return;
-    const novo = { id: uid(), nome: nome.toUpperCase() };
-    const next = { ...cadastros, cargueiros: [...(cadastros.cargueiros || []), novo] };
-    await persistCadastros(next);
-    setCargueiro(novo.id);
+    const nomeLimpo = nome.trim();
+    if (!nomeLimpo) return;
+    const equipeAtual = normalizarEquipe(cadastros.compradoresVendedores);
+    const novo = {
+      id: uid(),
+      nome: nomeLimpo,
+      funcao: "conferente",
+      clienteId: isEstoque ? "" : clienteDestino,
+    };
+    await persistCadastros({ ...cadastros, compradoresVendedores: [...equipeAtual, novo] });
+    setCargueiro(nomeLimpo);
   };
 
   const salvar = async () => {
@@ -2515,18 +2578,27 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         <QuickAddInline placeholder="Nome do produto" onAdd={addProduto} />
       </Field>
       
-      <Field label="Cargueiro">
+      <Field label="Cargueiro / Conferente">
         <Select value={cargueiro} onChange={(e) => setCargueiro(e.target.value)}>
-          <option value="">Selecione um cargueiro</option>
-          {(cadastros.cargueiros || []).map((carg) => (
-            <option key={carg.id} value={carg.id}>
-              {carg.nome}
-            </option>
-          ))}
+          <option value="">Selecione um conferente</option>
+          {normalizarEquipe(cadastros.compradoresVendedores)
+            .filter((e) => e.funcao === "conferente")
+            .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"))
+            .map((e) => (
+              <option key={e.id} value={e.nome}>
+                {e.nome}
+              </option>
+            ))}
         </Select>
-        <QuickAddInline placeholder="Adicionar novo cargueiro" onAdd={addCargueiro} />
+        <QuickAddInline placeholder="Nome do novo conferente" onAdd={addCargueiro} />
         <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
-          O cargueiro selecionado é quem vai conferir essa entrega — quando ele entrar como Conferente com esse mesmo nome, só essa carga aparece pra ele.
+          {!isEstoque &&
+          clienteDestino &&
+          normalizarEquipe(cadastros.compradoresVendedores).some(
+            (e) => e.funcao === "conferente" && e.clienteId === clienteDestino && e.nome === cargueiro
+          )
+            ? "🔒 Fixo pra esta empresa — pré-selecionado automaticamente."
+            : "O conferente selecionado é quem vai conferir essa entrega — quando ele entrar como Conferente com esse mesmo nome, só essa carga aparece pra ele."}
         </div>
       </Field>
       <div className="grid grid-cols-2 gap-3">
@@ -3241,13 +3313,15 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
 function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMeuNome, setRecibo }) {
   const clienteNome = (id) => cadastros.clientes.find((c) => c.id === id)?.nome || "—";
   const [editandoId, setEditandoId] = useState(null);
+  const [dataConfirmadas, setDataConfirmadas] = useState(todayISO()); // Entregas confirmadas só mostra o dia selecionado
 
   const norm = (s) => (s || "").trim().toLowerCase();
   const ehMinha = (v) => !soMeuNome || norm(v.entrega?.carregador) === norm(soMeuNome);
 
   const comEntrega = transacoes.vendas.filter((v) => v.entrega && ehMinha(v));
   const pendentes = comEntrega.filter((v) => !v.entrega.confirmada);
-  const confirmadas = comEntrega.filter((v) => v.entrega.confirmada);
+  // "Entregas confirmadas" só mostra o dia selecionado — não acumula pra sempre.
+  const confirmadas = comEntrega.filter((v) => v.entrega.confirmada && v.data === dataConfirmadas);
   // vendas sem dados de entrega só fazem sentido pra quem cadastra (gestor);
   // o entregador só vê o que já está com o nome dele
   const semDados = soMeuNome ? [] : transacoes.vendas.filter((v) => !v.entrega);
@@ -3384,14 +3458,30 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
         </>
       )}
 
-      {confirmadas.length > 0 && (
+      {comEntrega.length > 0 && (
         <>
           <SectionTitle icon={Check}>Entregas confirmadas</SectionTitle>
-          <div className="flex flex-col gap-2">
-            {confirmadas.map((v) => (
-              <EntregaCard key={v.id} v={v} />
-            ))}
-          </div>
+          <Field label="Ver entregas confirmadas do dia">
+            <TextInput
+              type="date"
+              value={dataConfirmadas}
+              onChange={(e) => setDataConfirmadas(e.target.value)}
+              max={todayISO()}
+            />
+          </Field>
+          {confirmadas.length === 0 ? (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>
+                Nenhuma entrega confirmada em {fmtDate(dataConfirmadas)}.
+              </p>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {confirmadas.map((v) => (
+                <EntregaCard key={v.id} v={v} />
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -3420,13 +3510,9 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const [dataConferidas, setDataConferidas] = useState(todayISO()); // Conferidas só mostra o dia selecionado, começando em hoje
 
   const norm = (s) => (s || "").trim().toLowerCase();
-  const nomeCargueiro = (cargueiroId) =>
-    (cadastros.cargueiros || []).find((cg) => cg.id === cargueiroId)?.nome || "";
-  // O cargueiro que leva a carga é quem confere. Se a compra tem cargueiro definido,
-  // só ele (por nome) vê essa compra. Compras sem cargueiro continuam visíveis
-  // pra qualquer conferente (compatibilidade e casos sem cargueiro cadastrado).
-  const ehMinha = (c) =>
-    !soMeuNome || !c.cargueiro || norm(nomeCargueiro(c.cargueiro)) === norm(soMeuNome);
+  // O cargueiro/conferente da compra agora guarda o NOME direto (não mais um ID
+  // de um cadastro separado que dependia do backend persistir "cargueiros").
+  const ehMinha = (c) => !soMeuNome || !c.cargueiro || norm(c.cargueiro) === norm(soMeuNome);
 
   const nomeCliente = (id) =>
     id === "ESTOQUE" ? "Estoque" : cadastros.clientes.find((cl) => cl.id === id)?.nome || "—";
@@ -3577,7 +3663,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
             </div>
             {c.cargueiro && (
               <div className="text-xs" style={{ color: C.inkSoft }}>
-                Cargueiro: {nomeCargueiro(c.cargueiro) || "—"}
+                Cargueiro: {c.cargueiro || "—"}
               </div>
             )}
             {c.entregaConfirmada && (
@@ -4090,23 +4176,23 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
 /* ---------------------------------------------------------------------- */
 /* Gerenciar Acesso — lista de Compradores/Vendedores autorizados         */
 /* ---------------------------------------------------------------------- */
-function DiagnosticoPlanilha({ cadastros, persistCadastros }) {
+function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistTransacoes }) {
   const [rodando, setRodando] = useState(false);
   const [resultado, setResultado] = useState(null);
 
-  const rodarTesteGenerico = async ({ campo, montarValor }) => {
+  const rodarTesteGenerico = async ({ tipo, campo, montarValor }) => {
     setRodando(true);
     setResultado(null);
     const linhas = [];
     const marcador = "DIAG_" + Date.now();
 
     try {
-      linhas.push(`1) Enviando gravação de teste em "${campo}"...`);
+      linhas.push(`1) Enviando gravação de teste em "${tipo}.${campo}"...`);
       const resPost = await fetch("/api/dados", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "cadastros",
+          type: tipo,
           data: montarValor(marcador),
         }),
       });
@@ -4118,17 +4204,17 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros }) {
       linhas.push("2) Lendo de volta pra conferir se gravou...");
       const resGet = await fetch("/api/dados");
       const jsonGet = await resGet.json().catch(() => null);
-      const achou = jsonGet?.cadastros?.[campo]?.some((p) => p.id === marcador);
+      const achou = jsonGet?.[tipo]?.[campo]?.some((p) => p.id === marcador);
       linhas.push(`   Status HTTP: ${resGet.status}`);
       linhas.push(`   Marcador de teste encontrado na leitura? ${achou ? "SIM ✅" : "NÃO ❌"}`);
 
       if (achou) {
         linhas.push("");
-        linhas.push(`Tudo funcionando! A gravação em "${campo}" chegou na planilha.`);
+        linhas.push(`Tudo funcionando! A gravação em "${tipo}.${campo}" chegou na planilha.`);
       } else {
         linhas.push("");
         linhas.push(
-          `A gravação em "${campo}" NÃO chegou na planilha. Se o teste de "produtos" funcionar mas este de "${campo}" falhar, é sinal de que o backend (/api/dados) ainda não tem uma coluna/aba mapeada pra "${campo}" — precisa adicionar isso no código do servidor, não dá pra corrigir só pelo app.`
+          `A gravação em "${tipo}.${campo}" NÃO chegou na planilha. Se o teste de "produtos" funcionar mas este falhar, é sinal de que o backend (/api/dados) ainda não tem uma coluna/aba mapeada pra "${campo}" dentro de "${tipo}" — precisa adicionar isso no código do servidor, não dá pra corrigir só pelo app.`
         );
       }
     } catch (e) {
@@ -4141,6 +4227,7 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros }) {
 
   const testarProdutos = () =>
     rodarTesteGenerico({
+      tipo: "cadastros",
       campo: "produtos",
       montarValor: (marcador) => ({
         ...cadastros,
@@ -4148,12 +4235,29 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros }) {
       }),
     });
 
-  const testarCargueiros = () =>
+  const testarEquipe = () =>
     rodarTesteGenerico({
-      campo: "cargueiros",
+      tipo: "cadastros",
+      campo: "compradoresVendedores",
       montarValor: (marcador) => ({
         ...cadastros,
-        cargueiros: [...(cadastros.cargueiros || []), { id: marcador, nome: marcador }],
+        compradoresVendedores: [
+          ...normalizarEquipe(cadastros.compradoresVendedores),
+          { id: marcador, nome: marcador, funcao: "conferente", clienteId: "" },
+        ],
+      }),
+    });
+
+  const testarPagamentos = () =>
+    rodarTesteGenerico({
+      tipo: "transacoes",
+      campo: "pagamentos",
+      montarValor: (marcador) => ({
+        ...transacoes,
+        pagamentos: [
+          ...transacoes.pagamentos,
+          { id: marcador, data: todayISO(), produtorId: "DIAG", valor: 1, tipo: "pagamento", formaPagamento: "PIX", obs: "" },
+        ],
       }),
     });
 
@@ -4172,12 +4276,20 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros }) {
         {rodando ? "Testando…" : "Testar Gravação de Produtos"}
       </button>
       <button
-        onClick={testarCargueiros}
+        onClick={testarEquipe}
         disabled={rodando}
-        className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm mb-3"
+        className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm mb-2"
         style={{ background: C.blue600, color: "#fff", fontFamily: displayFont, fontWeight: 800 }}
       >
-        {rodando ? "Testando…" : "Testar Gravação de Cargueiros"}
+        {rodando ? "Testando…" : "Testar Gravação de Equipe (conferente/cargueiro)"}
+      </button>
+      <button
+        onClick={testarPagamentos}
+        disabled={rodando}
+        className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm mb-3"
+        style={{ background: C.rust, color: "#fff", fontFamily: displayFont, fontWeight: 800 }}
+      >
+        {rodando ? "Testando…" : "Testar Gravação de Pagamentos"}
       </button>
       {resultado && (
         <Card>
@@ -4193,30 +4305,44 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros }) {
   );
 }
 
-function GerenciarAcessoView({ cadastros, persistCadastros, showToast }) {
+function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistTransacoes, showToast }) {
   const [novoNome, setNovoNome] = useState("");
+  const [novaFuncao, setNovaFuncao] = useState("gestor");
+  const [novaEmpresa, setNovaEmpresa] = useState("");
   const [abaAtiva, setAbaAtiva] = useState("acesso");
-  const lista = cadastros.compradoresVendedores || [];
+  const equipe = normalizarEquipe(cadastros.compradoresVendedores);
+
+  const rotuloFuncao = { gestor: "Comprador/Vendedor", conferente: "Conferente", entregador: "Entregador" };
+  const nomeEmpresa = (clienteId) => cadastros.clientes.find((c) => c.id === clienteId)?.nome || "";
 
   const adicionar = async () => {
     const nome = novoNome.trim();
     if (!nome) return;
-    const jaExiste = lista.some((n) => n.trim().toLowerCase() === nome.toLowerCase());
+    const jaExiste = equipe.some(
+      (e) => e.nome.trim().toLowerCase() === nome.toLowerCase() && e.funcao === novaFuncao
+    );
     if (jaExiste) {
-      showToast("Esse nome já está na lista");
+      showToast("Essa pessoa já está cadastrada nessa função");
       return;
     }
-    await persistCadastros({ ...cadastros, compradoresVendedores: [...lista, nome] });
+    const novo = {
+      id: uid(),
+      nome,
+      funcao: novaFuncao,
+      clienteId: novaFuncao === "gestor" ? "" : novaEmpresa,
+    };
+    await persistCadastros({ ...cadastros, compradoresVendedores: [...equipe, novo] });
     setNovoNome("");
-    showToast("Adicionado à lista de autorizados");
+    setNovaEmpresa("");
+    showToast("Adicionado à equipe");
   };
 
-  const remover = async (nome) => {
+  const remover = async (id) => {
     await persistCadastros({
       ...cadastros,
-      compradoresVendedores: lista.filter((n) => n !== nome),
+      compradoresVendedores: equipe.filter((e) => e.id !== id),
     });
-    showToast("Removido da lista");
+    showToast("Removido da equipe");
   };
 
   return (
@@ -4245,51 +4371,87 @@ function GerenciarAcessoView({ cadastros, persistCadastros, showToast }) {
       </div>
 
       {abaAtiva === "diagnostico" && (
-        <DiagnosticoPlanilha cadastros={cadastros} persistCadastros={persistCadastros} />
+        <DiagnosticoPlanilha
+          cadastros={cadastros}
+          persistCadastros={persistCadastros}
+          transacoes={transacoes}
+          persistTransacoes={persistTransacoes}
+        />
       )}
 
       {abaAtiva === "acesso" && (
         <>
           <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
-            Só nomes cadastrados aqui conseguem entrar como Comprador/Vendedor
-            (acesso completo ao app). Conferente e Entregador não precisam estar
-            nessa lista.
+            Cadastre aqui todo mundo que usa o app: Comprador/Vendedor (acesso
+            completo), Conferente e Entregador. Só o Comprador/Vendedor precisa
+            estar na lista pra conseguir entrar — Conferente e Entregador
+            digitam o nome livremente, mas cadastrar eles aqui já vincula a
+            empresa que atendem, pra não precisar escolher toda vez na compra.
           </p>
           <Card className="mb-3">
-            <Field label="Adicionar nome autorizado">
-              <div className="flex gap-2">
-                <TextInput
-                  placeholder="Ex: Marcos"
-                  value={novoNome}
-                  onChange={(e) => setNovoNome(e.target.value)}
-                />
-                <button
-                  className="px-3 rounded-lg font-bold text-sm flex-shrink-0"
-                  style={{ background: C.amber500, color: C.green900 }}
-                  onClick={adicionar}
-                >
-                  + Add
-                </button>
-              </div>
+            <Field label="Nome">
+              <TextInput
+                placeholder="Ex: Marcos"
+                value={novoNome}
+                onChange={(e) => setNovoNome(e.target.value)}
+              />
             </Field>
+            <Field label="Função">
+              <Select value={novaFuncao} onChange={(e) => { setNovaFuncao(e.target.value); setNovaEmpresa(""); }}>
+                <option value="gestor">Comprador/Vendedor</option>
+                <option value="conferente">Conferente</option>
+                <option value="entregador">Entregador</option>
+              </Select>
+            </Field>
+            {(novaFuncao === "conferente" || novaFuncao === "entregador") && (
+              <Field label="Empresa que atende (opcional)">
+                <Select value={novaEmpresa} onChange={(e) => setNovaEmpresa(e.target.value)}>
+                  <option value="">Nenhuma fixa — escolher toda vez</option>
+                  {[...cadastros.clientes]
+                    .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                </Select>
+                <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+                  Vinculando uma empresa, esse conferente já aparece automático nas
+                  compras feitas pra ela — sem precisar clicar toda vez.
+                </div>
+              </Field>
+            )}
+            <button
+              className="w-full px-3 py-2.5 rounded-lg font-bold text-sm mt-1"
+              style={{ background: C.amber500, color: C.green900 }}
+              onClick={adicionar}
+            >
+              + Adicionar à Equipe
+            </button>
           </Card>
 
-          {lista.length === 0 ? (
+          {equipe.length === 0 ? (
             <Card>
               <p className="text-sm" style={{ color: C.inkSoft }}>
-                Nenhum nome cadastrado ainda — o próximo que entrar como
+                Ninguém cadastrado ainda — o próximo que entrar como
                 Comprador/Vendedor vira o primeiro autorizado automaticamente.
               </p>
             </Card>
           ) : (
             <div className="flex flex-col gap-2">
-              {lista.map((nome) => (
-                <Card key={nome} className="flex items-center justify-between">
+              {equipe.map((e) => (
+                <Card key={e.id} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Users size={16} style={{ color: C.green700 }} />
-                    <span className="font-bold text-sm">{nome}</span>
+                    <div>
+                      <span className="font-bold text-sm">{e.nome}</span>
+                      <div className="text-xs" style={{ color: C.inkSoft }}>
+                        {rotuloFuncao[e.funcao] || e.funcao}
+                        {e.clienteId ? ` · ${nomeEmpresa(e.clienteId)}` : ""}
+                      </div>
+                    </div>
                   </div>
-                  <button onClick={() => remover(nome)} style={{ color: C.rust }}>
+                  <button onClick={() => remover(e.id)} style={{ color: C.rust }}>
                     <Trash2 size={16} />
                   </button>
                 </Card>
@@ -4477,7 +4639,7 @@ function EditarProdutor({ produtor, onSalvar, onCancelar }) {
   );
 }
 
-function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastros, persistCadastros, showToast, setRecibo }) {
+function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastros, persistCadastros, persistTransacoes, showToast, setRecibo }) {
   const [view, setView] = useState("clientes");
   const [expanded, setExpanded] = useState(null);
   const [novoOpen, setNovoOpen] = useState(false);
@@ -4552,7 +4714,13 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
       </button>
 
       {view === "acesso" && (
-        <GerenciarAcessoView cadastros={cadastros} persistCadastros={persistCadastros} showToast={showToast} />
+        <GerenciarAcessoView
+          cadastros={cadastros}
+          persistCadastros={persistCadastros}
+          transacoes={transacoes}
+          persistTransacoes={persistTransacoes}
+          showToast={showToast}
+        />
       )}
 
       {view === "clientes" && (
