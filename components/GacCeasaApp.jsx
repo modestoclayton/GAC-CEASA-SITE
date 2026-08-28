@@ -2002,58 +2002,58 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
   </div>`;
 
   const corpoVale = `
-    <div style="max-width:480px;margin:0 auto;padding:24px 24px 40px;color:#1C1B18;">
-      <div style="border-bottom:2px solid #1F4A30;padding-bottom:16px;margin-bottom:16px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">GAC CEASA MANAGER</div>
-        <div style="font-size:26px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
-        <div style="font-size:12px;color:#6E6650;margin-top:4px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
+    <div style="width:140mm;margin:0 auto;padding:8mm 8mm 10mm;color:#1C1B18;">
+      <div style="border-bottom:2px solid #1F4A30;padding-bottom:10px;margin-bottom:10px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">GAC CEASA MANAGER</div>
+        <div style="font-size:19px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
+        <div style="font-size:10px;color:#6E6650;margin-top:2px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
       </div>
 
-      <div style="margin-bottom:16px;">
-        <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
-        <div style="font-size:18px;font-weight:bold;">${produtor?.nome || "—"}</div>
-        ${produtor?.cidade ? `<div style="font-size:14px;color:#6E6650;">${produtor.cidade}</div>` : ""}
-        ${produtor?.telefone ? `<div style="font-size:14px;color:#6E6650;">Tel: ${produtor.telefone}</div>` : ""}
+      <div style="margin-bottom:10px;">
+        <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
+        <div style="font-size:14px;font-weight:bold;">${produtor?.nome || "—"}</div>
+        ${produtor?.cidade ? `<div style="font-size:11px;color:#6E6650;">${produtor.cidade}</div>` : ""}
+        ${produtor?.telefone ? `<div style="font-size:11px;color:#6E6650;">Tel: ${produtor.telefone}</div>` : ""}
       </div>
 
       ${boxPagamento}
       ${boxCliente}
 
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px;">
         <thead>
           <tr style="border-bottom:2px solid #1F4A30;">
-            <th style="text-align:left;padding:8px 8px 8px 0;">Produto</th>
-            <th style="text-align:right;padding:8px;">Qtd.</th>
-            <th style="text-align:right;padding:8px;">Valor Unit.</th>
-            <th style="text-align:right;padding:8px 0 8px 8px;">Total</th>
+            <th style="text-align:left;padding:5px 5px 5px 0;">Produto</th>
+            <th style="text-align:right;padding:5px;">Qtd.</th>
+            <th style="text-align:right;padding:5px;">Vlr Unit.</th>
+            <th style="text-align:right;padding:5px 0 5px 5px;">Total</th>
           </tr>
         </thead>
         <tbody>${linhasTabela}</tbody>
       </table>
 
-      <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
         <div style="text-align:right;">
-          <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Subtotal</div>
-          <div style="font-size:16px;font-family:monospace;">R$ ${subtotal.toFixed(2)}</div>
+          <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Subtotal</div>
+          <div style="font-size:12px;font-family:monospace;">R$ ${subtotal.toFixed(2)}</div>
           ${
             desconto > 0
-              ? `<div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#D9861C;margin-top:8px;">Desconto (-1.63%)</div>
-                 <div style="font-size:16px;font-family:monospace;color:#D9861C;">-R$ ${desconto.toFixed(2)}</div>`
+              ? `<div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#D9861C;margin-top:5px;">Desconto (-1.63%)</div>
+                 <div style="font-size:12px;font-family:monospace;color:#D9861C;">-R$ ${desconto.toFixed(2)}</div>`
               : ""
           }
-          <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;margin-top:10px;padding-top:8px;border-top:1px solid #D8CBA0;">Total do Vale</div>
-          <div style="font-size:22px;font-weight:bold;color:#1F4A30;">R$ ${total.toFixed(2)}</div>
+          <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;margin-top:6px;padding-top:5px;border-top:1px solid #D8CBA0;">Total do Vale</div>
+          <div style="font-size:17px;font-weight:bold;color:#1F4A30;">R$ ${total.toFixed(2)}</div>
         </div>
       </div>
 
-      <div style="font-size:11px;text-align:center;margin-top:24px;padding-top:14px;border-top:1px solid #D8CBA0;color:#6E6650;">
+      <div style="font-size:9px;text-align:center;margin-top:14px;padding-top:8px;border-top:1px solid #D8CBA0;color:#6E6650;">
         Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
       </div>
     </div>`;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vale de Compra - ${produtor?.nome || ""}</title>
     <style>
-      @page { margin: 15mm; }
+      @page { size: A4 landscape; margin: 8mm; }
       body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
       .barra-topo { position: sticky; top: 0; background: #fff; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: right; }
       .botao-imprimir { background: #1F4A30; color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 14px; cursor: pointer; }
