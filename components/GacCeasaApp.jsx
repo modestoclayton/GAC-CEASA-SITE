@@ -2002,7 +2002,7 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
   </div>`;
 
   const corpoVale = `
-    <div style="width:140mm;margin:0 auto;padding:8mm 8mm 10mm;color:#1C1B18;">
+    <div class="vale-conteudo" style="color:#1C1B18;">
       <div style="border-bottom:2px solid #1F4A30;padding-bottom:10px;margin-bottom:10px;">
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">GAC CEASA MANAGER</div>
         <div style="font-size:19px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
@@ -2057,9 +2057,14 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
       body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
       .barra-topo { position: sticky; top: 0; background: #fff; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: right; }
       .botao-imprimir { background: #1F4A30; color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 14px; cursor: pointer; }
+      .vale-conteudo { width: 140mm; margin: 0 auto; padding: 8mm 8mm 10mm; }
       @media print {
         .barra-topo { display: none !important; }
         body { background: #fff; }
+        /* Na impressão o vale fica encostado na borda esquerda, ocupando só
+           metade da folha — a metade direita fica livre pra imprimir outro
+           vale depois, na mesma folha em paisagem, e cortar ao meio. */
+        .vale-conteudo { margin: 0; }
       }
     </style>
     </head><body>
