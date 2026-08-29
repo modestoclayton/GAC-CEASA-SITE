@@ -75,19 +75,24 @@ const fmtDate = (iso) => {
 
 const PRAZO_VENCIMENTO_DIAS = 35;
 
-// A "equipe" (compradoresVendedores) guarda nome + função + empresa que atende
-// (só relevante pra Conferente/Entregador). Entradas antigas eram só texto puro
-// (nome do gestor autorizado) — aqui a gente trata os dois formatos.
+// A "equipe" (compradoresVendedores) guarda nome + função + as empresas que atende
+// (só relevante pra Conferente/Entregador — uma mesma pessoa pode atender várias
+// empresas diferentes). Entradas antigas eram só texto puro (nome do gestor
+// autorizado) ou tinham um "clienteId" único — aqui a gente trata os 3 formatos.
 function normalizarEquipe(lista) {
   return (lista || []).map((item) => {
     if (typeof item === "string") {
-      return { id: item, nome: item, funcao: "gestor", clienteId: "" };
+      return { id: item, nome: item, funcao: "gestor", clientesIds: [] };
+    }
+    let clientesIds = item.clientesIds;
+    if (!Array.isArray(clientesIds)) {
+      clientesIds = item.clienteId ? [item.clienteId] : [];
     }
     return {
       id: item.id || item.nome,
       nome: item.nome || "",
       funcao: item.funcao || "gestor",
-      clienteId: item.clienteId || "",
+      clientesIds,
     };
   });
 }
@@ -908,7 +913,7 @@ export default function GacCeasaApp() {
             ...cadastros,
             compradoresVendedores: [
               ...equipe,
-              { id: uid(), nome: novoPerfil.nome.trim(), funcao: "gestor", clienteId: "" },
+              { id: uid(), nome: novoPerfil.nome.trim(), funcao: "gestor", clientesIds: [] },
             ],
           });
         } else if (!jaAutorizado) {
@@ -2396,7 +2401,9 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   useEffect(() => {
     if (isEstoque || !clienteDestino) return;
     const equipe = normalizarEquipe(cadastros.compradoresVendedores);
-    const fixo = equipe.find((e) => e.funcao === "conferente" && e.clienteId === clienteDestino);
+    const fixo = equipe.find(
+      (e) => e.funcao === "conferente" && (e.clientesIds || []).includes(clienteDestino)
+    );
     if (fixo) setCargueiro(fixo.nome);
   }, [clienteDestino, isEstoque]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
@@ -2439,7 +2446,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       id: uid(),
       nome: nomeLimpo,
       funcao: "conferente",
-      clienteId: isEstoque ? "" : clienteDestino,
+      clientesIds: isEstoque ? [] : [clienteDestino],
     };
     await persistCadastros({ ...cadastros, compradoresVendedores: [...equipeAtual, novo] });
     setCargueiro(nomeLimpo);
@@ -2600,7 +2607,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           {!isEstoque &&
           clienteDestino &&
           normalizarEquipe(cadastros.compradoresVendedores).some(
-            (e) => e.funcao === "conferente" && e.clienteId === clienteDestino && e.nome === cargueiro
+            (e) => e.funcao === "conferente" && (e.clientesIds || []).includes(clienteDestino) && e.nome === cargueiro
           )
             ? "🔒 Fixo pra esta empresa — pré-selecionado automaticamente."
             : "O conferente selecionado é quem vai conferir essa entrega — quando ele entrar como Conferente com esse mesmo nome, só essa carga aparece pra ele."}
@@ -4248,7 +4255,7 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistT
         ...cadastros,
         compradoresVendedores: [
           ...normalizarEquipe(cadastros.compradoresVendedores),
-          { id: marcador, nome: marcador, funcao: "conferente", clienteId: "" },
+          { id: marcador, nome: marcador, funcao: "conferente", clientesIds: [] },
         ],
       }),
     });
@@ -4313,12 +4320,21 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistT
 function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistTransacoes, showToast }) {
   const [novoNome, setNovoNome] = useState("");
   const [novaFuncao, setNovaFuncao] = useState("gestor");
-  const [novaEmpresa, setNovaEmpresa] = useState("");
+  const [novasEmpresas, setNovasEmpresas] = useState([]);
   const [abaAtiva, setAbaAtiva] = useState("acesso");
+  const [editandoId, setEditandoId] = useState(null);
+  const [empresasEmEdicao, setEmpresasEmEdicao] = useState([]);
   const equipe = normalizarEquipe(cadastros.compradoresVendedores);
 
   const rotuloFuncao = { gestor: "Comprador/Vendedor", conferente: "Conferente", entregador: "Entregador" };
   const nomeEmpresa = (clienteId) => cadastros.clientes.find((c) => c.id === clienteId)?.nome || "";
+  const clientesOrdenados = [...cadastros.clientes].sort((a, b) =>
+    (a.nome || "").localeCompare(b.nome || "", "pt-BR")
+  );
+
+  const toggleEmpresa = (lista, setLista, clienteId) => {
+    setLista(lista.includes(clienteId) ? lista.filter((id) => id !== clienteId) : [...lista, clienteId]);
+  };
 
   const adicionar = async () => {
     const nome = novoNome.trim();
@@ -4334,11 +4350,11 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
       id: uid(),
       nome,
       funcao: novaFuncao,
-      clienteId: novaFuncao === "gestor" ? "" : novaEmpresa,
+      clientesIds: novaFuncao === "gestor" ? [] : novasEmpresas,
     };
     await persistCadastros({ ...cadastros, compradoresVendedores: [...equipe, novo] });
     setNovoNome("");
-    setNovaEmpresa("");
+    setNovasEmpresas([]);
     showToast("Adicionado à equipe");
   };
 
@@ -4348,6 +4364,20 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
       compradoresVendedores: equipe.filter((e) => e.id !== id),
     });
     showToast("Removido da equipe");
+  };
+
+  const iniciarEdicao = (e) => {
+    setEditandoId(e.id);
+    setEmpresasEmEdicao(e.clientesIds || []);
+  };
+
+  const salvarEdicao = async (id) => {
+    await persistCadastros({
+      ...cadastros,
+      compradoresVendedores: equipe.map((e) => (e.id === id ? { ...e, clientesIds: empresasEmEdicao } : e)),
+    });
+    setEditandoId(null);
+    showToast("Empresas atualizadas");
   };
 
   return (
@@ -4390,39 +4420,45 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
             Cadastre aqui todo mundo que usa o app: Comprador/Vendedor (acesso
             completo), Conferente e Entregador. Só o Comprador/Vendedor precisa
             estar na lista pra conseguir entrar — Conferente e Entregador
-            digitam o nome livremente, mas cadastrar eles aqui já vincula a
-            empresa que atendem, pra não precisar escolher toda vez na compra.
+            digitam o nome livremente, mas cadastrar eles aqui já vincula as
+            empresas que atendem (pode marcar mais de uma), pra não precisar
+            escolher toda vez na compra.
           </p>
           <Card className="mb-3">
             <Field label="Nome">
               <TextInput
-                placeholder="Ex: Marcos"
+                placeholder="Ex: Leandro"
                 value={novoNome}
                 onChange={(e) => setNovoNome(e.target.value)}
               />
             </Field>
             <Field label="Função">
-              <Select value={novaFuncao} onChange={(e) => { setNovaFuncao(e.target.value); setNovaEmpresa(""); }}>
+              <Select value={novaFuncao} onChange={(e) => { setNovaFuncao(e.target.value); setNovasEmpresas([]); }}>
                 <option value="gestor">Comprador/Vendedor</option>
                 <option value="conferente">Conferente</option>
                 <option value="entregador">Entregador</option>
               </Select>
             </Field>
             {(novaFuncao === "conferente" || novaFuncao === "entregador") && (
-              <Field label="Empresa que atende (opcional)">
-                <Select value={novaEmpresa} onChange={(e) => setNovaEmpresa(e.target.value)}>
-                  <option value="">Nenhuma fixa — escolher toda vez</option>
-                  {[...cadastros.clientes]
-                    .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"))
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nome}
-                      </option>
-                    ))}
-                </Select>
+              <Field label="Empresas que atende (marque quantas precisar)">
+                <div className="flex flex-col gap-1.5 rounded-lg p-2" style={{ background: C.cardAlt, border: `1px solid ${C.line}`, maxHeight: 200, overflowY: "auto" }}>
+                  {clientesOrdenados.length === 0 ? (
+                    <span className="text-xs" style={{ color: C.inkSoft }}>Nenhum cliente cadastrado ainda.</span>
+                  ) : (
+                    clientesOrdenados.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={novasEmpresas.includes(c.id)}
+                          onChange={() => toggleEmpresa(novasEmpresas, setNovasEmpresas, c.id)}
+                        />
+                        <span className="text-sm" style={{ color: C.ink }}>{c.nome}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
                 <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
-                  Vinculando uma empresa, esse conferente já aparece automático nas
-                  compras feitas pra ela — sem precisar clicar toda vez.
+                  Se não marcar nenhuma, esse conferente não aparece pré-selecionado — dá pra escolher ele manualmente em qualquer compra mesmo assim.
                 </div>
               </Field>
             )}
@@ -4445,20 +4481,61 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
           ) : (
             <div className="flex flex-col gap-2">
               {equipe.map((e) => (
-                <Card key={e.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Users size={16} style={{ color: C.green700 }} />
-                    <div>
-                      <span className="font-bold text-sm">{e.nome}</span>
-                      <div className="text-xs" style={{ color: C.inkSoft }}>
-                        {rotuloFuncao[e.funcao] || e.funcao}
-                        {e.clienteId ? ` · ${nomeEmpresa(e.clienteId)}` : ""}
+                <Card key={e.id}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Users size={16} style={{ color: C.green700 }} />
+                      <div>
+                        <span className="font-bold text-sm">{e.nome}</span>
+                        <div className="text-xs" style={{ color: C.inkSoft }}>
+                          {rotuloFuncao[e.funcao] || e.funcao}
+                          {e.clientesIds && e.clientesIds.length > 0
+                            ? ` · ${e.clientesIds.map(nomeEmpresa).filter(Boolean).join(", ")}`
+                            : ""}
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      {(e.funcao === "conferente" || e.funcao === "entregador") && (
+                        <button
+                          onClick={() => (editandoId === e.id ? setEditandoId(null) : iniciarEdicao(e))}
+                          className="text-xs font-bold"
+                          style={{ color: C.amber500 }}
+                        >
+                          {editandoId === e.id ? "Fechar" : "✏️ Empresas"}
+                        </button>
+                      )}
+                      <button onClick={() => remover(e.id)} style={{ color: C.rust }}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
-                  <button onClick={() => remover(e.id)} style={{ color: C.rust }}>
-                    <Trash2 size={16} />
-                  </button>
+                  {editandoId === e.id && (
+                    <div className="mt-3 pt-3 border-t" style={{ borderColor: C.line }}>
+                      <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: C.inkSoft }}>
+                        Empresas que {e.nome} atende
+                      </div>
+                      <div className="flex flex-col gap-1.5 rounded-lg p-2 mb-2" style={{ background: C.cardAlt, border: `1px solid ${C.line}`, maxHeight: 200, overflowY: "auto" }}>
+                        {clientesOrdenados.map((c) => (
+                          <label key={c.id} className="flex items-center gap-2" style={{ cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={empresasEmEdicao.includes(c.id)}
+                              onChange={() => toggleEmpresa(empresasEmEdicao, setEmpresasEmEdicao, c.id)}
+                            />
+                            <span className="text-sm" style={{ color: C.ink }}>{c.nome}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        className="w-full px-3 py-2 rounded-lg font-bold text-sm"
+                        style={{ background: C.amber500, color: C.green900 }}
+                        onClick={() => salvarEdicao(e.id)}
+                      >
+                        Salvar Empresas
+                      </button>
+                    </div>
+                  )}
                 </Card>
               ))}
             </div>
