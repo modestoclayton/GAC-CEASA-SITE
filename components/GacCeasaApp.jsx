@@ -128,7 +128,11 @@ function calcularStatusPagamentos(debitos, pagamentos, hojeISO) {
       if (pag.restante <= 0.009) idxPagamento++;
     }
 
-    const pago = faltaAlocar <= 0.009;
+    // Considera "pago" quando o que falta arredonda pra R$0 na exibição
+    // (o app mostra valores sem centavos) — evita mostrar "R$0" e "A Vencer"
+    // ao mesmo tempo por causa de centavos de arredondamento do desconto de
+    // Fundo Rural, que quase nunca fecha num número redondo.
+    const pago = Math.round(faltaAlocar) <= 0;
     const dataDebito = new Date(d.data + "T00:00:00");
     const diasDesde = Math.floor((hoje - dataDebito) / 86400000);
     let status;
