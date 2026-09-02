@@ -678,7 +678,10 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
             <div className="text-sm">Placa: {item.entrega.placa || "—"}</div>
             <div className="text-sm">Local: {item.entrega.localEntrega || "—"}</div>
             <div className="text-sm">Carregador: {item.entrega.carregador || "—"}</div>
-            <div className="text-sm">Telefone: {item.entrega.telefone || "—"}</div>
+            <div className="text-sm">
+              Caixas Emprestadas: {item.entrega.caixasEmprestadas ? "Sim" : "Não"}
+              {item.entrega.caixasEmprestadas && item.entrega.obsCaixas ? ` — ${item.entrega.obsCaixas}` : ""}
+            </div>
           </div>
         )}
 
@@ -2398,6 +2401,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [editQtd, setEditQtd] = useState("");
   const [editValor, setEditValor] = useState("");
   const [expandidoDestino, setExpandidoDestino] = useState(null);
+  const [salvando, setSalvando] = useState(false);
 
   // Conferente fixo por empresa: quando muda o cliente destino, se essa empresa
   // tem um conferente vinculado em Contas → Gerenciar Acesso, já pré-seleciona
@@ -2457,11 +2461,13 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   };
 
   const salvar = async () => {
+    if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!produtorId || !produto || !quantidade || !valorUnit) return;
     if (!isEstoque && !clienteDestino) {
       showToast("Escolha cliente ou marque Para Estoque");
       return;
     }
+    setSalvando(true);
     const nova = {
       id: uid(),
       data: todayISO(),
@@ -2485,6 +2491,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     setCargueiro("");
     setIsEstoque(false);
     setUltimaCompra(nova);
+    setSalvando(false);
     showToast("Compra registrada");
   };
 
@@ -2655,9 +2662,9 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       <PrimaryButton
         onClick={salvar}
         icon={ArrowDownCircle}
-        disabled={!produtorId || !produto || !quantidade || !valorUnit || Number(quantidade) <= 0 || Number(valorUnit) <= 0}
+        disabled={salvando || !produtorId || !produto || !quantidade || !valorUnit || Number(quantidade) <= 0 || Number(valorUnit) <= 0}
       >
-        Registrar Compra
+        {salvando ? "Salvando…" : "Registrar Compra"}
       </PrimaryButton>
       {ultimaCompra && setRecibo && (
         <button
@@ -2824,6 +2831,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const [editandoId, setEditandoId] = useState(null);
   const [editQtd, setEditQtd] = useState("");
   const [editPreco, setEditPreco] = useState("");
+  const [salvando, setSalvando] = useState(false);
   const total = (Number(quantidade) || 0) * (Number(precoUnit) || 0);
   
   // Verifica se cliente tem desconto fundo rural
@@ -2845,7 +2853,9 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   };
 
   const salvar = async () => {
+    if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!clienteId || !produto || !quantidade || !precoUnit) return;
+    setSalvando(true);
     const novaId = uid();
     const nova = {
       id: novaId,
@@ -2862,6 +2872,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
     };
     await persistTransacoes({ ...transacoes, vendas: [nova, ...transacoes.vendas] });
     setQuantidade("");
+    setSalvando(false);
     showToast("Venda registrada");
     setEntregaVendaId(novaId);
   };
@@ -2991,9 +3002,9 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
       <PrimaryButton
         onClick={salvar}
         icon={ArrowUpCircle}
-        disabled={!clienteId || !produto || !quantidade || !precoUnit || Number(quantidade) <= 0 || Number(precoUnit) <= 0}
+        disabled={salvando || !clienteId || !produto || !quantidade || !precoUnit || Number(quantidade) <= 0 || Number(precoUnit) <= 0}
       >
-        Registrar Venda
+        {salvando ? "Salvando…" : "Registrar Venda"}
       </PrimaryButton>
 
       <SectionTitle icon={ShoppingBasket} style={{ marginTop: 20 }}>Minhas Vendas do Dia</SectionTitle>
@@ -3057,7 +3068,8 @@ function EntregaVendaForm({ vendaId, initial, venda, transacoes, persistTransaco
   const [placa, setPlaca] = useState(initial?.placa || "");
   const [localEntrega, setLocalEntrega] = useState(initial?.localEntrega || "");
   const [carregador, setCarregador] = useState(initial?.carregador || "");
-  const [telefone, setTelefone] = useState(initial?.telefone || "");
+  const [caixasEmprestadas, setCaixasEmprestadas] = useState(initial?.caixasEmprestadas || false);
+  const [obsCaixas, setObsCaixas] = useState(initial?.obsCaixas || "");
 
   const salvarEntrega = async () => {
     const nextVendas = transacoes.vendas.map((v) =>
@@ -3068,7 +3080,8 @@ function EntregaVendaForm({ vendaId, initial, venda, transacoes, persistTransaco
               placa: placa.trim(),
               localEntrega: localEntrega.trim(),
               carregador: carregador.trim(),
-              telefone: telefone.trim(),
+              caixasEmprestadas,
+              obsCaixas: obsCaixas.trim(),
               confirmada: initial?.confirmada || false,
             },
           }
@@ -3117,15 +3130,43 @@ function EntregaVendaForm({ vendaId, initial, venda, transacoes, persistTransaco
           onChange={(e) => setCarregador(e.target.value)}
         />
       </Field>
-      <Field label="Telefone do Carregador">
-        <TextInput
-          type="tel"
-          inputMode="tel"
-          placeholder="Ex: (44) 99894-2726"
-          value={telefone}
-          onChange={(e) => setTelefone(e.target.value)}
-        />
+      <Field label="Caixas Emprestadas?">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setCaixasEmprestadas(true)}
+            className="flex-1 py-2.5 rounded-xl font-bold text-sm"
+            style={{
+              background: caixasEmprestadas ? C.amber500 : C.cardAlt,
+              color: caixasEmprestadas ? C.green900 : C.ink,
+              border: `1px solid ${caixasEmprestadas ? C.amber500 : C.line}`,
+            }}
+          >
+            Sim
+          </button>
+          <button
+            type="button"
+            onClick={() => setCaixasEmprestadas(false)}
+            className="flex-1 py-2.5 rounded-xl font-bold text-sm"
+            style={{
+              background: !caixasEmprestadas ? C.green700 : C.cardAlt,
+              color: !caixasEmprestadas ? "#fff" : C.ink,
+              border: `1px solid ${!caixasEmprestadas ? C.green700 : C.line}`,
+            }}
+          >
+            Não
+          </button>
+        </div>
       </Field>
+      {caixasEmprestadas && (
+        <Field label="Observação sobre as caixas">
+          <TextInput
+            placeholder="Ex: 20 caixas verdes, devolver até sexta"
+            value={obsCaixas}
+            onChange={(e) => setObsCaixas(e.target.value)}
+          />
+        </Field>
+      )}
       <div className="flex gap-2">
         <PrimaryButton onClick={salvarEntrega} icon={Truck}>
           Salvar Entrega
@@ -3158,9 +3199,12 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
   const [formaPagamento, setFormaPagamento] = useState("PIX");
   const [valor, setValor] = useState("");
   const [obs, setObs] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
   const salvar = async () => {
+    if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!clienteId || !valor) return;
+    setSalvando(true);
     const novo = {
       id: uid(),
       data,
@@ -3176,6 +3220,7 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
     });
     setValor("");
     setObs("");
+    setSalvando(false);
     showToast(tipo === "pagamento" ? "Recebimento registrado" : "Desconto/Ajuste registrado");
   };
 
@@ -3229,9 +3274,9 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
       <PrimaryButton
         onClick={salvar}
         icon={HandCoins}
-        disabled={!clienteId || !valor || Number(valor) <= 0}
+        disabled={salvando || !clienteId || !valor || Number(valor) <= 0}
       >
-        {tipo === "pagamento" ? "Registrar Recebimento" : "Registrar Desconto/Ajuste"}
+        {salvando ? "Salvando…" : tipo === "pagamento" ? "Registrar Recebimento" : "Registrar Desconto/Ajuste"}
       </PrimaryButton>
     </Card>
   );
@@ -3244,9 +3289,12 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
   const [formaPagamento, setFormaPagamento] = useState("PIX");
   const [valor, setValor] = useState("");
   const [obs, setObs] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
   const salvar = async () => {
+    if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!produtorId || !valor) return;
+    setSalvando(true);
     const novo = {
       id: uid(),
       data,
@@ -3262,6 +3310,7 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
     });
     setValor("");
     setObs("");
+    setSalvando(false);
     showToast(tipo === "pagamento" ? "Pagamento registrado" : "Desconto/Ajuste registrado");
   };
 
@@ -3315,9 +3364,9 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
       <PrimaryButton
         onClick={salvar}
         icon={Landmark}
-        disabled={!produtorId || !valor || Number(valor) <= 0}
+        disabled={salvando || !produtorId || !valor || Number(valor) <= 0}
       >
-        {tipo === "pagamento" ? "Registrar Pagamento" : "Registrar Desconto/Ajuste"}
+        {salvando ? "Salvando…" : tipo === "pagamento" ? "Registrar Pagamento" : "Registrar Desconto/Ajuste"}
       </PrimaryButton>
     </Card>
   );
@@ -3381,9 +3430,14 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
               <b style={{ color: C.ink }}>Carregador:</b> {v.entrega.carregador || "—"}
             </span>
             <span>
-              <b style={{ color: C.ink }}>Telefone:</b> {v.entrega.telefone || "—"}
+              <b style={{ color: C.ink }}>Caixas Emprestadas:</b> {v.entrega.caixasEmprestadas ? "Sim" : "Não"}
             </span>
           </div>
+          {v.entrega.caixasEmprestadas && v.entrega.obsCaixas && (
+            <div className="text-xs mt-1" style={{ color: C.amber500 }}>
+              📦 {v.entrega.obsCaixas}
+            </div>
+          )}
           <button
             onClick={() => setEditandoId(v.id)}
             className="text-xs font-bold mt-1.5"
@@ -4026,6 +4080,7 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
   const [motivo, setMotivo] = useState(MOTIVOS_PERDA[0]);
+  const [salvando, setSalvando] = useState(false);
 
   const perdas = transacoes.perdas || [];
   const hoje = todayISO();
@@ -4048,7 +4103,9 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
   }, [perdas]);
 
   const salvar = async () => {
+    if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!produto || !quantidade) return;
+    setSalvando(true);
     const nova = {
       id: uid(),
       data: todayISO(),
@@ -4060,6 +4117,7 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
     await persistTransacoes({ ...transacoes, perdas: [nova, ...perdas] });
     setQuantidade("");
     setAberto(false);
+    setSalvando(false);
     showToast("Perda registrada");
   };
 
@@ -4122,8 +4180,8 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
             <span style={{ fontFamily: monoFont }}>{fmtMoney(valorEstimado)}</span>
           </div>
           <div className="flex gap-2">
-            <PrimaryButton onClick={salvar} icon={AlertTriangle} disabled={!produto || !quantidade || Number(quantidade) <= 0}>
-              Salvar Perda
+            <PrimaryButton onClick={salvar} icon={AlertTriangle} disabled={salvando || !produto || !quantidade || Number(quantidade) <= 0}>
+              {salvando ? "Salvando…" : "Salvar Perda"}
             </PrimaryButton>
           </div>
           <button
