@@ -79,12 +79,12 @@ async function lerTabela(sheets, spreadsheetId, nome) {
 // ------------------------------------------------------------------------
 function cabecalhoDaTabela(nome) {
   const cabecalhos = {
-    produtos: ["dados_json", "id", "codigo", "nome", "unidade", "peso_por_caixa_kg", "custo_medio", "preco_venda", "estoque_minimo"],
+    produtos: ["dados_json", "id", "codigo", "nome", "unidade", "custo_medio", "preco_venda", "estoque_minimo"],
     clientes: ["dados_json", "id", "codigo", "nome", "cidade", "limite_credito", "forma_pagamento", "desconto_fundo_rural"],
     produtores: ["dados_json", "id", "codigo", "nome", "cidade", "telefone", "tem_cnpj", "desconto_fundo_rural", "forma_pagamento", "chave_pix"],
     compradoresVendedores: ["dados_json", "id", "nome", "funcao", "empresas_ids"],
-    compras: ["dados_json", "id", "data", "produtor_id", "produto", "quantidade", "valor_unitario", "valor_total", "desconto", "valor_final", "cliente_destino", "para_estoque", "cargueiro", "entrega_confirmada", "quantidade_recebida", "divergencia"],
-    vendas: ["dados_json", "id", "data", "cliente_id", "produto", "quantidade", "preco_unitario", "valor_total", "desconto", "valor_final", "status", "entrega_placa", "entrega_local", "entrega_carregador", "caixas_emprestadas", "obs_caixas", "entrega_confirmada"],
+    compras: ["dados_json", "id", "data", "produtor_id", "produto", "quantidade", "quantidade_caixas", "valor_unitario", "valor_total", "desconto", "valor_final", "cliente_destino", "para_estoque", "cargueiro", "entrega_confirmada", "quantidade_recebida", "divergencia"],
+    vendas: ["dados_json", "id", "data", "cliente_id", "produto", "quantidade", "quantidade_caixas", "preco_unitario", "valor_total", "desconto", "valor_final", "status", "entrega_placa", "entrega_local", "entrega_carregador", "caixas_emprestadas", "obs_caixas", "entrega_confirmada"],
     recebimentos: ["dados_json", "id", "data", "cliente_id", "valor", "tipo", "forma_pagamento", "observacao"],
     pagamentos: ["dados_json", "id", "data", "produtor_id", "valor", "tipo", "forma_pagamento", "observacao"],
     perdas: ["dados_json", "id", "data", "produto", "quantidade", "motivo", "valor_perdido"],
@@ -97,7 +97,7 @@ function montarLinha(nome, r) {
   const jsonString = JSON.stringify(r);
 
   if (nome === "produtos") {
-    return [jsonString, r.id || "", r.codigo || "", r.nome || "", r.unidade || "", r.kgPorCaixa || "", r.custoMedio || 0, r.precoVenda || 0, r.estoqueMinimo || 0];
+    return [jsonString, r.id || "", r.codigo || "", r.nome || "", r.unidade || "", r.custoMedio || 0, r.precoVenda || 0, r.estoqueMinimo || 0];
   }
 
   if (nome === "clientes") {
@@ -142,6 +142,7 @@ function montarLinha(nome, r) {
       r.produtorId || "",
       r.produto || "",
       r.quantidade || 0,
+      r.quantidadeCaixas || "",
       r.valorUnit || 0,
       r.valorTotal || 0,
       r.desconto || 0,
@@ -164,6 +165,7 @@ function montarLinha(nome, r) {
       r.clienteId || "",
       r.produto || "",
       r.quantidade || 0,
+      r.quantidadeCaixas || "",
       r.precoUnit || 0,
       r.valorTotal || 0,
       r.desconto || 0,
@@ -291,6 +293,38 @@ export default async function handler(req, res) {
         abas_esperadas_pelo_app: esperadas,
         abas_faltando: faltando,
       });
+    } catch (e) {
+      return res.status(500).json({ ok: false, erro: String(e && e.message ? e.message : e) });
+    }
+  }
+
+  // Zera SÓ UMA aba específica (mantém o cabeçalho, apaga os dados) — útil
+  // pra descartar registros de teste sem mexer no resto da planilha.
+  // Uso: ?limpar=produtos&confirmar=sim
+  if (req.query && req.query.limpar) {
+    const tabelaAlvo = req.query.limpar;
+    const todasAsTabelas = [...TABELAS_CADASTROS, ...TABELAS_TRANSACOES];
+    if (!todasAsTabelas.includes(tabelaAlvo)) {
+      return res.status(400).json({
+        ok: false,
+        erro: `Tabela "${tabelaAlvo}" não existe. Tabelas válidas: ${todasAsTabelas.join(", ")}`,
+      });
+    }
+    if (req.query.confirmar !== "sim") {
+      return res.status(400).json({
+        ok: false,
+        erro: `Pra confirmar de verdade, acesse com &confirmar=sim no final do link. Isso vai APAGAR todos os registros de "${tabelaAlvo}" (mantendo o cabeçalho).`,
+      });
+    }
+    if (!spreadsheetId || !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      return res.status(500).json({ ok: false, erro: "Variáveis de ambiente não configuradas." });
+    }
+    try {
+      const auth = getAuth();
+      const sheets = google.sheets({ version: "v4", auth });
+      await garantirAbas(sheets, spreadsheetId, [tabelaAlvo]);
+      await escreverTabela(sheets, spreadsheetId, tabelaAlvo, []);
+      return res.status(200).json({ ok: true, mensagem: `Tabela "${tabelaAlvo}" foi zerada (cabeçalho mantido).` });
     } catch (e) {
       return res.status(500).json({ ok: false, erro: String(e && e.message ? e.message : e) });
     }
