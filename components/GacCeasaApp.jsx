@@ -83,19 +83,38 @@ const PRAZO_VENCIMENTO_DIAS = 35;
 // usado nos totais (Dashboard, Requisição, Folha de Pedido, Vale). Produto
 // vendido em CX ou UN já conta 1:1; produto vendido em KG divide pelo peso
 // médio da caixa cadastrado nele (ex: 40kg de mamão / 20kg por caixa = 2 CX).
-function caixasEquivalentes(quantidade, nomeProduto, produtos) {
-  const produto = (produtos || []).find((p) => p.nome === nomeProduto);
-  const qtd = Number(quantidade) || 0;
-  if (produto && produto.unidade === "KG" && Number(produto.kgPorCaixa) > 0) {
-    return qtd / Number(produto.kgPorCaixa);
+// Quantas caixas um item (compra/venda) representa. Produto vendido direto
+// em caixa (CX): a própria quantidade já É a contagem de caixas. Produto
+// vendido em KG ou UN: a caixa não tem peso/qtd fixa (varia caixa a caixa),
+// então usa o número de caixas que a PESSOA digitou na hora do registro
+// (item.quantidadeCaixas) — nunca um cálculo automático.
+function caixasEquivalentes(item, produtos) {
+  if (!item) return 0;
+  const produto = (produtos || []).find((p) => p.nome === item.produto);
+  if (!produto || produto.unidade === "CX") {
+    return Number(item.quantidade) || 0;
   }
-  return qtd;
+  return Number(item.quantidadeCaixas) || 0;
 }
 
 // Retorna a unidade real do produto (CX/KG/UN) pra usar como rótulo em vez
 // de deixar "CX" fixo em todo lugar, independente do que o produto realmente é.
 function unidadeDoProduto(nomeProduto, produtos) {
   return (produtos || []).find((p) => p.nome === nomeProduto)?.unidade || "CX";
+}
+
+// Confere se falta preencher a quantidade de caixas antes de salvar, pra
+// produto que não é vendido direto em caixa (KG/UN). Sem isso preenchido,
+// a soma de caixas pra carga fica sem informação nenhuma (zerada).
+function avisoConversaoCaixa(nomeProduto, quantidadeCaixas, produtos) {
+  const produto = (produtos || []).find((p) => p.nome === nomeProduto);
+  if (!produto) {
+    return `O produto "${nomeProduto}" não está cadastrado.`;
+  }
+  if (produto.unidade !== "CX" && !(Number(quantidadeCaixas) > 0)) {
+    return `Informe quantas caixas deu essa quantidade de ${produto.unidade === "KG" ? "quilos" : "unidades"} — sem isso, o total de caixas pra carga fica sem contar esse item.`;
+  }
+  return null;
 }
 
 function normalizarEquipe(lista) {
@@ -541,7 +560,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
 
   const totalGeral = totalSubtotal - totalDesconto;
   const totalCx = itens.reduce(
-    (s, i) => s + caixasEquivalentes(i.quantidade, i.produto, cadastros.produtos),
+    (s, i) => s + caixasEquivalentes(i, cadastros.produtos),
     0
   );
 
@@ -1349,11 +1368,11 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const vendasDoDia = transacoes.vendas.filter((v) => v.data === dataSelecionada);
   
   const totalCxCompradas = comprasDodia.reduce(
-    (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+    (s, c) => s + caixasEquivalentes(c, cadastros.produtos),
     0
   );
   const totalCxVendidas = vendasDoDia.reduce(
-    (s, v) => s + caixasEquivalentes(v.quantidade, v.produto, cadastros.produtos),
+    (s, v) => s + caixasEquivalentes(v, cadastros.produtos),
     0
   );
   const alertas = estoquePorProduto.filter((e) => e.saldo < e.estoqueMinimo);
@@ -1694,8 +1713,8 @@ function QuickAddCliente({ onAdd, standalone = false }) {
           onClick={() => {
             if (!nome.trim()) return;
             onAdd({
-              nome: nome.trim(),
-              cidade: cidade.trim(),
+              nome: nome.trim().toUpperCase(),
+              cidade: cidade.trim().toUpperCase(),
               limiteCredito: Number(limiteCredito) || 0,
               pagamento,
               temDescontoFundoRural,
@@ -1727,12 +1746,10 @@ function QuickAddProduto({ onAdd }) {
   const [open, setOpen] = useState(false);
   const [nome, setNome] = useState("");
   const [unidade, setUnidade] = useState("CX");
-  const [kgPorCaixa, setKgPorCaixa] = useState("20");
 
   const reset = () => {
     setNome("");
     setUnidade("CX");
-    setKgPorCaixa("20");
   };
 
   if (!open)
@@ -1757,21 +1774,12 @@ function QuickAddProduto({ onAdd }) {
           <option value="KG">Quilo (KG)</option>
           <option value="UN">Unidade (UN)</option>
         </Select>
-      </Field>
-      {unidade === "KG" && (
-        <Field label="Peso médio de 1 caixa (kg)">
-          <TextInput
-            type="number"
-            inputMode="decimal"
-            value={kgPorCaixa}
-            onChange={(e) => setKgPorCaixa(e.target.value)}
-            placeholder="Ex: 20"
-          />
+        {unidade !== "CX" && (
           <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
-            Usado só pra calcular quantas caixas os quilos representam nos totais (Dashboard, Requisição, Folha de Pedido, Vale). O valor da compra/venda continua sendo calculado pelos quilos reais digitados.
+            Na hora de registrar cada compra/venda desse produto, vai pedir também quantas caixas deu — já que o peso/quantidade por caixa varia.
           </div>
-        </Field>
-      )}
+        )}
+      </Field>
       <div className="flex gap-2 mt-1">
         <button
           className="flex-1 px-3 py-2.5 rounded-lg font-bold text-sm"
@@ -1781,7 +1789,6 @@ function QuickAddProduto({ onAdd }) {
             onAdd({
               nome: nome.trim().toUpperCase(),
               unidade,
-              kgPorCaixa: unidade === "KG" ? Number(kgPorCaixa) || 0 : 0,
             });
             reset();
             setOpen(false);
@@ -1908,8 +1915,8 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
           onClick={() => {
             if (!nome.trim()) return;
             onAdd({
-              nome: nome.trim(),
-              cidade: cidade.trim(),
+              nome: nome.trim().toUpperCase(),
+              cidade: cidade.trim().toUpperCase(),
               telefone: telefone.trim(),
               temCNPJ,
               temDescontoFundoRural,
@@ -1965,7 +1972,7 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
           const comprasCliente = comprasHoje.filter((c) => c.clienteDestino === clienteId);
           const produtoresUnicos = [...new Set(comprasCliente.map((c) => c.produtorId))];
           const totalClienteQtd = comprasCliente.reduce(
-            (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+            (s, c) => s + caixasEquivalentes(c, cadastros.produtos),
             0
           );
           const totalClienteValor = comprasCliente.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
@@ -1983,7 +1990,7 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
                   const produtor = cadastros.produtores.find((p) => p.id === produtorId);
                   const comprasProdutor = comprasCliente.filter((c) => c.produtorId === produtorId);
                   const totalQtd = comprasProdutor.reduce(
-                    (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+                    (s, c) => s + caixasEquivalentes(c, cadastros.produtos),
                     0
                   );
                   const totalValor = comprasProdutor.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
@@ -2045,7 +2052,7 @@ function gerarPDFFolhaPedido(compras, dataSelecionada, cadastros) {
       const prod = cadastros.produtores.find(p => p.id === item.produtorId);
       const valor = item.valorFinal || item.valorTotal;
       const unidade = unidadeDoProduto(item.produto, cadastros.produtos);
-      const cx = caixasEquivalentes(item.quantidade, item.produto, cadastros.produtos);
+      const cx = caixasEquivalentes(item, cadastros.produtos);
       total += valor;
       totalCx += cx;
       html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade} ${unidade}</td><td>${cx.toFixed(1).replace(/\.0$/, '')}</td><td>R$ ${(item.valorUnit||0).toFixed(2)}</td><td>R$ ${valor.toFixed(2)}</td></tr>`;
@@ -2087,7 +2094,7 @@ function gerarPDFFolhaCarga(compras, dataSelecionada, cadastros) {
     itensOrdenados.forEach(item => {
       const prod = cadastros.produtores.find(p => p.id === item.produtorId);
       const unidade = unidadeDoProduto(item.produto, cadastros.produtos);
-      const cx = caixasEquivalentes(item.quantidade, item.produto, cadastros.produtos);
+      const cx = caixasEquivalentes(item, cadastros.produtos);
       totalCx += cx;
       html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade} ${unidade}</td><td>${cx.toFixed(1).replace(/\.0$/, '')}</td></tr>`;
     });
@@ -2114,7 +2121,7 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
   const subtotal = itensGrupo.reduce((s, c) => s + Number(c.valorTotal), 0);
   const desconto = produtor?.temDescontoFundoRural ? subtotal * 0.0163 : 0;
   const total = subtotal - desconto;
-  const totalCx = itensGrupo.reduce((s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos), 0);
+  const totalCx = itensGrupo.reduce((s, c) => s + caixasEquivalentes(c, cadastros.produtos), 0);
 
   const linhasTabela = itensOrdenados
     .map(
@@ -2281,7 +2288,7 @@ function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros) {
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório de Vendas</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:14px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}.total-geral{font-weight:bold;text-align:right;padding:14px;font-size:18px;border-top:3px solid #1E4A30;margin-top:20px}.resumo{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:20px}</style></head><body><h1>🧾 RELATÓRIO DE VENDAS DO DIA</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
 
   const totalQtdGeral = vendas.reduce(
-    (s, v) => s + caixasEquivalentes(v.quantidade, v.produto, cadastros.produtos),
+    (s, v) => s + caixasEquivalentes(v, cadastros.produtos),
     0
   );
   const totalValorGeral = vendas.reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
@@ -2330,7 +2337,7 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
   
   const comprasDoCliente = clienteSelecionado ? comprasHoje.filter((c) => c.clienteDestino === clienteSelecionado) : [];
   const totalQtd = comprasDoCliente.reduce(
-    (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+    (s, c) => s + caixasEquivalentes(c, cadastros.produtos),
     0
   );
   const totalValor = comprasDoCliente.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
@@ -2364,7 +2371,7 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
               const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
               const valorItem = c.valorFinal || c.valorTotal;
               const unidade = unidadeDoProduto(c.produto, cadastros.produtos);
-              const cxEquiv = caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos);
+              const cxEquiv = caixasEquivalentes(c, cadastros.produtos);
               return (
                 <Card key={c.id} style={{ marginBottom: 12, background: C.cardAlt }}>
                   <div className="flex justify-between">
@@ -2413,7 +2420,7 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
   
   const comprasDoCliente = clienteSelecionado ? comprasHoje.filter((c) => c.clienteDestino === clienteSelecionado) : [];
   const totalQtd = comprasDoCliente.reduce(
-    (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+    (s, c) => s + caixasEquivalentes(c, cadastros.produtos),
     0
   );
 
@@ -2439,7 +2446,7 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
           {comprasDoCliente.map((c) => {
             const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
             const unidade = unidadeDoProduto(c.produto, cadastros.produtos);
-            const cxEquiv = caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos);
+            const cxEquiv = caixasEquivalentes(c, cadastros.produtos);
             return (
               <Card key={c.id} style={{ marginBottom: 12, background: C.cardAlt }}>
                 <div className="flex justify-between">
@@ -2489,7 +2496,7 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
   });
 
   const totalQtd = vendasDoDia.reduce(
-    (s, v) => s + caixasEquivalentes(v.quantidade, v.produto, cadastros.produtos),
+    (s, v) => s + caixasEquivalentes(v, cadastros.produtos),
     0
   );
   const totalValor = vendasDoDia.reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
@@ -2564,6 +2571,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [quantidade, setQuantidade] = useState("");
   const [valorUnit, setValorUnit] = useState("");
   const [cargueiro, setCargueiro] = useState("");
+  const [quantidadeCaixas, setQuantidadeCaixas] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
   const [isEstoque, setIsEstoque] = useState(false);
   const [view, setView] = useState("registrar");
@@ -2604,7 +2612,6 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       codigo: Date.now() % 100000,
       nome: dados.nome,
       unidade: dados.unidade,
-      kgPorCaixa: dados.kgPorCaixa || 0,
       custoMedio: 0,
       precoVenda: 0,
       estoqueMinimo: 0,
@@ -2618,7 +2625,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   // isso elimina a dependência de uma coluna nova que não persistia no backend).
   // Cadastrar aqui já vincula a empresa atual (clienteDestino) automaticamente.
   const addCargueiro = async (nome) => {
-    const nomeLimpo = nome.trim();
+    const nomeLimpo = nome.trim().toUpperCase();
     if (!nomeLimpo) return;
     const equipeAtual = normalizarEquipe(cadastros.compradoresVendedores);
     const novo = {
@@ -2638,6 +2645,8 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       showToast("Escolha cliente ou marque Para Estoque");
       return;
     }
+    const aviso = avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos);
+    if (aviso && !window.confirm(`${aviso}\n\nSalvar mesmo assim?`)) return;
     setSalvando(true);
     const nova = {
       id: uid(),
@@ -2648,6 +2657,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       produto,
       cargueiro,
       quantidade: Number(quantidade),
+      quantidadeCaixas: Number(quantidadeCaixas) || 0,
       valorUnit: Number(valorUnit),
       valorTotal: total,
       desconto: desconto,
@@ -2658,6 +2668,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     };
     await persistTransacoes({ ...transacoes, compras: [nova, ...transacoes.compras] });
     setQuantidade("");
+    setQuantidadeCaixas("");
     setValorUnit("");
     setCargueiro("");
     setIsEstoque(false);
@@ -2770,6 +2781,11 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           ))}
         </Select>
         <QuickAddProduto onAdd={addProduto} />
+        {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) && (
+          <div className="text-xs mt-1 p-2 rounded" style={{ background: C.amberSoft, color: C.rust }}>
+            ⚠️ {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)}
+          </div>
+        )}
       </Field>
       
       <Field label="Cargueiro / Conferente">
@@ -2817,6 +2833,21 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           />
         </Field>
       </div>
+      {unidadeDoProduto(produto, cadastros.produtos) !== "CX" && (
+        <Field label={`Quantas Caixas deram esses ${quantidade || "0"} ${unidadeDoProduto(produto, cadastros.produtos) === "KG" ? "quilos" : "unidades"}?`}>
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            min="0"
+            value={quantidadeCaixas}
+            onChange={(e) => setQuantidadeCaixas(e.target.value)}
+            placeholder="Ex: 10"
+          />
+          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+            O valor da compra continua sendo calculado pelos {unidadeDoProduto(produto, cadastros.produtos) === "KG" ? "quilos" : "unidades"} reais acima — isso aqui é só pra contar certo nas caixas de carga.
+          </div>
+        </Field>
+      )}
       <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
         <div className="text-sm font-bold mb-2" style={{ color: C.ink }}>
           Subtotal: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
@@ -2997,6 +3028,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
   const [quantidade, setQuantidade] = useState("");
   const [precoUnit, setPrecoUnit] = useState("");
+  const [quantidadeCaixas, setQuantidadeCaixas] = useState("");
   const [status, setStatus] = useState("Pendente");
   const [entregaVendaId, setEntregaVendaId] = useState(null);
   const [editandoId, setEditandoId] = useState(null);
@@ -3026,6 +3058,8 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const salvar = async () => {
     if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!clienteId || !produto || !quantidade || !precoUnit) return;
+    const aviso = avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos);
+    if (aviso && !window.confirm(`${aviso}\n\nSalvar mesmo assim?`)) return;
     setSalvando(true);
     const novaId = uid();
     const nova = {
@@ -3034,6 +3068,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
       clienteId,
       produto,
       quantidade: Number(quantidade),
+      quantidadeCaixas: Number(quantidadeCaixas) || 0,
       precoUnit: Number(precoUnit),
       valorTotal: total,
       desconto: desconto,
@@ -3043,6 +3078,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
     };
     await persistTransacoes({ ...transacoes, vendas: [nova, ...transacoes.vendas] });
     setQuantidade("");
+    setQuantidadeCaixas("");
     setSalvando(false);
     showToast("Venda registrada");
     setEntregaVendaId(novaId);
@@ -3128,6 +3164,11 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
             </option>
           ))}
         </Select>
+        {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) && (
+          <div className="text-xs mt-1 p-2 rounded" style={{ background: C.amberSoft, color: C.rust }}>
+            ⚠️ {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)}
+          </div>
+        )}
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Quantidade">
@@ -3151,6 +3192,21 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
           />
         </Field>
       </div>
+      {unidadeDoProduto(produto, cadastros.produtos) !== "CX" && (
+        <Field label={`Quantas Caixas deram esses ${quantidade || "0"} ${unidadeDoProduto(produto, cadastros.produtos) === "KG" ? "quilos" : "unidades"}?`}>
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            min="0"
+            value={quantidadeCaixas}
+            onChange={(e) => setQuantidadeCaixas(e.target.value)}
+            placeholder="Ex: 10"
+          />
+          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+            O valor da venda continua sendo calculado pelos {unidadeDoProduto(produto, cadastros.produtos) === "KG" ? "quilos" : "unidades"} reais acima — isso aqui é só pra contar certo nas caixas de carga.
+          </div>
+        </Field>
+      )}
       <Field label="Status do pagamento">
         <Select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="Pendente">Pendente</option>
@@ -4618,7 +4674,7 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
   };
 
   const adicionar = async () => {
-    const nome = novoNome.trim();
+    const nome = novoNome.trim().toUpperCase();
     if (!nome) return;
     const jaExiste = equipe.some(
       (e) => e.nome.trim().toLowerCase() === nome.toLowerCase() && e.funcao === novaFuncao
@@ -4888,8 +4944,8 @@ function EditarCliente({ cliente, onSalvar, onCancelar }) {
             onSalvar({
               id: cliente.id,
               codigo: cliente.codigo,
-              nome: nome.trim(),
-              cidade: cidade.trim(),
+              nome: nome.trim().toUpperCase(),
+              cidade: cidade.trim().toUpperCase(),
               limiteCredito: Number(limiteCredito) || 0,
               pagamento,
               temDescontoFundoRural,
@@ -4909,7 +4965,6 @@ function EditarCliente({ cliente, onSalvar, onCancelar }) {
 function EditarProduto({ produto, onSalvar, onCancelar }) {
   const [nome, setNome] = useState(produto.nome || "");
   const [unidade, setUnidade] = useState(produto.unidade || "CX");
-  const [kgPorCaixa, setKgPorCaixa] = useState(String(produto.kgPorCaixa || ""));
   const [custoMedio, setCustoMedio] = useState(String(produto.custoMedio || ""));
   const [precoVenda, setPrecoVenda] = useState(String(produto.precoVenda || ""));
   const [estoqueMinimo, setEstoqueMinimo] = useState(String(produto.estoqueMinimo || ""));
@@ -4928,18 +4983,12 @@ function EditarProduto({ produto, onSalvar, onCancelar }) {
           <option value="KG">Quilo (KG)</option>
           <option value="UN">Unidade (UN)</option>
         </Select>
+        {unidade !== "CX" && (
+          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+            Na hora de registrar cada compra/venda desse produto, vai pedir também quantas caixas deu.
+          </div>
+        )}
       </Field>
-      {unidade === "KG" && (
-        <Field label="Peso médio de 1 caixa (kg)">
-          <TextInput
-            type="number"
-            inputMode="decimal"
-            value={kgPorCaixa}
-            onChange={(e) => setKgPorCaixa(e.target.value)}
-            placeholder="Ex: 20"
-          />
-        </Field>
-      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Custo Médio (R$)">
           <TextInput type="number" inputMode="decimal" value={custoMedio} onChange={(e) => setCustoMedio(e.target.value)} />
@@ -4962,7 +5011,6 @@ function EditarProduto({ produto, onSalvar, onCancelar }) {
               codigo: produto.codigo,
               nome: nome.trim().toUpperCase(),
               unidade,
-              kgPorCaixa: unidade === "KG" ? Number(kgPorCaixa) || 0 : 0,
               custoMedio: Number(custoMedio) || 0,
               precoVenda: Number(precoVenda) || 0,
               estoqueMinimo: Number(estoqueMinimo) || 0,
@@ -5055,8 +5103,8 @@ function EditarProdutor({ produtor, onSalvar, onCancelar }) {
             onSalvar({
               id: produtor.id,
               codigo: produtor.codigo,
-              nome: nome.trim(),
-              cidade: cidade.trim(),
+              nome: nome.trim().toUpperCase(),
+              cidade: cidade.trim().toUpperCase(),
               telefone: telefone.trim(),
               temCNPJ,
               temDescontoFundoRural,
