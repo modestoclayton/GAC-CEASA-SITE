@@ -79,7 +79,7 @@ async function lerTabela(sheets, spreadsheetId, nome) {
 // ------------------------------------------------------------------------
 function cabecalhoDaTabela(nome) {
   const cabecalhos = {
-    produtos: ["dados_json", "id", "codigo", "nome", "unidade", "custo_medio", "preco_venda", "estoque_minimo"],
+    produtos: ["dados_json", "id", "codigo", "nome", "unidade", "peso_por_caixa_kg", "custo_medio", "preco_venda", "estoque_minimo"],
     clientes: ["dados_json", "id", "codigo", "nome", "cidade", "limite_credito", "forma_pagamento", "desconto_fundo_rural"],
     produtores: ["dados_json", "id", "codigo", "nome", "cidade", "telefone", "tem_cnpj", "desconto_fundo_rural", "forma_pagamento", "chave_pix"],
     compradoresVendedores: ["dados_json", "id", "nome", "funcao", "empresas_ids"],
@@ -97,7 +97,7 @@ function montarLinha(nome, r) {
   const jsonString = JSON.stringify(r);
 
   if (nome === "produtos") {
-    return [jsonString, r.id || "", r.codigo || "", r.nome || "", r.unidade || "", r.custoMedio || 0, r.precoVenda || 0, r.estoqueMinimo || 0];
+    return [jsonString, r.id || "", r.codigo || "", r.nome || "", r.unidade || "", r.kgPorCaixa || "", r.custoMedio || 0, r.precoVenda || 0, r.estoqueMinimo || 0];
   }
 
   if (nome === "clientes") {
