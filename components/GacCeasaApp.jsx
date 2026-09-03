@@ -79,6 +79,25 @@ const PRAZO_VENCIMENTO_DIAS = 35;
 // (só relevante pra Conferente/Entregador — uma mesma pessoa pode atender várias
 // empresas diferentes). Entradas antigas eram só texto puro (nome do gestor
 // autorizado) ou tinham um "clienteId" único — aqui a gente trata os 3 formatos.
+// Converte a quantidade digitada numa compra/venda pra "caixas equivalentes",
+// usado nos totais (Dashboard, Requisição, Folha de Pedido, Vale). Produto
+// vendido em CX ou UN já conta 1:1; produto vendido em KG divide pelo peso
+// médio da caixa cadastrado nele (ex: 40kg de mamão / 20kg por caixa = 2 CX).
+function caixasEquivalentes(quantidade, nomeProduto, produtos) {
+  const produto = (produtos || []).find((p) => p.nome === nomeProduto);
+  const qtd = Number(quantidade) || 0;
+  if (produto && produto.unidade === "KG" && Number(produto.kgPorCaixa) > 0) {
+    return qtd / Number(produto.kgPorCaixa);
+  }
+  return qtd;
+}
+
+// Retorna a unidade real do produto (CX/KG/UN) pra usar como rótulo em vez
+// de deixar "CX" fixo em todo lugar, independente do que o produto realmente é.
+function unidadeDoProduto(nomeProduto, produtos) {
+  return (produtos || []).find((p) => p.nome === nomeProduto)?.unidade || "CX";
+}
+
 function normalizarEquipe(lista) {
   return (lista || []).map((item) => {
     if (typeof item === "string") {
@@ -521,6 +540,10 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   }
 
   const totalGeral = totalSubtotal - totalDesconto;
+  const totalCx = itens.reduce(
+    (s, i) => s + caixasEquivalentes(i.quantidade, i.produto, cadastros.produtos),
+    0
+  );
 
   const titulo = isVenda ? "Pedido de Venda" : "Vale de Compra";
   const rotuloParte = isVenda ? "Cliente" : "Fornecedor";
@@ -627,7 +650,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
               return (
               <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0" }}>
                 <td className="py-2">{i.produto}</td>
-                <td className="text-right py-2">{i.quantidade}</td>
+                <td className="text-right py-2">{i.quantidade} {unidadeDoProduto(i.produto, cadastros.produtos)}</td>
                 <td className="text-right py-2">{fmtMoney(precoUnitario)}</td>
                 <td className="text-right py-2 font-bold">{fmtMoney(totalItem)}</td>
               </tr>
@@ -636,7 +659,15 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
           </tbody>
         </table>
 
-        <div className="flex justify-end mb-6">
+        <div className="flex justify-between items-end mb-6">
+          <div className="text-left">
+            <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
+              Total em Caixas
+            </div>
+            <div className="text-lg font-bold" style={{ color: "#1F4A30" }}>
+              {totalCx.toFixed(1).replace(/\.0$/, "")} CX
+            </div>
+          </div>
           <div className="text-right">
             <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
               Subtotal
@@ -1212,6 +1243,7 @@ export default function GacCeasaApp() {
             cadastros={cadastros}
             transacoes={transacoes}
             persistTransacoes={persistTransacoes}
+            persistCadastros={persistCadastros}
             showToast={showToast}
           />
         )}
@@ -1316,8 +1348,14 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const comprasDodia = transacoes.compras.filter((c) => c.data === dataSelecionada);
   const vendasDoDia = transacoes.vendas.filter((v) => v.data === dataSelecionada);
   
-  const totalCxCompradas = comprasDodia.reduce((s, c) => s + Number(c.quantidade), 0);
-  const totalCxVendidas = vendasDoDia.reduce((s, v) => s + Number(v.quantidade), 0);
+  const totalCxCompradas = comprasDodia.reduce(
+    (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+    0
+  );
+  const totalCxVendidas = vendasDoDia.reduce(
+    (s, v) => s + caixasEquivalentes(v.quantidade, v.produto, cadastros.produtos),
+    0
+  );
   const alertas = estoquePorProduto.filter((e) => e.saldo < e.estoqueMinimo);
   const clientesAcima = contaClientes.filter((c) => c.acima);
   const produtoresPendentes = contaProdutores.filter((p) => p.pendente);
@@ -1340,13 +1378,13 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
       <div className="grid grid-cols-2 gap-3 mb-4">
         <Card style={{ background: C.green700, borderLeft: "4px solid " + C.amber500 }}>
           <div className="text-xs" style={{ color: C.inkSoft }}>📦 CX COMPRADAS</div>
-          <div className="text-2xl font-bold" style={{ color: C.amber500 }}>{totalCxCompradas}</div>
+          <div className="text-2xl font-bold" style={{ color: C.amber500 }}>{totalCxCompradas.toFixed(1).replace(/\.0$/, "")}</div>
           <div className="text-xs" style={{ color: C.inkSoft }}>{fmtDate(dataSelecionada)}</div>
         </Card>
         
         <Card style={{ background: C.green700, borderLeft: "4px solid " + C.amber500 }}>
           <div className="text-xs" style={{ color: C.inkSoft }}>🛒 CX VENDIDAS</div>
-          <div className="text-2xl font-bold" style={{ color: C.amber500 }}>{totalCxVendidas}</div>
+          <div className="text-2xl font-bold" style={{ color: C.amber500 }}>{totalCxVendidas.toFixed(1).replace(/\.0$/, "")}</div>
           <div className="text-xs" style={{ color: C.inkSoft }}>{fmtDate(dataSelecionada)}</div>
         </Card>
       </div>
@@ -1685,6 +1723,87 @@ function QuickAddCliente({ onAdd, standalone = false }) {
   );
 }
 
+function QuickAddProduto({ onAdd }) {
+  const [open, setOpen] = useState(false);
+  const [nome, setNome] = useState("");
+  const [unidade, setUnidade] = useState("CX");
+  const [kgPorCaixa, setKgPorCaixa] = useState("20");
+
+  const reset = () => {
+    setNome("");
+    setUnidade("CX");
+    setKgPorCaixa("20");
+  };
+
+  if (!open)
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs font-bold mt-1"
+        style={{ color: C.green700 }}
+      >
+        + Cadastrar novo
+      </button>
+    );
+
+  return (
+    <div className="mt-2 rounded-lg p-3" style={{ background: C.cardAlt, border: `1px solid ${C.line}` }}>
+      <Field label="Nome do produto">
+        <TextInput placeholder="Ex: MAMÃO FORMOSA" value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+      </Field>
+      <Field label="Como é vendido/comprado?">
+        <Select value={unidade} onChange={(e) => setUnidade(e.target.value)}>
+          <option value="CX">Caixa (CX)</option>
+          <option value="KG">Quilo (KG)</option>
+          <option value="UN">Unidade (UN)</option>
+        </Select>
+      </Field>
+      {unidade === "KG" && (
+        <Field label="Peso médio de 1 caixa (kg)">
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            value={kgPorCaixa}
+            onChange={(e) => setKgPorCaixa(e.target.value)}
+            placeholder="Ex: 20"
+          />
+          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+            Usado só pra calcular quantas caixas os quilos representam nos totais (Dashboard, Requisição, Folha de Pedido, Vale). O valor da compra/venda continua sendo calculado pelos quilos reais digitados.
+          </div>
+        </Field>
+      )}
+      <div className="flex gap-2 mt-1">
+        <button
+          className="flex-1 px-3 py-2.5 rounded-lg font-bold text-sm"
+          style={{ background: C.amber500, color: C.green900 }}
+          onClick={() => {
+            if (!nome.trim()) return;
+            onAdd({
+              nome: nome.trim().toUpperCase(),
+              unidade,
+              kgPorCaixa: unidade === "KG" ? Number(kgPorCaixa) || 0 : 0,
+            });
+            reset();
+            setOpen(false);
+          }}
+        >
+          Salvar Produto
+        </button>
+        <button
+          className="px-3 rounded-lg"
+          style={{ color: C.inkSoft }}
+          onClick={() => {
+            reset();
+            setOpen(false);
+          }}
+        >
+          <X size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function QuickAddProdutor({ onAdd, standalone = false }) {
   const [open, setOpen] = useState(standalone);
   const [nome, setNome] = useState("");
@@ -1845,7 +1964,10 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
           const cliente = cadastros.clientes.find((c) => c.id === clienteId);
           const comprasCliente = comprasHoje.filter((c) => c.clienteDestino === clienteId);
           const produtoresUnicos = [...new Set(comprasCliente.map((c) => c.produtorId))];
-          const totalClienteQtd = comprasCliente.reduce((s, c) => s + Number(c.quantidade), 0);
+          const totalClienteQtd = comprasCliente.reduce(
+            (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+            0
+          );
           const totalClienteValor = comprasCliente.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
 
           return (
@@ -1853,14 +1975,17 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
               <div className="flex items-center justify-between mb-1">
                 <div className="font-bold text-sm" style={{ color: C.blue600 }}>👤 {cliente?.nome || clienteId}</div>
                 <div className="text-xs" style={{ color: C.inkSoft, fontFamily: monoFont }}>
-                  {totalClienteQtd} CX · {fmtMoney(totalClienteValor)}
+                  {totalClienteQtd.toFixed(1).replace(/\.0$/, "")} CX · {fmtMoney(totalClienteValor)}
                 </div>
               </div>
               <div className="flex flex-col gap-2 mt-2">
                 {produtoresUnicos.map((produtorId) => {
                   const produtor = cadastros.produtores.find((p) => p.id === produtorId);
                   const comprasProdutor = comprasCliente.filter((c) => c.produtorId === produtorId);
-                  const totalQtd = comprasProdutor.reduce((s, c) => s + Number(c.quantidade), 0);
+                  const totalQtd = comprasProdutor.reduce(
+                    (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+                    0
+                  );
                   const totalValor = comprasProdutor.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
 
                   return (
@@ -1868,12 +1993,12 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="font-bold text-xs">{produtor?.nome || "—"}</div>
                         <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
-                          {totalQtd} CX · {fmtMoney(totalValor)}
+                          {totalQtd.toFixed(1).replace(/\.0$/, "")} CX · {fmtMoney(totalValor)}
                         </div>
                       </div>
                       {comprasProdutor.map((c) => (
                         <div key={c.id} className="text-xs mb-0.5 flex justify-between" style={{ color: C.inkSoft }}>
-                          <span>{c.produto} - {c.quantidade} CX</span>
+                          <span>{c.produto} - {c.quantidade} {unidadeDoProduto(c.produto, cadastros.produtos)}</span>
                           <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorFinal || c.valorTotal)}</span>
                         </div>
                       ))}
@@ -1909,23 +2034,29 @@ function gerarPDFFolhaPedido(compras, dataSelecionada, cadastros) {
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Pedido</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}.total-geral{font-weight:bold;text-align:right;padding:14px;font-size:16px;border-top:3px solid #1E4A30;margin-top:20px}</style></head><body><h1>📋 FOLHA DE PEDIDO</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
 
   let totalGeral = 0;
+  let totalGeralCx = 0;
   Object.entries(porCliente).forEach(([clienteId, itens]) => {
     const cliente = cadastros.clientes.find(c => c.id === clienteId);
     const itensOrdenados = [...itens].sort((a, b) => a.produto.localeCompare(b.produto));
-    html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Produto</th><th>Produtor</th><th>Qtd</th><th>V.Unit</th><th>Total</th></tr>`;
+    html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Produto</th><th>Produtor</th><th>Qtd</th><th>≈CX</th><th>V.Unit</th><th>Total</th></tr>`;
     let total = 0;
+    let totalCx = 0;
     itensOrdenados.forEach(item => {
       const prod = cadastros.produtores.find(p => p.id === item.produtorId);
       const valor = item.valorFinal || item.valorTotal;
+      const unidade = unidadeDoProduto(item.produto, cadastros.produtos);
+      const cx = caixasEquivalentes(item.quantidade, item.produto, cadastros.produtos);
       total += valor;
-      html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade}</td><td>R$ ${(item.valorUnit||0).toFixed(2)}</td><td>R$ ${valor.toFixed(2)}</td></tr>`;
+      totalCx += cx;
+      html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade} ${unidade}</td><td>${cx.toFixed(1).replace(/\.0$/, '')}</td><td>R$ ${(item.valorUnit||0).toFixed(2)}</td><td>R$ ${valor.toFixed(2)}</td></tr>`;
     });
     totalGeral += total;
-    html += `</table><div class="total">Total: R$ ${total.toFixed(2)}</div>`;
+    totalGeralCx += totalCx;
+    html += `</table><div class="total">Total: ${totalCx.toFixed(1).replace(/\.0$/, '')} CX · R$ ${total.toFixed(2)}</div>`;
   });
 
   if (Object.keys(porCliente).length > 1) {
-    html += `<div class="total-geral">Total Geral (todos os clientes): R$ ${totalGeral.toFixed(2)}</div>`;
+    html += `<div class="total-geral">Total Geral (todos os clientes): ${totalGeralCx.toFixed(1).replace(/\.0$/, '')} CX · R$ ${totalGeral.toFixed(2)}</div>`;
   }
 
   html += `<p style="margin-top:40px;border-top:2px solid #1E4A30;padding-top:20px">☐ Conferido | ☐ Divergência</p></body></html>`;
@@ -1951,14 +2082,16 @@ function gerarPDFFolhaCarga(compras, dataSelecionada, cadastros) {
   Object.entries(porCliente).forEach(([clienteId, itens]) => {
     const cliente = cadastros.clientes.find(c => c.id === clienteId);
     const itensOrdenados = [...itens].sort((a, b) => a.produto.localeCompare(b.produto));
-    html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Produto</th><th>Produtor</th><th>Qtd (CX)</th></tr>`;
+    html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Produto</th><th>Produtor</th><th>Qtd</th><th>≈CX</th></tr>`;
     let totalCx = 0;
     itensOrdenados.forEach(item => {
       const prod = cadastros.produtores.find(p => p.id === item.produtorId);
-      totalCx += Number(item.quantidade);
-      html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade}</td></tr>`;
+      const unidade = unidadeDoProduto(item.produto, cadastros.produtos);
+      const cx = caixasEquivalentes(item.quantidade, item.produto, cadastros.produtos);
+      totalCx += cx;
+      html += `<tr><td>${item.produto}</td><td>${prod?.nome || '—'}</td><td>${item.quantidade} ${unidade}</td><td>${cx.toFixed(1).replace(/\.0$/, '')}</td></tr>`;
     });
-    html += `</table><div class="total">Total: ${totalCx} CX</div>`;
+    html += `</table><div class="total">Total: ${totalCx.toFixed(1).replace(/\.0$/, '')} CX</div>`;
   });
 
   html += `<p style="margin-top:40px;border-top:2px solid #1E4A30;padding-top:20px">☐ Conferido | ☐ Divergência</p></body></html>`;
@@ -1981,16 +2114,20 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
   const subtotal = itensGrupo.reduce((s, c) => s + Number(c.valorTotal), 0);
   const desconto = produtor?.temDescontoFundoRural ? subtotal * 0.0163 : 0;
   const total = subtotal - desconto;
+  const totalCx = itensGrupo.reduce((s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos), 0);
 
   const linhasTabela = itensOrdenados
     .map(
-      (i) => `
+      (i) => {
+        const unidade = unidadeDoProduto(i.produto, cadastros.produtos);
+        return `
     <tr>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;">${i.produto}</td>
-      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${i.quantidade}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${i.quantidade} ${unidade}</td>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">R$ ${(i.valorUnit || 0).toFixed(2)}</td>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</td>
-    </tr>`
+    </tr>`;
+      }
     )
     .join("");
 
@@ -2043,7 +2180,11 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
         <tbody>${linhasTabela}</tbody>
       </table>
 
-      <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px;align-items:flex-end;">
+        <div style="text-align:left;">
+          <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Total em Caixas</div>
+          <div style="font-size:15px;font-weight:bold;color:#1F4A30;">${totalCx.toFixed(1).replace(/\.0$/, "")} CX</div>
+        </div>
         <div style="text-align:right;">
           <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Subtotal</div>
           <div style="font-size:12px;font-family:monospace;">R$ ${subtotal.toFixed(2)}</div>
@@ -2139,13 +2280,16 @@ function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros) {
 
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório de Vendas</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:14px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}.total-geral{font-weight:bold;text-align:right;padding:14px;font-size:18px;border-top:3px solid #1E4A30;margin-top:20px}.resumo{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:20px}</style></head><body><h1>🧾 RELATÓRIO DE VENDAS DO DIA</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
 
-  const totalQtdGeral = vendas.reduce((s, v) => s + Number(v.quantidade), 0);
+  const totalQtdGeral = vendas.reduce(
+    (s, v) => s + caixasEquivalentes(v.quantidade, v.produto, cadastros.produtos),
+    0
+  );
   const totalValorGeral = vendas.reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
   const totalPago = vendas.filter(v => v.status === "Pago").reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
   const totalPendente = vendas.filter(v => v.status !== "Pago").reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
 
   html += `<div class="resumo">
-    <b>Total de vendas:</b> ${vendas.length} · <b>Total de itens:</b> ${totalQtdGeral} CX<br>
+    <b>Total de vendas:</b> ${vendas.length} · <b>Total de itens:</b> ${totalQtdGeral.toFixed(1).replace(/\.0$/, '')} CX<br>
     <b>Pago:</b> R$ ${totalPago.toFixed(2)} · <b>Pendente:</b> R$ ${totalPendente.toFixed(2)}
   </div>`;
 
@@ -2156,8 +2300,9 @@ function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros) {
     let total = 0;
     itensOrdenados.forEach(item => {
       const valor = item.valorFinal || item.valorTotal;
+      const unidade = unidadeDoProduto(item.produto, cadastros.produtos);
       total += valor;
-      html += `<tr><td>${item.produto}</td><td>${item.quantidade}</td><td>R$ ${(item.precoUnit||0).toFixed(2)}</td><td>R$ ${valor.toFixed(2)}</td><td>${item.status || '—'}</td></tr>`;
+      html += `<tr><td>${item.produto}</td><td>${item.quantidade} ${unidade}</td><td>R$ ${(item.precoUnit||0).toFixed(2)}</td><td>R$ ${valor.toFixed(2)}</td><td>${item.status || '—'}</td></tr>`;
     });
     html += `</table><div class="total">Total: R$ ${total.toFixed(2)}</div>`;
   });
@@ -2184,7 +2329,10 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
   const clientesUnicos = [...new Set(comprasHoje.map((c) => c.clienteDestino))];
   
   const comprasDoCliente = clienteSelecionado ? comprasHoje.filter((c) => c.clienteDestino === clienteSelecionado) : [];
-  const totalQtd = comprasDoCliente.reduce((s, c) => s + Number(c.quantidade), 0);
+  const totalQtd = comprasDoCliente.reduce(
+    (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+    0
+  );
   const totalValor = comprasDoCliente.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
 
   return (
@@ -2206,7 +2354,7 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
       {clienteSelecionado && (
         <Card style={{ marginTop: 16 }}>
           <div className="flex justify-between items-center mb-3">
-            <div className="font-bold" style={{ color: C.green700 }}>Total de Itens: {totalQtd} CX</div>
+            <div className="font-bold" style={{ color: C.green700 }}>Total de Itens: {totalQtd.toFixed(1).replace(/\.0$/, "")} CX</div>
             <div className="font-bold" style={{ color: C.green700, fontFamily: monoFont }}>{fmtMoney(totalValor)}</div>
           </div>
           {comprasDoCliente
@@ -2215,6 +2363,8 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
             .map((c) => {
               const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
               const valorItem = c.valorFinal || c.valorTotal;
+              const unidade = unidadeDoProduto(c.produto, cadastros.produtos);
+              const cxEquiv = caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos);
               return (
                 <Card key={c.id} style={{ marginBottom: 12, background: C.cardAlt }}>
                   <div className="flex justify-between">
@@ -2223,7 +2373,12 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
                       <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome}</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold">{c.quantidade} CX</div>
+                      <div className="font-bold">{c.quantidade} {unidade}</div>
+                      {unidade === "KG" && (
+                        <div className="text-xs" style={{ color: C.amber500 }}>
+                          ≈{cxEquiv.toFixed(1).replace(/\.0$/, "")} CX
+                        </div>
+                      )}
                       <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
                         {fmtMoney(c.valorUnit)} un · {fmtMoney(valorItem)}
                       </div>
@@ -2257,7 +2412,10 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
   const clientesUnicos = [...new Set(comprasHoje.map((c) => c.clienteDestino))];
   
   const comprasDoCliente = clienteSelecionado ? comprasHoje.filter((c) => c.clienteDestino === clienteSelecionado) : [];
-  const totalQtd = comprasDoCliente.reduce((s, c) => s + Number(c.quantidade), 0);
+  const totalQtd = comprasDoCliente.reduce(
+    (s, c) => s + caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos),
+    0
+  );
 
   return (
     <div>
@@ -2277,9 +2435,11 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 
       {clienteSelecionado && (
         <Card style={{ marginTop: 16 }}>
-          <div className="mb-3 font-bold" style={{ color: C.green700 }}>Total de CX: {totalQtd} CX</div>
+          <div className="mb-3 font-bold" style={{ color: C.green700 }}>Total: {totalQtd.toFixed(1).replace(/\.0$/, "")} CX</div>
           {comprasDoCliente.map((c) => {
             const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+            const unidade = unidadeDoProduto(c.produto, cadastros.produtos);
+            const cxEquiv = caixasEquivalentes(c.quantidade, c.produto, cadastros.produtos);
             return (
               <Card key={c.id} style={{ marginBottom: 12, background: C.cardAlt }}>
                 <div className="flex justify-between">
@@ -2287,7 +2447,14 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
                     <div className="font-bold text-sm">{c.produto}</div>
                     <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome}</div>
                   </div>
-                  <div className="text-right"><div className="font-bold">{c.quantidade} CX</div></div>
+                  <div className="text-right">
+                    <div className="font-bold">{c.quantidade} {unidade}</div>
+                    {unidade === "KG" && (
+                      <div className="text-xs" style={{ color: C.amber500 }}>
+                        ≈{cxEquiv.toFixed(1).replace(/\.0$/, "")} CX
+                      </div>
+                    )}
+                  </div>
                 </div>
               </Card>
             );
@@ -2321,7 +2488,10 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
     return nomeA.localeCompare(nomeB, "pt-BR");
   });
 
-  const totalQtd = vendasDoDia.reduce((s, v) => s + Number(v.quantidade), 0);
+  const totalQtd = vendasDoDia.reduce(
+    (s, v) => s + caixasEquivalentes(v.quantidade, v.produto, cadastros.produtos),
+    0
+  );
   const totalValor = vendasDoDia.reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
   const totalPago = vendasDoDia.filter((v) => v.status === "Pago").reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
   const totalPendente = totalValor - totalPago;
@@ -2342,7 +2512,7 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
             <Card style={{ background: C.green700 }}>
               <div className="text-xs" style={{ color: C.inkSoft }}>Total do Dia</div>
               <div className="text-lg font-bold" style={{ color: C.amber500, fontFamily: monoFont }}>{fmtMoney(totalValor)}</div>
-              <div className="text-xs" style={{ color: C.inkSoft }}>{totalQtd} CX · {vendasDoDia.length} venda(s)</div>
+              <div className="text-xs" style={{ color: C.inkSoft }}>{totalQtd.toFixed(1).replace(/\.0$/, "")} CX · {vendasDoDia.length} venda(s)</div>
             </Card>
             <Card>
               <div className="text-xs" style={{ color: C.inkSoft }}>Pago / Pendente</div>
@@ -2366,7 +2536,7 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
                 </div>
                 {vendasCliente.map((v) => (
                   <div key={v.id} className="text-xs mb-1 flex justify-between" style={{ color: C.inkSoft }}>
-                    <span>{v.produto} - {v.quantidade} un · {v.status}</span>
+                    <span>{v.produto} - {v.quantidade} {unidadeDoProduto(v.produto, cadastros.produtos)} · {v.status}</span>
                     <span style={{ fontFamily: monoFont }}>{fmtMoney(v.valorFinal || v.valorTotal)}</span>
                   </div>
                 ))}
@@ -2428,12 +2598,13 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     await persistCadastros(next);
     setProdutorId(novo.id);
   };
-  const addProduto = async (nome) => {
+  const addProduto = async (dados) => {
     const novo = {
       id: uid(),
       codigo: Date.now() % 100000,
-      nome: nome.toUpperCase(),
-      unidade: "UN",
+      nome: dados.nome,
+      unidade: dados.unidade,
+      kgPorCaixa: dados.kgPorCaixa || 0,
       custoMedio: 0,
       precoVenda: 0,
       estoqueMinimo: 0,
@@ -2598,7 +2769,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
             </option>
           ))}
         </Select>
-        <QuickAddInline placeholder="Nome do produto" onAdd={addProduto} />
+        <QuickAddProduto onAdd={addProduto} />
       </Field>
       
       <Field label="Cargueiro / Conferente">
@@ -3967,12 +4138,23 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
 /* ---------------------------------------------------------------------- */
 const MOTIVOS_PERDA = ["Deterioração", "Quebra/Dano", "Vencido", "Outro"];
 
-function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoes, showToast }) {
+function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoes, persistCadastros, showToast }) {
   const [view, setView] = useState("estoque");
   const [q, setQ] = useState("");
+  const [editandoProdutoId, setEditandoProdutoId] = useState(null);
   const filtered = estoquePorProduto.filter((p) =>
     (p.nome || "").toLowerCase().includes(q.toLowerCase())
   );
+
+  const editarProduto = async (dadosAtualizados) => {
+    const next = {
+      ...cadastros,
+      produtos: cadastros.produtos.map((p) => (p.id === dadosAtualizados.id ? dadosAtualizados : p)),
+    };
+    await persistCadastros(next);
+    setEditandoProdutoId(null);
+    if (showToast) showToast("Produto atualizado");
+  };
 
   return (
     <div>
@@ -4046,6 +4228,21 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
                     <span>Perdas: {p.perdas || 0}</span>
                     <span>Custo méd.: {fmtMoney(p.custoMedio)}</span>
                   </div>
+                  {editandoProdutoId === p.id ? (
+                    <EditarProduto
+                      produto={p}
+                      onSalvar={editarProduto}
+                      onCancelar={() => setEditandoProdutoId(null)}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditandoProdutoId(p.id)}
+                      className="text-xs font-bold mt-2"
+                      style={{ color: C.amber500 }}
+                    >
+                      ✏️ Editar Produto (unidade/peso da caixa)
+                    </button>
+                  )}
                 </Card>
               );
             })}
@@ -4684,6 +4881,79 @@ function EditarCliente({ cliente, onSalvar, onCancelar }) {
         </button>
       </div>
     </div>
+  );
+}
+
+function EditarProduto({ produto, onSalvar, onCancelar }) {
+  const [nome, setNome] = useState(produto.nome || "");
+  const [unidade, setUnidade] = useState(produto.unidade || "CX");
+  const [kgPorCaixa, setKgPorCaixa] = useState(String(produto.kgPorCaixa || ""));
+  const [custoMedio, setCustoMedio] = useState(String(produto.custoMedio || ""));
+  const [precoVenda, setPrecoVenda] = useState(String(produto.precoVenda || ""));
+  const [estoqueMinimo, setEstoqueMinimo] = useState(String(produto.estoqueMinimo || ""));
+
+  return (
+    <Card style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+      <div className="text-xs font-bold mb-2 uppercase tracking-wide" style={{ color: C.amber500 }}>
+        Editando Produto
+      </div>
+      <Field label="Nome do produto">
+        <TextInput value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+      </Field>
+      <Field label="Como é vendido/comprado?">
+        <Select value={unidade} onChange={(e) => setUnidade(e.target.value)}>
+          <option value="CX">Caixa (CX)</option>
+          <option value="KG">Quilo (KG)</option>
+          <option value="UN">Unidade (UN)</option>
+        </Select>
+      </Field>
+      {unidade === "KG" && (
+        <Field label="Peso médio de 1 caixa (kg)">
+          <TextInput
+            type="number"
+            inputMode="decimal"
+            value={kgPorCaixa}
+            onChange={(e) => setKgPorCaixa(e.target.value)}
+            placeholder="Ex: 20"
+          />
+        </Field>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Custo Médio (R$)">
+          <TextInput type="number" inputMode="decimal" value={custoMedio} onChange={(e) => setCustoMedio(e.target.value)} />
+        </Field>
+        <Field label="Preço de Venda (R$)">
+          <TextInput type="number" inputMode="decimal" value={precoVenda} onChange={(e) => setPrecoVenda(e.target.value)} />
+        </Field>
+      </div>
+      <Field label="Estoque Mínimo">
+        <TextInput type="number" inputMode="decimal" value={estoqueMinimo} onChange={(e) => setEstoqueMinimo(e.target.value)} />
+      </Field>
+      <div className="flex gap-2 mt-2">
+        <button
+          className="flex-1 px-3 py-2.5 rounded-lg font-bold text-sm"
+          style={{ background: C.amber500, color: C.green900 }}
+          onClick={() => {
+            if (!nome.trim()) return;
+            onSalvar({
+              id: produto.id,
+              codigo: produto.codigo,
+              nome: nome.trim().toUpperCase(),
+              unidade,
+              kgPorCaixa: unidade === "KG" ? Number(kgPorCaixa) || 0 : 0,
+              custoMedio: Number(custoMedio) || 0,
+              precoVenda: Number(precoVenda) || 0,
+              estoqueMinimo: Number(estoqueMinimo) || 0,
+            });
+          }}
+        >
+          Salvar Alterações
+        </button>
+        <button onClick={onCancelar} style={{ color: C.inkSoft }}>
+          <X size={18} />
+        </button>
+      </div>
+    </Card>
   );
 }
 
