@@ -2,7 +2,7 @@ import { google } from "googleapis";
 
 // Nomes das abas que servem como "tabelas" do banco de dados.
 const TABELAS_CADASTROS = ["produtos", "clientes", "produtores", "compradoresVendedores"];
-const TABELAS_TRANSACOES = ["compras", "vendas", "recebimentos", "pagamentos", "perdas"];
+const TABELAS_TRANSACOES = ["compras", "vendas", "recebimentos", "pagamentos", "perdas", "diasFinalizados"];
 
 function normalizarChavePrivada(bruta) {
   let key = (bruta || "").trim();
@@ -72,102 +72,141 @@ async function lerTabela(sheets, spreadsheetId, nome) {
   }
 }
 
+// ------------------------------------------------------------------------
+// CABEÇALHOS: uma linha de título por aba, sempre reescrita igual toda vez
+// que a aba é salva — isso é o que mantém a planilha organizada sozinha,
+// sem depender de ninguém editar o cabeçalho manualmente.
+// ------------------------------------------------------------------------
+function cabecalhoDaTabela(nome) {
+  const cabecalhos = {
+    produtos: ["dados_json", "id", "codigo", "nome", "unidade", "custo_medio", "preco_venda", "estoque_minimo"],
+    clientes: ["dados_json", "id", "codigo", "nome", "cidade", "limite_credito", "forma_pagamento", "desconto_fundo_rural"],
+    produtores: ["dados_json", "id", "codigo", "nome", "cidade", "telefone", "tem_cnpj", "desconto_fundo_rural", "forma_pagamento", "chave_pix"],
+    compradoresVendedores: ["dados_json", "id", "nome", "funcao", "empresas_ids"],
+    compras: ["dados_json", "id", "data", "produtor_id", "produto", "quantidade", "valor_unitario", "valor_total", "desconto", "valor_final", "cliente_destino", "para_estoque", "cargueiro", "entrega_confirmada", "quantidade_recebida", "divergencia"],
+    vendas: ["dados_json", "id", "data", "cliente_id", "produto", "quantidade", "preco_unitario", "valor_total", "desconto", "valor_final", "status", "entrega_placa", "entrega_local", "entrega_carregador", "caixas_emprestadas", "obs_caixas", "entrega_confirmada"],
+    recebimentos: ["dados_json", "id", "data", "cliente_id", "valor", "tipo", "forma_pagamento", "observacao"],
+    pagamentos: ["dados_json", "id", "data", "produtor_id", "valor", "tipo", "forma_pagamento", "observacao"],
+    perdas: ["dados_json", "id", "data", "produto", "quantidade", "motivo", "valor_perdido"],
+    diasFinalizados: ["dados_json", "data_finalizada"],
+  };
+  return cabecalhos[nome] || ["dados_json"];
+}
+
 function montarLinha(nome, r) {
   const jsonString = JSON.stringify(r);
 
-  // --- MAPEAMENTO DAS ABAS DE CADASTROS ---
   if (nome === "produtos") {
+    return [jsonString, r.id || "", r.codigo || "", r.nome || "", r.unidade || "", r.custoMedio || 0, r.precoVenda || 0, r.estoqueMinimo || 0];
+  }
+
+  if (nome === "clientes") {
+    return [jsonString, r.id || "", r.codigo || "", r.nome || "", r.cidade || "", r.limiteCredito || 0, r.pagamento || "", r.temDescontoFundoRural ? "SIM" : "NÃO"];
+  }
+
+  if (nome === "produtores") {
     return [
       jsonString,
       r.id || "",
       r.codigo || "",
       r.nome || "",
-      r.unidade || "",
-      r.custoMedio || 0,
-      r.precoVenda || 0,
-      r.estoqueMinimo || 0,
-      r.status || "",
+      r.cidade || "",
+      r.telefone || "",
+      r.temCNPJ ? "SIM" : "NÃO",
+      r.temDescontoFundoRural ? "SIM" : "NÃO",
+      r.pagamento || "",
+      r.chavePix || "",
     ];
   }
 
-  if (nome === "clientes" || nome === "produtores" || nome === "compradoresVendedores") {
+  if (nome === "compradoresVendedores") {
+    // Entradas antigas eram só um texto puro (nome do gestor); o app trata
+    // isso na leitura, aqui só evitamos quebrar se aparecer assim.
+    if (typeof r === "string") {
+      return [jsonString, r, r, "gestor", ""];
+    }
     return [
       jsonString,
       r.id || "",
       r.nome || "",
-      r.cpfCnpj || "",
-      r.telefone || "",
-      r.status || "",
+      r.funcao || "",
+      Array.isArray(r.clientesIds) ? r.clientesIds.join(", ") : "",
     ];
   }
 
-  // --- MAPEAMENTO DAS ABAS DE TRANSAÇÕES ---
   if (nome === "compras") {
     return [
       jsonString,
       r.id || "",
       r.data || "",
-      r.produtorId || r.produtor || "",
-      r.produtoId || r.produto || "",
+      r.produtorId || "",
+      r.produto || "",
       r.quantidade || 0,
-      r.precoUnitario || 0,
-      r.total || 0,
-      r.status || "",
+      r.valorUnit || 0,
+      r.valorTotal || 0,
+      r.desconto || 0,
+      r.valorFinal || 0,
+      r.clienteDestino || "",
+      r.paraEstoque ? "SIM" : "NÃO",
+      r.cargueiro || "",
+      r.entregaConfirmada ? "SIM" : "NÃO",
+      r.quantidadeRecebida ?? "",
+      r.divergencia ?? "",
     ];
   }
 
   if (nome === "vendas") {
+    const entrega = r.entrega || {};
     return [
       jsonString,
       r.id || "",
       r.data || "",
-      r.clienteId || r.cliente || "",
-      r.produtoId || r.produto || "",
+      r.clienteId || "",
+      r.produto || "",
       r.quantidade || 0,
-      r.precoUnitario || 0,
-      r.total || 0,
+      r.precoUnit || 0,
+      r.valorTotal || 0,
+      r.desconto || 0,
+      r.valorFinal || 0,
       r.status || "",
+      entrega.placa || "",
+      entrega.localEntrega || "",
+      entrega.carregador || "",
+      entrega.caixasEmprestadas ? "SIM" : "NÃO",
+      entrega.obsCaixas || "",
+      entrega.confirmada ? "SIM" : "NÃO",
     ];
   }
 
-  if (nome === "recebimentos" || nome === "pagamentos") {
-    return [
-      jsonString,
-      r.id || "",
-      r.data || "",
-      r.referenciaId || r.descricao || r.historico || "",
-      r.valor || 0,
-      r.formaPagamento || r.metodo || "",
-      r.status || "",
-    ];
+  if (nome === "recebimentos") {
+    return [jsonString, r.id || "", r.data || "", r.clienteId || "", r.valor || 0, r.tipo || "", r.formaPagamento || "", r.obs || ""];
+  }
+
+  if (nome === "pagamentos") {
+    return [jsonString, r.id || "", r.data || "", r.produtorId || "", r.valor || 0, r.tipo || "", r.formaPagamento || "", r.obs || ""];
   }
 
   if (nome === "perdas") {
-    return [
-      jsonString,
-      r.id || "",
-      r.data || "",
-      r.produtoId || r.produto || "",
-      r.quantidade || 0,
-      r.motivo || "",
-      r.custoTotal || 0,
-    ];
+    return [jsonString, r.id || "", r.data || "", r.produto || "", r.quantidade || 0, r.motivo || "", r.valorPerdido || 0];
+  }
+
+  if (nome === "diasFinalizados") {
+    // Aqui cada registro é só uma data em texto (string), não um objeto.
+    return [jsonString, typeof r === "string" ? r : ""];
   }
 
   // Fallback caso apareça alguma aba nova futuramente
   return [jsonString, JSON.stringify(r)];
 }
 
-// Escreve uma tabela (aba) inteira. Se a operação falhar porque a aba não foi
-// encontrada (mensagem "Unable to parse range" ou similar), tenta garantir a
-// aba de novo e repete a operação UMA vez antes de desistir — isso cobre casos
-// de aba recém-criada, nome ligeiramente diferente do esperado, ou qualquer
-// atraso de sincronização do lado do Google Sheets.
+// Escreve uma tabela (aba) inteira: cabeçalho + dados. Se a operação falhar
+// porque a aba não foi encontrada, tenta garantir a aba de novo e repete a
+// operação UMA vez antes de desistir.
 async function escreverTabela(sheets, spreadsheetId, nome, registros, tentativa = 0) {
   try {
     await sheets.spreadsheets.values.clear({
       spreadsheetId,
-      range: `${nome}!A2:Z`,
+      range: `${nome}!A1:Z`,
     });
   } catch (e) {
     const msg = (e && e.message) || String(e);
@@ -179,19 +218,38 @@ async function escreverTabela(sheets, spreadsheetId, nome, registros, tentativa 
     throw new Error(`Falha ao limpar a aba "${nome}": ${msg}`);
   }
 
-  if (registros && registros.length > 0) {
-    const values = registros.map((r) => montarLinha(nome, r));
-    try {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${nome}!A2`,
-        valueInputOption: "USER_ENTERED", // Permite que o Google Sheets reconheça números e datas corretamente
-        requestBody: { values },
-      });
-    } catch (e) {
-      throw new Error(`Falha ao escrever na aba "${nome}": ${(e && e.message) || String(e)}`);
-    }
+  // Cabeçalho sempre é reescrito, mesmo se a tabela estiver vazia — é isso
+  // que mantém a planilha organizada e legível o tempo todo, sozinha.
+  const cabecalho = cabecalhoDaTabela(nome);
+  const linhas = [cabecalho, ...(registros || []).map((r) => montarLinha(nome, r))];
+
+  try {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${nome}!A1`,
+      valueInputOption: "USER_ENTERED", // Permite que o Google Sheets reconheça números e datas corretamente
+      requestBody: { values: linhas },
+    });
+  } catch (e) {
+    throw new Error(`Falha ao escrever na aba "${nome}": ${(e && e.message) || String(e)}`);
   }
+}
+
+// Aplica os cabeçalhos corretos em TODAS as abas de uma vez, mesmo nas que
+// não mudaram nessa chamada — usado pelo modo de "reorganizar tudo agora".
+async function reorganizarTodasAsAbas(sheets, spreadsheetId, cadastros, transacoes) {
+  const resultado = {};
+  for (const t of TABELAS_CADASTROS) {
+    const dados = cadastros[t] || [];
+    await escreverTabela(sheets, spreadsheetId, t, dados);
+    resultado[t] = dados.length;
+  }
+  for (const t of TABELAS_TRANSACOES) {
+    const dados = transacoes[t] || [];
+    await escreverTabela(sheets, spreadsheetId, t, dados);
+    resultado[t] = dados.length;
+  }
+  return resultado;
 }
 
 export default async function handler(req, res) {
@@ -215,9 +273,6 @@ export default async function handler(req, res) {
     });
   }
 
-  // Diagnóstico extra: lista as abas que o Google realmente enxerga nesta
-  // planilha agora, e compara com as abas que o app espera. Ajuda a confirmar
-  // rapidamente se está tudo na mesma planilha/tudo criado certinho.
   if (req.query && req.query.debug === "abas") {
     if (!spreadsheetId || !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
       return res.status(500).json({ ok: false, erro: "Variáveis de ambiente não configuradas." });
@@ -236,6 +291,32 @@ export default async function handler(req, res) {
         abas_esperadas_pelo_app: esperadas,
         abas_faltando: faltando,
       });
+    } catch (e) {
+      return res.status(500).json({ ok: false, erro: String(e && e.message ? e.message : e) });
+    }
+  }
+
+  // Reorganiza TODAS as abas de uma vez — reescreve cabeçalho + colunas
+  // legíveis certinhas em cima dos dados que já existem, sem perder nada
+  // (o JSON da coluna A é a fonte da verdade, as outras colunas só são
+  // recalculadas a partir dele). Use uma vez pra "consertar" a planilha
+  // atual; depois disso toda gravação normal já mantém tudo em dia sozinha.
+  if (req.query && req.query.reorganizar === "true") {
+    if (!spreadsheetId || !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      return res.status(500).json({ ok: false, erro: "Variáveis de ambiente não configuradas." });
+    }
+    try {
+      const auth = getAuth();
+      const sheets = google.sheets({ version: "v4", auth });
+      await garantirAbas(sheets, spreadsheetId, [...TABELAS_CADASTROS, ...TABELAS_TRANSACOES]);
+
+      const cadastros = {};
+      for (const t of TABELAS_CADASTROS) cadastros[t] = await lerTabela(sheets, spreadsheetId, t);
+      const transacoes = {};
+      for (const t of TABELAS_TRANSACOES) transacoes[t] = await lerTabela(sheets, spreadsheetId, t);
+
+      const resultado = await reorganizarTodasAsAbas(sheets, spreadsheetId, cadastros, transacoes);
+      return res.status(200).json({ ok: true, mensagem: "Planilha reorganizada!", registros_por_aba: resultado });
     } catch (e) {
       return res.status(500).json({ ok: false, erro: String(e && e.message ? e.message : e) });
     }
@@ -278,9 +359,6 @@ export default async function handler(req, res) {
       const { type, data } = req.body || {};
       const tabelas = type === "cadastros" ? TABELAS_CADASTROS : TABELAS_TRANSACOES;
 
-      // Cada tabela é gravada de forma independente: se uma falhar, as outras
-      // continuam sendo gravadas normalmente, e a resposta final diz
-      // exatamente qual(is) tabela(s) falharam e por quê — sem mais adivinhação.
       const erros = [];
       for (const t of tabelas) {
         if (Array.isArray(data?.[t])) {
