@@ -4156,6 +4156,19 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
     if (showToast) showToast("Produto atualizado");
   };
 
+  const excluirProduto = async (produto) => {
+    const confirmado = window.confirm(
+      `Excluir "${produto.nome}"?\n\nIsso não apaga compras/vendas já registradas com esse produto — só remove ele da lista de cadastro.`
+    );
+    if (!confirmado) return;
+    const next = {
+      ...cadastros,
+      produtos: cadastros.produtos.filter((p) => p.id !== produto.id),
+    };
+    await persistCadastros(next);
+    if (showToast) showToast("Produto excluído");
+  };
+
   return (
     <div>
       <div className="grid grid-cols-2 gap-2 mb-4">
@@ -4235,13 +4248,22 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
                       onCancelar={() => setEditandoProdutoId(null)}
                     />
                   ) : (
-                    <button
-                      onClick={() => setEditandoProdutoId(p.id)}
-                      className="text-xs font-bold mt-2"
-                      style={{ color: C.amber500 }}
-                    >
-                      ✏️ Editar Produto (unidade/peso da caixa)
-                    </button>
+                    <div className="flex gap-3 mt-2">
+                      <button
+                        onClick={() => setEditandoProdutoId(p.id)}
+                        className="text-xs font-bold"
+                        style={{ color: C.amber500 }}
+                      >
+                        ✏️ Editar
+                      </button>
+                      <button
+                        onClick={() => excluirProduto(p)}
+                        className="text-xs font-bold"
+                        style={{ color: C.rust }}
+                      >
+                        🗑️ Excluir
+                      </button>
+                    </div>
                   )}
                 </Card>
               );
