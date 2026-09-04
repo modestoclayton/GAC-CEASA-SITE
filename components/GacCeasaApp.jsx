@@ -1116,10 +1116,25 @@ export default function GacCeasaApp() {
       let tx = SEED_TRANSACOES;
 
       try {
+        if (!sessaoEmpresa.accessToken) {
+          setErroCarregamento("DIAGNÓSTICO: sessaoEmpresa existe mas accessToken está vazio/undefined.");
+          setLoading(false);
+          return;
+        }
         const res = await fetch("/api/dados-empresa", {
           headers: { Authorization: `Bearer ${sessaoEmpresa.accessToken}` },
         });
-        const json = await res.json();
+        const textoBruto = await res.text();
+        let json = null;
+        try {
+          json = JSON.parse(textoBruto);
+        } catch (erroParse) {
+          setErroCarregamento(
+            `DIAGNÓSTICO: Status HTTP ${res.status}. Resposta não é JSON válido. Primeiros 300 caracteres da resposta: ${textoBruto.slice(0, 300)}`
+          );
+          setLoading(false);
+          return;
+        }
         if (json.ok) {
           cad = { ...SEED_CADASTROS, ...json.cadastros };
           tx = { ...SEED_TRANSACOES, ...json.transacoes };
@@ -1132,10 +1147,10 @@ export default function GacCeasaApp() {
           sairDaEmpresa();
           return;
         } else {
-          setErroCarregamento(json.erro || "Erro desconhecido ao carregar dados.");
+          setErroCarregamento(`DIAGNÓSTICO: Status HTTP ${res.status}. Erro: ${json.erro || "Erro desconhecido ao carregar dados."}`);
         }
       } catch (e) {
-        setErroCarregamento((e && e.message) || String(e));
+        setErroCarregamento(`DIAGNÓSTICO (erro de JS antes de chegar no servidor): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
       }
 
       // perfil: privado por navegador/aparelho (quem sou eu aqui)
@@ -1370,18 +1385,13 @@ export default function GacCeasaApp() {
     <div className="px-4 pt-3 mx-auto max-w-md lg:max-w-2xl">
       <Card style={{ background: C.rustSoft, borderColor: C.rust }}>
         <div className="text-xs font-bold mb-1" style={{ color: C.rust }}>
-          Não conseguiu buscar dados da planilha
+          Não conseguiu carregar os dados
         </div>
         <div
           className="text-xs"
           style={{ color: C.ink, fontFamily: monoFont, wordBreak: "break-word" }}
         >
           {erroCarregamento}
-        </div>
-        <div className="text-xs mt-2" style={{ color: C.inkSoft }}>
-          Confira as variáveis de ambiente no Vercel (GOOGLE_SHEET_ID,
-          GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY) e se a planilha foi
-          compartilhada com o e-mail da conta de serviço.
         </div>
       </Card>
     </div>
