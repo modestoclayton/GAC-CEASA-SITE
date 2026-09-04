@@ -266,6 +266,7 @@ const SEED_TRANSACOES = {
 const CAD_KEY = "gac-cadastros";
 const TX_KEY = "gac-transacoes";
 const PERFIL_KEY = "gac-perfil";
+const SESSAO_EMPRESA_KEY = "gac-sessao-empresa";
 
 /* ---------------------------------------------------------------------- */
 /* Small UI atoms                                                         */
@@ -870,6 +871,199 @@ function CadastroPerfil({ onSalvar }) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Login/Cadastro de Empresa                                              */
+/* ---------------------------------------------------------------------- */
+function EmpresaLoginView({ onEntrar }) {
+  const [modo, setModo] = useState("login"); // "login" | "cadastro"
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [codigoAcesso, setCodigoAcesso] = useState("");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [avisoCadastro, setAvisoCadastro] = useState("");
+
+  const fazerLogin = async () => {
+    if (!codigoAcesso.trim() || !senha) return;
+    setCarregando(true);
+    setErro("");
+    try {
+      const r = await fetch("/api/empresa-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigoAcesso, senha }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setErro(j.erro || "Não foi possível entrar.");
+        setCarregando(false);
+        return;
+      }
+      onEntrar(j.sessao, j.empresa);
+    } catch (e) {
+      setErro((e && e.message) || String(e));
+      setCarregando(false);
+    }
+  };
+
+  const fazerCadastro = async () => {
+    if (!nomeEmpresa.trim() || !codigoAcesso.trim() || !email.trim() || !senha) return;
+    setCarregando(true);
+    setErro("");
+    try {
+      const r = await fetch("/api/empresa-signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nomeEmpresa, codigoAcesso, email, senha }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setErro(j.erro || "Não foi possível cadastrar.");
+        setCarregando(false);
+        return;
+      }
+      setAvisoCadastro("Empresa cadastrada! Entrando...");
+      // Já loga direto em seguida, sem obrigar a pessoa a digitar tudo de novo
+      const rLogin = await fetch("/api/empresa-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigoAcesso, senha }),
+      });
+      const jLogin = await rLogin.json();
+      if (!jLogin.ok) {
+        setErro(jLogin.erro || "Cadastrou, mas não conseguiu entrar automaticamente. Tenta fazer login.");
+        setModo("login");
+        setCarregando(false);
+        return;
+      }
+      onEntrar(jLogin.sessao, jLogin.empresa);
+    } catch (e) {
+      setErro((e && e.message) || String(e));
+      setCarregando(false);
+    }
+  };
+
+  return (
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-6"
+      style={{ background: C.green900 }}
+    >
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <div
+            className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center font-bold text-2xl"
+            style={{ background: C.amber500, color: C.green900 }}
+          >
+            GAC
+          </div>
+          <div className="text-white font-bold text-xl" style={{ fontFamily: displayFont }}>
+            CEASA Manager
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <button
+            onClick={() => {
+              setModo("login");
+              setErro("");
+            }}
+            className="py-2.5 rounded-lg font-bold text-sm"
+            style={{
+              background: modo === "login" ? C.amber500 : "rgba(255,255,255,0.1)",
+              color: modo === "login" ? C.green900 : "#fff",
+            }}
+          >
+            Entrar
+          </button>
+          <button
+            onClick={() => {
+              setModo("cadastro");
+              setErro("");
+            }}
+            className="py-2.5 rounded-lg font-bold text-sm"
+            style={{
+              background: modo === "cadastro" ? C.amber500 : "rgba(255,255,255,0.1)",
+              color: modo === "cadastro" ? C.green900 : "#fff",
+            }}
+          >
+            Criar Empresa
+          </button>
+        </div>
+
+        <Card>
+          {modo === "cadastro" && (
+            <Field label="Nome da Empresa">
+              <TextInput
+                placeholder="Ex: Água Branca Distribuidora"
+                value={nomeEmpresa}
+                onChange={(e) => setNomeEmpresa(e.target.value)}
+              />
+            </Field>
+          )}
+          <Field label="Código de Acesso">
+            <TextInput
+              placeholder="Ex: aguabranca"
+              value={codigoAcesso}
+              onChange={(e) => setCodigoAcesso(e.target.value)}
+              autoCapitalize="none"
+            />
+          </Field>
+          {modo === "cadastro" && (
+            <Field label="E-mail">
+              <TextInput
+                type="email"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoCapitalize="none"
+              />
+            </Field>
+          )}
+          <Field label="Senha">
+            <TextInput
+              type="password"
+              placeholder={modo === "cadastro" ? "Mínimo 6 caracteres" : "••••••"}
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+            />
+          </Field>
+
+          {erro && (
+            <div className="text-sm mb-3 p-2 rounded" style={{ background: "#4A1F1F", color: "#FF8080" }}>
+              {erro}
+            </div>
+          )}
+          {avisoCadastro && !erro && (
+            <div className="text-sm mb-3 p-2 rounded" style={{ background: C.amberSoft, color: C.green900 }}>
+              {avisoCadastro}
+            </div>
+          )}
+
+          <PrimaryButton
+            onClick={modo === "login" ? fazerLogin : fazerCadastro}
+            icon={Shield}
+            disabled={
+              carregando ||
+              !codigoAcesso.trim() ||
+              !senha ||
+              (modo === "cadastro" && (!nomeEmpresa.trim() || !email.trim()))
+            }
+          >
+            {carregando ? "Aguarde…" : modo === "login" ? "Entrar" : "Criar Empresa e Entrar"}
+          </PrimaryButton>
+        </Card>
+
+        {modo === "cadastro" && (
+          <p className="text-xs text-center mt-4" style={{ color: "rgba(255,255,255,0.6)" }}>
+            30 dias de teste grátis, sem cartão de crédito.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /* Main App                                                                */
 /* ---------------------------------------------------------------------- */
 export default function GacCeasaApp() {
@@ -881,19 +1075,62 @@ export default function GacCeasaApp() {
   const [recibo, setRecibo] = useState(null); // { tipo: 'venda'|'compra', item } | null
   const [perfil, setPerfil] = useState(null); // { nome, funcao } | null
   const [erroCarregamento, setErroCarregamento] = useState(null);
+  const [sessaoEmpresa, setSessaoEmpresa] = useState(null); // { accessToken, refreshToken, empresa } | null
+  const [carregandoSessao, setCarregandoSessao] = useState(true);
+
+  // ---- checa se já tem uma empresa logada guardada no aparelho ----
+  useEffect(() => {
+    try {
+      const salvo = localStorage.getItem(SESSAO_EMPRESA_KEY);
+      if (salvo) setSessaoEmpresa(JSON.parse(salvo));
+    } catch (e) {
+      /* sem sessão salva ainda */
+    }
+    setCarregandoSessao(false);
+  }, []);
+
+  const entrarNaEmpresa = (sessao, empresa) => {
+    const nova = { accessToken: sessao.access_token, refreshToken: sessao.refresh_token, empresa };
+    setSessaoEmpresa(nova);
+    try {
+      localStorage.setItem(SESSAO_EMPRESA_KEY, JSON.stringify(nova));
+    } catch (e) {
+      /* localStorage indisponível (modo anônimo etc) */
+    }
+  };
+
+  const sairDaEmpresa = () => {
+    setSessaoEmpresa(null);
+    try {
+      localStorage.removeItem(SESSAO_EMPRESA_KEY);
+    } catch (e) {
+      /* ok */
+    }
+  };
 
   // ---- carrega da planilha (via API do servidor) + perfil do navegador ----
   useEffect(() => {
+    if (!sessaoEmpresa) return;
     (async () => {
       let cad = SEED_CADASTROS;
       let tx = SEED_TRANSACOES;
 
       try {
-        const res = await fetch("/api/dados");
+        const res = await fetch("/api/dados-empresa", {
+          headers: { Authorization: `Bearer ${sessaoEmpresa.accessToken}` },
+        });
         const json = await res.json();
         if (json.ok) {
           cad = { ...SEED_CADASTROS, ...json.cadastros };
           tx = { ...SEED_TRANSACOES, ...json.transacoes };
+        } else if (json.testeExpirado) {
+          setErroCarregamento(json.erro);
+          sairDaEmpresa();
+          return;
+        } else if (res.status === 401) {
+          // sessão inválida/expirada — volta pra tela de login
+          sairDaEmpresa();
+          return;
         } else {
           setErroCarregamento(json.erro || "Erro desconhecido ao carregar dados.");
         }
@@ -915,45 +1152,53 @@ export default function GacCeasaApp() {
       setPerfil(perfilSalvo);
       setLoading(false);
     })();
-  }, []);
+  }, [sessaoEmpresa]);
 
-  const persistCadastros = useCallback(async (next) => {
-    setCadastros(next);
-    try {
-      const res = await fetch("/api/dados", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "cadastros", data: next }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json || !json.ok) {
-        setErroCarregamento(
-          (json && json.erro) || `Falha ao salvar na planilha (HTTP ${res.status})`
-        );
+  const persistCadastros = useCallback(
+    async (next) => {
+      setCadastros(next);
+      try {
+        const res = await fetch("/api/dados-empresa", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sessaoEmpresa?.accessToken}`,
+          },
+          body: JSON.stringify({ type: "cadastros", data: next }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.ok) {
+          setErroCarregamento((json && json.erro) || `Falha ao salvar (HTTP ${res.status})`);
+        }
+      } catch (e) {
+        setErroCarregamento((e && e.message) || String(e));
       }
-    } catch (e) {
-      setErroCarregamento((e && e.message) || String(e));
-    }
-  }, []);
+    },
+    [sessaoEmpresa]
+  );
 
-  const persistTransacoes = useCallback(async (next) => {
-    setTransacoes(next);
-    try {
-      const res = await fetch("/api/dados", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "transacoes", data: next }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json || !json.ok) {
-        setErroCarregamento(
-          (json && json.erro) || `Falha ao salvar na planilha (HTTP ${res.status})`
-        );
+  const persistTransacoes = useCallback(
+    async (next) => {
+      setTransacoes(next);
+      try {
+        const res = await fetch("/api/dados-empresa", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sessaoEmpresa?.accessToken}`,
+          },
+          body: JSON.stringify({ type: "transacoes", data: next }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.ok) {
+          setErroCarregamento((json && json.erro) || `Falha ao salvar (HTTP ${res.status})`);
+        }
+      } catch (e) {
+        setErroCarregamento((e && e.message) || String(e));
       }
-    } catch (e) {
-      setErroCarregamento((e && e.message) || String(e));
-    }
-  }, []);
+    },
+    [sessaoEmpresa]
+  );
 
   const salvarPerfil = useCallback(
     async (novoPerfil) => {
@@ -1087,6 +1332,22 @@ export default function GacCeasaApp() {
       .reduce((s, pd) => s + Number(pd.valorPerdido), 0);
     return { faturamentoHoje, comprasHoje, lucroHoje, contasReceber, estoqueBaixo, perdaHoje };
   }, [transacoes, cadastros.produtos, contaClientes, estoquePorProduto]);
+
+  /* ---------------- checa sessão de empresa antes de qualquer coisa ---------------- */
+  if (carregandoSessao) {
+    return (
+      <div
+        className="flex items-center justify-center"
+        style={{ background: "linear-gradient(160deg, #173A26 0%, #0B2417 55%, #081C11 100%)", minHeight: 520 }}
+      >
+        <Loader2 className="animate-spin" size={28} style={{ color: C.ink }} />
+      </div>
+    );
+  }
+
+  if (!sessaoEmpresa) {
+    return <EmpresaLoginView onEntrar={entrarNaEmpresa} />;
+  }
 
   /* ---------------- loading splash ---------------- */
   if (loading) {
@@ -1276,6 +1537,8 @@ export default function GacCeasaApp() {
             persistTransacoes={persistTransacoes}
             showToast={showToast}
             setRecibo={setRecibo}
+            sessaoEmpresa={sessaoEmpresa}
+            sairDaEmpresa={sairDaEmpresa}
           />
         )}
       </main>
@@ -4654,7 +4917,7 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistT
   );
 }
 
-function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistTransacoes, showToast }) {
+function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistTransacoes, showToast, sessaoEmpresa, sairDaEmpresa }) {
   const [novoNome, setNovoNome] = useState("");
   const [novaFuncao, setNovaFuncao] = useState("gestor");
   const [novasEmpresas, setNovasEmpresas] = useState([]);
@@ -4719,6 +4982,33 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
 
   return (
     <div>
+      {sessaoEmpresa?.empresa && (
+        <Card className="mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs uppercase font-bold" style={{ color: C.inkSoft }}>Empresa Logada</div>
+              <div className="font-bold text-sm">{sessaoEmpresa.empresa.nomeEmpresa}</div>
+              <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>
+                Código: {sessaoEmpresa.empresa.codigoAcesso}
+                {sessaoEmpresa.empresa.ehPago
+                  ? " · Plano pago"
+                  : ` · ${sessaoEmpresa.empresa.diasRestantesTeste} dia(s) de teste restantes`}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (window.confirm("Sair da empresa? Você vai precisar do código de acesso e senha pra entrar de novo.")) {
+                  sairDaEmpresa();
+                }
+              }}
+              className="text-xs font-bold px-3 py-2 rounded-lg flex-shrink-0"
+              style={{ color: C.rust, border: `1px solid ${C.rust}` }}
+            >
+              Sair
+            </button>
+          </div>
+        </Card>
+      )}
       <div className="grid grid-cols-2 gap-2 mb-4">
         {[
           { id: "acesso", label: "Acesso", icon: Shield },
@@ -5123,7 +5413,7 @@ function EditarProdutor({ produtor, onSalvar, onCancelar }) {
   );
 }
 
-function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastros, persistCadastros, persistTransacoes, showToast, setRecibo }) {
+function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastros, persistCadastros, persistTransacoes, showToast, setRecibo, sessaoEmpresa, sairDaEmpresa }) {
   const [view, setView] = useState("clientes");
   const [expanded, setExpanded] = useState(null);
   const [novoOpen, setNovoOpen] = useState(false);
@@ -5204,6 +5494,8 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
           transacoes={transacoes}
           persistTransacoes={persistTransacoes}
           showToast={showToast}
+          sessaoEmpresa={sessaoEmpresa}
+          sairDaEmpresa={sairDaEmpresa}
         />
       )}
 
