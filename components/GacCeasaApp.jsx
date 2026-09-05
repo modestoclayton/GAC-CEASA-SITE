@@ -65,7 +65,8 @@ const fmtMoney = (n) =>
   (Number(n) || 0).toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 const fmtDate = (iso) => {
   if (!iso) return "—";
@@ -166,11 +167,10 @@ function calcularStatusPagamentos(debitos, pagamentos, hojeISO) {
       if (pag.restante <= 0.009) idxPagamento++;
     }
 
-    // Considera "pago" quando o que falta arredonda pra R$0 na exibição
-    // (o app mostra valores sem centavos) — evita mostrar "R$0" e "A Vencer"
-    // ao mesmo tempo por causa de centavos de arredondamento do desconto de
-    // Fundo Rural, que quase nunca fecha num número redondo.
-    const pago = Math.round(faltaAlocar) <= 0;
+    // Considera "pago" quando falta um resíduo mínimo (só erro de ponto
+    // flutuante, tipo R$0,001) — agora que a tela mostra os centavos exatos,
+    // não dá mais pra arredondar até R$0,49 como se estivesse quitado.
+    const pago = faltaAlocar <= 0.009;
     const dataDebito = new Date(d.data + "T00:00:00");
     const diasDesde = Math.floor((hoje - dataDebito) / 86400000);
     let status;
