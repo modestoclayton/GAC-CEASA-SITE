@@ -882,6 +882,7 @@ function EmpresaLoginView({ onEntrar }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [avisoCadastro, setAvisoCadastro] = useState("");
+  const [empresaExpirada, setEmpresaExpirada] = useState(null); // { nomeEmpresa, codigoAcesso } | null
 
   const fazerLogin = async () => {
     if (!codigoAcesso.trim() || !senha) return;
@@ -895,6 +896,11 @@ function EmpresaLoginView({ onEntrar }) {
       });
       const j = await r.json();
       if (!j.ok) {
+        if (j.testeExpirado && j.empresa) {
+          setEmpresaExpirada(j.empresa);
+          setCarregando(false);
+          return;
+        }
         setErro(j.erro || "Não foi possível entrar.");
         setCarregando(false);
         return;
@@ -942,6 +948,95 @@ function EmpresaLoginView({ onEntrar }) {
       setCarregando(false);
     }
   };
+
+  const VALOR_MENSALIDADE = "R$ 169,90";
+  const CHAVE_PIX = "05564849914";
+  const WHATSAPP_NUMERO = "5544998942726"; // com código do país (55) + DDD, sem espaço/traço
+
+  if (empresaExpirada) {
+    const mensagemWhats = encodeURIComponent(
+      `Olá! Fiz o pagamento da mensalidade do GAC CEASA Manager.\nEmpresa: ${empresaExpirada.nomeEmpresa}\nCódigo de acesso: ${empresaExpirada.codigoAcesso}\nPode confirmar minha liberação?`
+    );
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center p-6"
+        style={{ background: C.green900 }}
+      >
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-6">
+            <div
+              className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center font-bold text-2xl"
+              style={{ background: C.amber500, color: C.green900 }}
+            >
+              GAC
+            </div>
+            <div className="text-white font-bold text-xl" style={{ fontFamily: displayFont }}>
+              Seu teste grátis acabou
+            </div>
+            <div className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.7)" }}>
+              {empresaExpirada.nomeEmpresa}
+            </div>
+          </div>
+
+          <Card>
+            <div className="text-center mb-4">
+              <div className="text-xs uppercase font-bold" style={{ color: C.inkSoft }}>
+                Assinatura mensal
+              </div>
+              <div className="text-3xl font-bold" style={{ color: C.green700 }}>
+                {VALOR_MENSALIDADE}
+              </div>
+              <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+                por mês, já com implantação e suporte inclusos
+              </div>
+            </div>
+
+            <div className="mb-4 p-3 rounded-lg" style={{ background: C.cardAlt }}>
+              <div className="text-xs uppercase font-bold mb-1" style={{ color: C.inkSoft }}>
+                Chave Pix
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold text-sm" style={{ fontFamily: monoFont }}>
+                  {CHAVE_PIX}
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(CHAVE_PIX);
+                  }}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0"
+                  style={{ background: C.amber500, color: C.green900 }}
+                >
+                  Copiar
+                </button>
+              </div>
+            </div>
+
+            <a
+              href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagemWhats}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-center w-full px-4 py-3 rounded-lg font-bold text-sm"
+              style={{ background: "#25D366", color: "#0B1F17" }}
+            >
+              ✓ Já paguei, avisar no WhatsApp
+            </a>
+
+            <p className="text-xs text-center mt-4" style={{ color: C.inkSoft }}>
+              Depois que confirmarmos o pagamento, seu acesso é liberado na hora.
+            </p>
+          </Card>
+
+          <button
+            onClick={() => setEmpresaExpirada(null)}
+            className="text-xs text-center w-full mt-4"
+            style={{ color: "rgba(255,255,255,0.6)" }}
+          >
+            ← Voltar pro login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1181,12 +1276,21 @@ export default function GacCeasaApp() {
           },
           body: JSON.stringify({ type: "cadastros", data: next }),
         });
-        const json = await res.json().catch(() => null);
+        const textoBruto = await res.text();
+        let json = null;
+        try {
+          json = JSON.parse(textoBruto);
+        } catch (erroParse) {
+          setErroCarregamento(
+            `DIAGNÓSTICO (salvar cadastros): Status HTTP ${res.status}. Resposta não é JSON. Primeiros 300 caracteres: ${textoBruto.slice(0, 300)}`
+          );
+          return;
+        }
         if (!res.ok || !json || !json.ok) {
-          setErroCarregamento((json && json.erro) || `Falha ao salvar (HTTP ${res.status})`);
+          setErroCarregamento(`DIAGNÓSTICO (salvar cadastros): HTTP ${res.status} — ${(json && json.erro) || "sem detalhe"}`);
         }
       } catch (e) {
-        setErroCarregamento((e && e.message) || String(e));
+        setErroCarregamento(`DIAGNÓSTICO (salvar cadastros, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
       }
     },
     [sessaoEmpresa]
@@ -1204,12 +1308,21 @@ export default function GacCeasaApp() {
           },
           body: JSON.stringify({ type: "transacoes", data: next }),
         });
-        const json = await res.json().catch(() => null);
+        const textoBruto = await res.text();
+        let json = null;
+        try {
+          json = JSON.parse(textoBruto);
+        } catch (erroParse) {
+          setErroCarregamento(
+            `DIAGNÓSTICO (salvar transacoes): Status HTTP ${res.status}. Resposta não é JSON. Primeiros 300 caracteres: ${textoBruto.slice(0, 300)}`
+          );
+          return;
+        }
         if (!res.ok || !json || !json.ok) {
-          setErroCarregamento((json && json.erro) || `Falha ao salvar (HTTP ${res.status})`);
+          setErroCarregamento(`DIAGNÓSTICO (salvar transacoes): HTTP ${res.status} — ${(json && json.erro) || "sem detalhe"}`);
         }
       } catch (e) {
-        setErroCarregamento((e && e.message) || String(e));
+        setErroCarregamento(`DIAGNÓSTICO (salvar transacoes, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
       }
     },
     [sessaoEmpresa]
