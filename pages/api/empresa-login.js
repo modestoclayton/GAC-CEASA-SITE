@@ -16,8 +16,6 @@ export default async function handler(req, res) {
     const admin = getSupabaseAdmin();
 
     // 1) Acha o e-mail correspondente a esse código de acesso.
-    // (Usa a chave admin porque essa consulta precisa ignorar as regras de
-    // RLS — a pessoa ainda não está autenticada nesse momento.)
     const { data: empresa, error: erroBusca } = await admin
       .from("empresas")
       .select("*")
@@ -45,11 +43,23 @@ export default async function handler(req, res) {
     );
     const diasRestantes = DIAS_TESTE_GRATIS - diasDesdeInicio;
 
+    const infoEmpresa = {
+      nomeEmpresa: empresa.nome_empresa,
+      codigoAcesso: empresa.codigo_acesso,
+      googleSheetId: empresa.google_sheet_id,
+      ehPago: empresa.eh_pago,
+      diasRestantesTeste: empresa.eh_pago ? null : Math.max(diasRestantes, 0),
+    };
+
     if (!empresa.eh_pago && diasRestantes < 0) {
+      // Login confirmado (senha certa), mas teste venceu — devolve os dados
+      // da empresa mesmo assim, pra tela de "Assinar agora" poder usar o
+      // nome/código na mensagem de WhatsApp, sem liberar acesso ao app.
       return res.status(403).json({
         ok: false,
-        erro: "Seu teste grátis de 30 dias expirou. Entre em contato pra ativar o plano pago.",
+        erro: "Seu teste grátis de 30 dias expirou.",
         testeExpirado: true,
+        empresa: infoEmpresa,
       });
     }
 
@@ -59,13 +69,7 @@ export default async function handler(req, res) {
         access_token: sessao.session.access_token,
         refresh_token: sessao.session.refresh_token,
       },
-      empresa: {
-        nomeEmpresa: empresa.nome_empresa,
-        codigoAcesso: empresa.codigo_acesso,
-        googleSheetId: empresa.google_sheet_id,
-        ehPago: empresa.eh_pago,
-        diasRestantesTeste: empresa.eh_pago ? null : Math.max(diasRestantes, 0),
-      },
+      empresa: infoEmpresa,
     });
   } catch (e) {
     return res.status(500).json({ ok: false, erro: String(e && e.message ? e.message : e) });
