@@ -421,7 +421,7 @@ function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
   );
 }
 
-function PerfilHeader({ perfil, titulo, onTrocar, className = "" }) {
+function PerfilHeader({ perfil, titulo, onTrocar, nomeEmpresa, className = "" }) {
   // Estilo inline sempre vence sobre classe CSS. Então quando usamos o banner
   // (classe topo-dashboard), tiramos o gradiente inline pra deixar o
   // background-image do CSS aparecer por baixo do texto.
@@ -457,7 +457,7 @@ function PerfilHeader({ perfil, titulo, onTrocar, className = "" }) {
           className="text-xs uppercase tracking-widest font-bold opacity-70"
           style={{ fontFamily: displayFont }}
         >
-          CEASA Manager · Pátio
+          {nomeEmpresa || "CEASA Manager · Pátio"}
         </div>
         <div
           className="text-2xl font-bold leading-tight"
@@ -513,6 +513,119 @@ const FUNCOES = [
 /* Recibo / Pedido — tela dedicada pra imprimir ou salvar como PDF        */
 /* (Ctrl+P no navegador → "Salvar como PDF" — funciona sem internet)      */
 /* ---------------------------------------------------------------------- */
+// Recibo de entrega — só pra levar junto com a carga. Não mostra valor,
+// preço unitário nem total nenhum: só o essencial pra quem entrega e pra
+// quem recebe conferirem que chegou o produto certo, na quantidade certa.
+function ReciboEntregaView({ item, cadastros, onFechar }) {
+  const cliente = cadastros.clientes.find((c) => c.id === item.clienteId);
+  const unidade = unidadeDoProduto(item.produto, cadastros.produtos);
+  const entrega = item.entrega || {};
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto recibo-imprimir" style={{ background: "#F4F2EA" }}>
+      <div className="max-w-md mx-auto p-6" style={{ color: "#1C1B18" }}>
+        <div className="flex justify-between items-center mb-6 no-print">
+          <button onClick={onFechar} className="flex items-center gap-1 font-bold" style={{ color: "#1F4A30" }}>
+            <X size={20} /> Fechar
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 rounded-lg font-bold text-sm"
+            style={{ background: "#1F4A30", color: "#fff" }}
+          >
+            Imprimir / Salvar PDF
+          </button>
+        </div>
+
+        <div className="border-b-2 pb-4 mb-4" style={{ borderColor: "#1F4A30" }}>
+          <div className="text-xs uppercase tracking-widest font-bold" style={{ color: "#6E6650" }}>
+            {cadastros.nomeEmpresa || "GAC CEASA Manager"}
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
+            Recibo de Entrega
+          </div>
+          <div className="text-xs mt-1" style={{ color: "#6E6650" }}>
+            Emitido em {fmtDate(todayISO())}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs uppercase font-bold" style={{ color: "#6E6650" }}>
+            Cliente
+          </div>
+          <div className="text-lg font-bold">{cliente?.nome || "—"}</div>
+          {cliente?.cidade && <div className="text-sm" style={{ color: "#6E6650" }}>{cliente.cidade}</div>}
+        </div>
+
+        <div className="mb-4 p-3 rounded-lg" style={{ background: "#EDEAE0" }}>
+          <div className="text-xs uppercase font-bold" style={{ color: "#6E6650" }}>
+            Produto
+          </div>
+          <div className="text-lg font-bold">{item.produto}</div>
+          <div className="text-sm" style={{ color: "#1F4A30" }}>
+            {item.quantidade} {unidade}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
+            Dados de Entrega
+          </div>
+          <div className="text-sm">Placa: {entrega.placa || "—"}</div>
+          <div className="text-sm">Local: {entrega.localEntrega || "—"}</div>
+          <div className="text-sm">Carregador: {entrega.carregador || "—"}</div>
+          <div className="text-sm">
+            Caixas Emprestadas: {entrega.caixasEmprestadas ? "Sim" : "Não"}
+          </div>
+          {entrega.caixasEmprestadas && entrega.obsCaixas && (
+            <div className="text-sm mt-1" style={{ color: "#D9861C" }}>
+              📦 {entrega.obsCaixas}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-8 pt-4 border-t" style={{ borderColor: "#D8CBA0" }}>
+          <div className="text-xs mb-6" style={{ color: "#6E6650" }}>
+            Confiro que recebi a mercadoria acima, na quantidade indicada.
+          </div>
+          <div className="text-xs text-center" style={{ color: "#6E6650" }}>
+            _____________________________________
+            <br />
+            Assinatura de quem recebeu
+          </div>
+        </div>
+
+        <div className="text-xs text-center mt-8 pt-4 border-t" style={{ color: "#6E6650", borderColor: "#D8CBA0" }}>
+          Documento gerado pelo GAC CEASA Manager — {fmtDate(todayISO())}
+        </div>
+      </div>
+
+      <style jsx global>{`
+        @page {
+          margin: 15mm;
+        }
+        @media print {
+          nav,
+          header,
+          .no-print {
+            display: none !important;
+          }
+          body {
+            margin: 0;
+          }
+          .recibo-imprimir {
+            position: static !important;
+            inset: auto !important;
+            overflow: visible !important;
+            height: auto !important;
+            background: #fff !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   const isVenda = tipo === "venda";
 
@@ -593,7 +706,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
 
         <div className="border-b-2 pb-4 mb-4" style={{ borderColor: "#1F4A30" }}>
           <div className="text-xs uppercase tracking-widest font-bold" style={{ color: "#6E6650" }}>
-            GAC CEASA Manager
+            {cadastros.nomeEmpresa || "GAC CEASA Manager"}
           </div>
           <div className="text-2xl font-bold" style={{ color: "#1F4A30" }}>
             {titulo}
@@ -1231,7 +1344,7 @@ export default function GacCeasaApp() {
           return;
         }
         if (json.ok) {
-          cad = { ...SEED_CADASTROS, ...json.cadastros };
+          cad = { ...SEED_CADASTROS, ...json.cadastros, nomeEmpresa: sessaoEmpresa.empresa?.nomeEmpresa || "" };
           tx = { ...SEED_TRANSACOES, ...json.transacoes };
         } else if (json.testeExpirado) {
           setErroCarregamento(json.erro);
@@ -1522,6 +1635,15 @@ export default function GacCeasaApp() {
 
   /* ---------------- recibo/pedido em modo impressão ---------------- */
   if (recibo) {
+    if (recibo.tipo === "entrega") {
+      return (
+        <ReciboEntregaView
+          item={recibo.item}
+          cadastros={cadastros}
+          onFechar={() => setRecibo(null)}
+        />
+      );
+    }
     return (
       <ReciboView
         tipo={recibo.tipo}
@@ -1546,7 +1668,7 @@ export default function GacCeasaApp() {
         }}
       >
         {bannerErro}
-        <PerfilHeader perfil={perfil} titulo="Conferência de Compras" onTrocar={trocarPerfil} />
+        <PerfilHeader perfil={perfil} titulo="Conferência de Compras" onTrocar={trocarPerfil} nomeEmpresa={cadastros.nomeEmpresa} />
         <main className="flex-1 px-4 py-4 overflow-y-auto">
           {/* Conferente só confere quantidade — sem acesso a impressão/PDF/valores extras */}
           <ConferenciaComprasTab
@@ -1575,7 +1697,7 @@ export default function GacCeasaApp() {
         }}
       >
         {bannerErro}
-        <PerfilHeader perfil={perfil} titulo="Minhas Entregas" onTrocar={trocarPerfil} />
+        <PerfilHeader perfil={perfil} titulo="Minhas Entregas" onTrocar={trocarPerfil} nomeEmpresa={cadastros.nomeEmpresa} />
         <main className="flex-1 px-4 py-4 overflow-y-auto">
           {/* Entregador só vê pra onde a mercadoria vai — sem valores e sem impressão/PDF */}
           <EntregasTab
@@ -1615,6 +1737,7 @@ export default function GacCeasaApp() {
           ""
         }
         onTrocar={trocarPerfil}
+        nomeEmpresa={cadastros.nomeEmpresa}
         className={tab === "dashboard" ? "topo-dashboard" : ""}
       />
 
@@ -2546,7 +2669,7 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
   const corpoVale = `
     <div class="vale-conteudo" style="color:#1C1B18;">
       <div style="border-bottom:2px solid #1F4A30;padding-bottom:10px;margin-bottom:10px;">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">GAC CEASA MANAGER</div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
         <div style="font-size:19px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
         <div style="font-size:10px;color:#6E6650;margin-top:2px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
       </div>
@@ -4059,13 +4182,22 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
             Editar dados
           </button>
           {setRecibo && (
-            <button
-              onClick={() => setRecibo({ tipo: "venda", item: v })}
-              className="text-xs font-bold mt-1.5 ml-3"
-              style={{ color: C.amber500 }}
-            >
-              Imprimir pedido
-            </button>
+            <>
+              <button
+                onClick={() => setRecibo({ tipo: "venda", item: v })}
+                className="text-xs font-bold mt-1.5 ml-3"
+                style={{ color: C.amber500 }}
+              >
+                Imprimir pedido
+              </button>
+              <button
+                onClick={() => setRecibo({ tipo: "entrega", item: v })}
+                className="text-xs font-bold mt-1.5 ml-3"
+                style={{ color: C.green700 }}
+              >
+                Imprimir entrega
+              </button>
+            </>
           )}
         </div>
         <button
