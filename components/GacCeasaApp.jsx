@@ -1678,6 +1678,17 @@ export default function GacCeasaApp() {
             showToast={showToast}
             soMeuNome={perfil.nome}
           />
+          <div className="text-center pt-6 pb-2">
+            <a
+              href="https://noticias.gacceasa.com.br"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs"
+              style={{ color: C.inkSoft, textDecoration: "underline", textUnderlineOffset: 3 }}
+            >
+              📰 Notícias e Cotações
+            </a>
+          </div>
         </main>
         {toast && <ToastBanner toast={toast} />}
       </div>
@@ -1707,6 +1718,17 @@ export default function GacCeasaApp() {
             showToast={showToast}
             soMeuNome={perfil.nome}
           />
+          <div className="text-center pt-6 pb-2">
+            <a
+              href="https://noticias.gacceasa.com.br"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs"
+              style={{ color: C.inkSoft, textDecoration: "underline", textUnderlineOffset: 3 }}
+            >
+              📰 Notícias e Cotações
+            </a>
+          </div>
         </main>
         {toast && <ToastBanner toast={toast} />}
       </div>
@@ -1787,6 +1809,17 @@ export default function GacCeasaApp() {
             sairDaEmpresa={sairDaEmpresa}
           />
         )}
+        <div className="text-center pt-6 pb-28">
+          <a
+            href="https://noticias.gacceasa.com.br"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs"
+            style={{ color: C.inkSoft, textDecoration: "underline", textUnderlineOffset: 3 }}
+          >
+            📰 Notícias e Cotações
+          </a>
+        </div>
       </main>
 
       {/* Toast */}
