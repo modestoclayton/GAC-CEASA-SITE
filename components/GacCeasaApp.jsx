@@ -2932,7 +2932,7 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
                     </div>
                     <div className="text-right">
                       <div className="font-bold">{c.quantidade} {unidade}</div>
-                      {unidade === "KG" && (
+                      {unidade !== "CX" && (
                         <div className="text-xs" style={{ color: C.amber500 }}>
                           ≈{cxEquiv.toFixed(1).replace(/\.0$/, "")} CX
                         </div>
@@ -3007,7 +3007,7 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
                   </div>
                   <div className="text-right">
                     <div className="font-bold">{c.quantidade} {unidade}</div>
-                    {unidade === "KG" && (
+                    {unidade !== "CX" && (
                       <div className="text-xs" style={{ color: C.amber500 }}>
                         ≈{cxEquiv.toFixed(1).replace(/\.0$/, "")} CX
                       </div>
