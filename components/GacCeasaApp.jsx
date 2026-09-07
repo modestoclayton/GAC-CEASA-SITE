@@ -780,10 +780,15 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
             {itens.map((i, idx) => {
               const precoUnitario = isVenda ? i.precoUnit : i.valorUnit;
               const totalItem = Number(i.quantidade) * Number(precoUnitario);
+              const unidadeItem = unidadeDoProduto(i.produto, cadastros.produtos);
+              const mostrarCaixasItem = unidadeItem !== "CX" && Number(i.quantidadeCaixas) > 0;
               return (
               <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0" }}>
                 <td className="py-2">{i.produto}</td>
-                <td className="text-right py-2">{i.quantidade} {unidadeDoProduto(i.produto, cadastros.produtos)}</td>
+                <td className="text-right py-2">
+                  {i.quantidade} {unidadeItem}
+                  {mostrarCaixasItem && ` (${i.quantidadeCaixas} CX)`}
+                </td>
                 <td className="text-right py-2">{fmtMoney(precoUnitario)}</td>
                 <td className="text-right py-2 font-bold">{fmtMoney(totalItem)}</td>
               </tr>
@@ -2669,10 +2674,14 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
     .map(
       (i) => {
         const unidade = unidadeDoProduto(i.produto, cadastros.produtos);
+        const mostrarCaixas = unidade !== "CX" && Number(i.quantidadeCaixas) > 0;
+        const qtdExibida = mostrarCaixas
+          ? `${i.quantidade} ${unidade} (${i.quantidadeCaixas} CX)`
+          : `${i.quantidade} ${unidade}`;
         return `
     <tr>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;">${i.produto}</td>
-      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${i.quantidade} ${unidade}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${qtdExibida}</td>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">R$ ${(i.valorUnit || 0).toFixed(2)}</td>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</td>
     </tr>`;
@@ -3645,9 +3654,10 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const excluirVenda = async (venda) => {
     // Excluir aqui remove a venda de tudo que lê dessa mesma lista:
     // Entregas, Conta Corrente do cliente e Dashboard.
+    const unidadeVenda = unidadeDoProduto(venda.produto, cadastros.produtos);
     const aviso = venda.entrega
-      ? `Essa venda já tem dados de entrega preenchidos. Confirma excluir mesmo assim?\n\n${venda.produto} · ${venda.quantidade} un`
-      : `Excluir esta venda?\n\n${venda.produto} · ${venda.quantidade} un`;
+      ? `Essa venda já tem dados de entrega preenchidos. Confirma excluir mesmo assim?\n\n${venda.produto} · ${venda.quantidade} ${unidadeVenda}`
+      : `Excluir esta venda?\n\n${venda.produto} · ${venda.quantidade} ${unidadeVenda}`;
     const confirmado = window.confirm(aviso);
     if (!confirmado) return;
 
@@ -3806,7 +3816,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
                 <div className="flex justify-between mb-2">
                   <div className="flex-1">
                     <div className="font-bold text-sm">{cliente?.nome || "—"}</div>
-                    <div className="text-xs" style={{ color: C.inkSoft }}>{v.produto} • {v.quantidade} un</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>{v.produto} • {v.quantidade} {unidadeDoProduto(v.produto, cadastros.produtos)}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(v.valorFinal ?? v.valorTotal)}</div>
@@ -4199,7 +4209,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
         <div className="flex-1">
           <div className="font-bold text-sm">{clienteNome(v.clienteId)}</div>
           <div className="text-xs" style={{ color: C.inkSoft }}>
-            {v.produto} · {v.quantidade} un · {fmtDate(v.data)}
+            {v.produto} · {v.quantidade} {unidadeDoProduto(v.produto, cadastros.produtos)} · {fmtDate(v.data)}
           </div>
           <div className="text-xs mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5" style={{ color: C.inkSoft }}>
             <span>
@@ -4301,7 +4311,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
                   <div>
                     <div className="font-bold text-sm">{clienteNome(v.clienteId)}</div>
                     <div className="text-xs" style={{ color: C.inkSoft }}>
-                      {v.produto} · {v.quantidade} un · {fmtDate(v.data)}
+                      {v.produto} · {v.quantidade} {unidadeDoProduto(v.produto, cadastros.produtos)} · {fmtDate(v.data)}
                     </div>
                   </div>
                   <button
@@ -4484,7 +4494,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
       <Card key={c.id}>
         <div className="font-bold text-sm">{c.produto}</div>
         <div className="text-xs mb-3" style={{ color: C.inkSoft }}>
-          {produtorNome(c.produtorId)} · pedido: {c.quantidade} un · {fmtDate(c.data)}
+          {produtorNome(c.produtorId)} · pedido: {c.quantidade} {unidadeDoProduto(c.produto, cadastros.produtos)} · {fmtDate(c.data)}
         </div>
         <Field label="Quantidade Recebida">
           <TextInput
@@ -4502,7 +4512,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
           >
             <AlertTriangle size={14} />
             Divergência de {divergencia > 0 ? "+" : ""}
-            {divergencia} un em relação ao pedido
+            {divergencia} {unidadeDoProduto(c.produto, cadastros.produtos)} em relação ao pedido
           </div>
         )}
         <div className="flex gap-2">
@@ -4530,7 +4540,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
           <div className="flex-1">
             <div className="font-bold text-sm">{c.produto}</div>
             <div className="text-xs" style={{ color: C.inkSoft }}>
-              {produtorNome(c.produtorId)} · pedido: {c.quantidade} un · {fmtDate(c.data)}
+              {produtorNome(c.produtorId)} · pedido: {c.quantidade} {unidadeDoProduto(c.produto, cadastros.produtos)} · {fmtDate(c.data)}
             </div>
             {c.cargueiro && (
               <div className="text-xs" style={{ color: C.inkSoft }}>
@@ -4539,7 +4549,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
             )}
             {c.entregaConfirmada && (
               <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>
-                Recebido: {c.quantidadeRecebida} un
+                Recebido: {c.quantidadeRecebida} {unidadeDoProduto(c.produto, cadastros.produtos)}
               </div>
             )}
             {setRecibo && (
@@ -4581,7 +4591,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
           >
             <AlertTriangle size={14} />
             Divergência de {c.divergencia > 0 ? "+" : ""}
-            {c.divergencia} un em relação ao pedido
+            {c.divergencia} {unidadeDoProduto(c.produto, cadastros.produtos)} em relação ao pedido
           </div>
         )}
       </Card>
@@ -5057,7 +5067,7 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
               <div>
                 <div className="font-bold text-sm">{p.produto}</div>
                 <div className="text-xs" style={{ color: C.inkSoft }}>
-                  {p.quantidade} un · {p.motivo}
+                  {p.quantidade} {unidadeDoProduto(p.produto, cadastros.produtos)} · {p.motivo}
                 </div>
               </div>
               <div className="text-sm font-bold" style={{ fontFamily: monoFont, color: C.rust }}>
@@ -5082,7 +5092,7 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
               <div>
                 <div className="font-bold text-sm">{r.produto}</div>
                 <div className="text-xs" style={{ color: C.inkSoft }}>
-                  {r.quantidade} un perdidas no total
+                  {r.quantidade} {unidadeDoProduto(r.produto, cadastros.produtos)} perdidas no total
                 </div>
               </div>
               <div className="text-sm font-bold" style={{ fontFamily: monoFont, color: C.rust }}>
