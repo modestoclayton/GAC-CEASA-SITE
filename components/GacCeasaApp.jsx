@@ -2495,6 +2495,162 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
 /* ====================================================================== */
 /* Requisição Tab - Mostra compras por produtor com filtro de data       */
 /* ====================================================================== */
+// Calcula o último dia de um mês (28/29/30/31), dado um "YYYY-MM"
+function ultimoDiaDoMes(anoMes) {
+  const [ano, mes] = anoMes.split("-").map(Number);
+  return new Date(ano, mes, 0).getDate(); // dia 0 do mês seguinte = último dia do mês atual
+}
+
+function nomeDoMes(anoMes) {
+  const [ano, mes] = anoMes.split("-").map(Number);
+  return new Date(ano, mes - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
+
+// Monta { clienteId: { nomeDia: totalCx, ... , totalMes: X } } — usado tanto na
+// tela quanto no documento impresso, pra nunca dessincronizar os dois.
+function agruparComprasPorClienteEDia(compras, anoMes, cadastros) {
+  const [ano, mes] = anoMes.split("-").map(Number);
+  const ultimoDia = ultimoDiaDoMes(anoMes);
+  const doMes = compras.filter((c) => {
+    if (c.clienteDestino === "ESTOQUE") return false; // comissão é só sobre compra pra cliente
+    const [anoC, mesC] = (c.data || "").split("-").map(Number);
+    return anoC === ano && mesC === mes;
+  });
+
+  const porCliente = {};
+  doMes.forEach((c) => {
+    if (!porCliente[c.clienteDestino]) porCliente[c.clienteDestino] = {};
+    const dia = c.data; // "YYYY-MM-DD"
+    const cx = caixasEquivalentes(c, cadastros.produtos);
+    porCliente[c.clienteDestino][dia] = (porCliente[c.clienteDestino][dia] || 0) + cx;
+  });
+
+  return { porCliente, ultimoDia };
+}
+
+function gerarPDFRelatorioMensalCompras(compras, anoMes, cadastros) {
+  const { porCliente } = agruparComprasPorClienteEDia(compras, anoMes, cadastros);
+  const clientesOrdenados = Object.keys(porCliente).sort((a, b) => {
+    const nomeA = cadastros.clientes.find((c) => c.id === a)?.nome || a;
+    const nomeB = cadastros.clientes.find((c) => c.id === b)?.nome || b;
+    return nomeA.localeCompare(nomeB, "pt-BR");
+  });
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório Mensal de Compras</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse;margin-bottom:6px}th{background:#1E4A30;color:white;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:10px;margin:18px 0 8px 0;font-weight:bold;font-size:16px}.total-cliente{font-weight:bold;text-align:right;padding:8px;background:#F4F2EA}.total-geral{font-weight:bold;text-align:right;padding:16px;font-size:18px;border-top:3px solid #1E4A30;margin-top:24px}</style></head><body><h1>📅 Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</h1><p>Fechado no último dia do mês, pra acerto de comissão.</p>`;
+
+  let totalGeral = 0;
+  clientesOrdenados.forEach((clienteId) => {
+    const cliente = cadastros.clientes.find((c) => c.id === clienteId);
+    const dias = porCliente[clienteId];
+    const diasOrdenados = Object.keys(dias).sort();
+    let totalCliente = 0;
+    html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Data</th><th style="text-align:right">Caixas</th></tr>`;
+    diasOrdenados.forEach((dia) => {
+      const cx = dias[dia];
+      totalCliente += cx;
+      html += `<tr><td>${fmtDate(dia)}</td><td style="text-align:right">${cx.toFixed(1).replace(/\.0$/, "")} CX</td></tr>`;
+    });
+    html += `</table><div class="total-cliente">Total do mês — ${cliente?.nome || clienteId}: ${totalCliente.toFixed(1).replace(/\.0$/, "")} CX</div>`;
+    totalGeral += totalCliente;
+  });
+
+  if (clientesOrdenados.length === 0) {
+    html += `<p>Nenhuma compra registrada nesse mês.</p>`;
+  } else {
+    html += `<div class="total-geral">Total Geral do Mês (todos os clientes): ${totalGeral.toFixed(1).replace(/\.0$/, "")} CX</div>`;
+  }
+
+  html += `</body></html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `Relatorio-Mensal-Compras-${anoMes}.html`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
+function RelatorioMensalComprasTab({ cadastros, transacoes }) {
+  const [mesSelecionado, setMesSelecionado] = useState(todayISO().slice(0, 7)); // "YYYY-MM"
+
+  const { porCliente } = agruparComprasPorClienteEDia(transacoes.compras, mesSelecionado, cadastros);
+  const clientesOrdenados = Object.keys(porCliente).sort((a, b) => {
+    const nomeA = cadastros.clientes.find((c) => c.id === a)?.nome || a;
+    const nomeB = cadastros.clientes.find((c) => c.id === b)?.nome || b;
+    return nomeA.localeCompare(nomeB, "pt-BR");
+  });
+
+  const totalGeral = clientesOrdenados.reduce((soma, clienteId) => {
+    const totalCliente = Object.values(porCliente[clienteId]).reduce((s, cx) => s + cx, 0);
+    return soma + totalCliente;
+  }, 0);
+
+  return (
+    <div>
+      <Field label="Mês">
+        <input
+          type="month"
+          value={mesSelecionado}
+          onChange={(e) => setMesSelecionado(e.target.value)}
+          max={todayISO().slice(0, 7)}
+          className="w-full px-3 py-2.5 rounded-lg text-sm"
+          style={{ background: C.cardAlt, border: `1px solid ${C.line}`, color: C.ink }}
+        />
+      </Field>
+      <p className="text-xs mb-4" style={{ color: C.inkSoft }}>
+        Fecha sempre no último dia de {nomeDoMes(mesSelecionado)} — pra acerto de comissão por cliente.
+      </p>
+
+      {clientesOrdenados.length === 0 ? (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma compra registrada nesse mês.</p>
+        </Card>
+      ) : (
+        <>
+          <Card style={{ marginBottom: 16, background: C.green700 }}>
+            <div className="text-xs" style={{ color: C.inkSoft }}>Total Geral do Mês</div>
+            <div className="text-2xl font-bold" style={{ color: C.amber500 }}>
+              {totalGeral.toFixed(1).replace(/\.0$/, "")} CX
+            </div>
+          </Card>
+
+          {clientesOrdenados.map((clienteId) => {
+            const cliente = cadastros.clientes.find((c) => c.id === clienteId);
+            const dias = porCliente[clienteId];
+            const diasOrdenados = Object.keys(dias).sort();
+            const totalCliente = Object.values(dias).reduce((s, cx) => s + cx, 0);
+
+            return (
+              <Card key={clienteId} style={{ marginBottom: 14 }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-bold text-sm" style={{ color: C.blue600 }}>👤 {cliente?.nome || clienteId}</div>
+                  <div className="text-sm font-bold" style={{ fontFamily: monoFont, color: C.green700 }}>
+                    {totalCliente.toFixed(1).replace(/\.0$/, "")} CX
+                  </div>
+                </div>
+                {diasOrdenados.map((dia) => (
+                  <div key={dia} className="text-xs mb-1 flex justify-between" style={{ color: C.inkSoft }}>
+                    <span>{fmtDate(dia)}</span>
+                    <span style={{ fontFamily: monoFont }}>{dias[dia].toFixed(1).replace(/\.0$/, "")} CX</span>
+                  </div>
+                ))}
+              </Card>
+            );
+          })}
+
+          <button
+            onClick={() => gerarPDFRelatorioMensalCompras(transacoes.compras, mesSelecionado, cadastros)}
+            className="w-full px-4 py-3 rounded-lg font-bold text-sm mt-2"
+            style={{ background: C.amber500, color: C.ink }}
+          >
+            🖨️ Imprimir Relatório Mensal
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
 
@@ -3268,6 +3424,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           <button onClick={() => setView("requisicao")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "requisicao" ? C.green700 : C.cardAlt, color: view === "requisicao" ? "#fff" : C.ink }}>📋 Requisição</button>
           <button onClick={() => setView("folha-pedido")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "folha-pedido" ? C.green700 : C.cardAlt, color: view === "folha-pedido" ? "#fff" : C.ink }}>📄 Folha Pedido</button>
           <button onClick={() => setView("folha-carga")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "folha-carga" ? C.green700 : C.cardAlt, color: view === "folha-carga" ? "#fff" : C.ink }}>📦 Folha Carga</button>
+          <button onClick={() => setView("relatorio-mensal")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "relatorio-mensal" ? C.green700 : C.cardAlt, color: view === "relatorio-mensal" ? "#fff" : C.ink }}>📅 Relatório Mensal</button>
         </div>
 
         {view === "registrar" && (
@@ -3568,6 +3725,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         {view === "requisicao" && <RequisicaoTab cadastros={cadastros} transacoes={transacoes} setRecibo={setRecibo} />}
         {view === "folha-pedido" && <FolhaDePedidoTab cadastros={cadastros} transacoes={transacoes} />}
         {view === "folha-carga" && <FolhaDeCargaTab cadastros={cadastros} transacoes={transacoes} />}
+        {view === "relatorio-mensal" && <RelatorioMensalComprasTab cadastros={cadastros} transacoes={transacoes} />}
       </Card>
     </>
   );
