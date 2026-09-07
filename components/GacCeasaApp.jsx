@@ -2536,14 +2536,20 @@ function gerarPDFRelatorioMensalCompras(compras, anoMes, cadastros) {
     return nomeA.localeCompare(nomeB, "pt-BR");
   });
 
-  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório Mensal de Compras</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse;margin-bottom:6px}th{background:#1E4A30;color:white;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:10px;margin:18px 0 8px 0;font-weight:bold;font-size:16px}.total-cliente{font-weight:bold;text-align:right;padding:8px;background:#F4F2EA}.total-geral{font-weight:bold;text-align:right;padding:16px;font-size:18px;border-top:3px solid #1E4A30;margin-top:24px}</style></head><body><h1>📅 Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</h1><p>Fechado no último dia do mês, pra acerto de comissão.</p>`;
+  if (clientesOrdenados.length === 0) {
+    const htmlVazio = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório Mensal de Compras</title><style>body{font-family:Arial;margin:20px}</style></head><body><h1>📅 Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</h1><p>Nenhuma compra registrada nesse mês.</p></body></html>`;
+    baixarHtml(htmlVazio, `Relatorio-Mensal-Compras-${anoMes}.html`);
+    return;
+  }
 
-  let totalGeral = 0;
-  clientesOrdenados.forEach((clienteId) => {
+  // Um PDF/arquivo SEPARADO por cliente — não junta todo mundo num único documento.
+  clientesOrdenados.forEach((clienteId, idx) => {
     const cliente = cadastros.clientes.find((c) => c.id === clienteId);
     const dias = porCliente[clienteId];
     const diasOrdenados = Object.keys(dias).sort();
     let totalCliente = 0;
+
+    let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório Mensal — ${cliente?.nome || clienteId}</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse;margin-bottom:6px}th{background:#1E4A30;color:white;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:10px;margin:18px 0 8px 0;font-weight:bold;font-size:16px}.total-cliente{font-weight:bold;text-align:right;padding:8px;background:#F4F2EA}</style></head><body><h1>📅 Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</h1><p>Fechado no último dia do mês, pra acerto de comissão.</p>`;
     html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Data</th><th style="text-align:right">Caixas</th></tr>`;
     diasOrdenados.forEach((dia) => {
       const cx = dias[dia];
@@ -2551,23 +2557,13 @@ function gerarPDFRelatorioMensalCompras(compras, anoMes, cadastros) {
       html += `<tr><td>${fmtDate(dia)}</td><td style="text-align:right">${cx.toFixed(1).replace(/\.0$/, "")} CX</td></tr>`;
     });
     html += `</table><div class="total-cliente">Total do mês — ${cliente?.nome || clienteId}: ${totalCliente.toFixed(1).replace(/\.0$/, "")} CX</div>`;
-    totalGeral += totalCliente;
+    html += `</body></html>`;
+
+    const nomeArquivo = `Relatorio-Mensal-${slugify(cliente?.nome || clienteId)}-${anoMes}.html`;
+    // Pequeno atraso entre cada download pra evitar que o navegador bloqueie
+    // downloads múltiplos disparados muito rápido um atrás do outro.
+    setTimeout(() => baixarHtml(html, nomeArquivo), idx * 350);
   });
-
-  if (clientesOrdenados.length === 0) {
-    html += `<p>Nenhuma compra registrada nesse mês.</p>`;
-  } else {
-    html += `<div class="total-geral">Total Geral do Mês (todos os clientes): ${totalGeral.toFixed(1).replace(/\.0$/, "")} CX</div>`;
-  }
-
-  html += `</body></html>`;
-  const blob = new Blob([html], { type: "text/html" });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `Relatorio-Mensal-Compras-${anoMes}.html`;
-  link.click();
-  window.URL.revokeObjectURL(url);
 }
 
 function RelatorioMensalComprasTab({ cadastros, transacoes }) {
@@ -2643,7 +2639,7 @@ function RelatorioMensalComprasTab({ cadastros, transacoes }) {
             className="w-full px-4 py-3 rounded-lg font-bold text-sm mt-2"
             style={{ background: C.amber500, color: C.ink }}
           >
-            🖨️ Imprimir Relatório Mensal
+            🖨️ Imprimir Relatório Mensal (um arquivo por cliente)
           </button>
         </>
       )}
@@ -3404,10 +3400,11 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const excluirCompra = async (compra) => {
     // Excluir aqui remove a compra de tudo que lê dessa mesma lista:
     // Requisição, Conferência, Folha de Pedido/Carga, Estoque e Conta Corrente do fornecedor.
+    const unidadeCompra = unidadeDoProduto(compra.produto, cadastros.produtos);
     const jaFinalizado = (transacoes.diasFinalizados || []).includes(compra.data);
     const aviso = compra.entregaConfirmada
-      ? `Essa compra já foi conferida${jaFinalizado ? " e o dia já foi finalizado" : ""}. Confirma excluir mesmo assim?\n\n${compra.produto} · ${compra.quantidade} CX`
-      : `Excluir esta compra?\n\n${compra.produto} · ${compra.quantidade} CX`;
+      ? `Essa compra já foi conferida${jaFinalizado ? " e o dia já foi finalizado" : ""}. Confirma excluir mesmo assim?\n\n${compra.produto} · ${compra.quantidade} ${unidadeCompra}`
+      : `Excluir esta compra?\n\n${compra.produto} · ${compra.quantidade} ${unidadeCompra}`;
     const confirmado = window.confirm(aviso);
     if (!confirmado) return;
 
@@ -3419,12 +3416,12 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   return (
     <>
       <Card>
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button onClick={() => setView("registrar")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "registrar" ? C.green700 : C.cardAlt, color: view === "registrar" ? "#fff" : C.ink }}>➕ Registrar</button>
-          <button onClick={() => setView("requisicao")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "requisicao" ? C.green700 : C.cardAlt, color: view === "requisicao" ? "#fff" : C.ink }}>📋 Requisição</button>
-          <button onClick={() => setView("folha-pedido")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "folha-pedido" ? C.green700 : C.cardAlt, color: view === "folha-pedido" ? "#fff" : C.ink }}>📄 Folha Pedido</button>
-          <button onClick={() => setView("folha-carga")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "folha-carga" ? C.green700 : C.cardAlt, color: view === "folha-carga" ? "#fff" : C.ink }}>📦 Folha Carga</button>
-          <button onClick={() => setView("relatorio-mensal")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "relatorio-mensal" ? C.green700 : C.cardAlt, color: view === "relatorio-mensal" ? "#fff" : C.ink }}>📅 Relatório Mensal</button>
+        <div className="flex flex-col gap-2 mb-4">
+          <button onClick={() => setView("registrar")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "registrar" ? C.green700 : C.cardAlt, color: view === "registrar" ? "#fff" : C.ink }}>➕ Registrar</button>
+          <button onClick={() => setView("requisicao")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "requisicao" ? C.green700 : C.cardAlt, color: view === "requisicao" ? "#fff" : C.ink }}>📋 Requisição</button>
+          <button onClick={() => setView("folha-pedido")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "folha-pedido" ? C.green700 : C.cardAlt, color: view === "folha-pedido" ? "#fff" : C.ink }}>📄 Folha Pedido</button>
+          <button onClick={() => setView("folha-carga")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "folha-carga" ? C.green700 : C.cardAlt, color: view === "folha-carga" ? "#fff" : C.ink }}>📦 Folha Carga</button>
+          <button onClick={() => setView("relatorio-mensal")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "relatorio-mensal" ? C.green700 : C.cardAlt, color: view === "relatorio-mensal" ? "#fff" : C.ink }}>📅 Relatório Mensal</button>
         </div>
 
         {view === "registrar" && (
@@ -3685,7 +3682,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
                                     <div className="flex-1">
                                       <div className="font-bold text-sm">{c.produto}</div>
                                       <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
-                                        {c.quantidade} CX · {fmtMoney(c.valorFinal || c.valorTotal)}
+                                        {c.quantidade} {unidadeDoProduto(c.produto, cadastros.produtos)} · {fmtMoney(c.valorFinal || c.valorTotal)}
                                       </div>
                                       <div className="flex gap-3 mt-1">
                                         <button
