@@ -1956,7 +1956,7 @@ function NavButton({ active, icon: Icon, label, onClick }) {
 /* ---------------------------------------------------------------------- */
 function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores, transacoes, cadastros }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
-  const [alertasAbertos, setAlertasAbertos] = useState(false);
+  const [alertasAbertos, setAlertasAbertos] = useState(true);
   const [acoesFinAbertas, setAcoesFinAbertas] = useState(false);
   
   // Calcula totais de CX para o dia selecionado
@@ -3601,6 +3601,13 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
             </option>
           ))}
         </Select>
+        {!isEstoque && clienteDestino && !normalizarEquipe(cadastros.compradoresVendedores).some(
+          (e) => e.funcao === "conferente" && (e.clientesIds || []).includes(clienteDestino)
+        ) && (
+          <div className="text-xs mt-1 p-2 rounded" style={{ background: C.amberSoft, color: C.rust }}>
+            ⚠️ Este cliente não tem conferente vinculado no cadastro — a compra vai ficar sem conferente até você escolher um manualmente em "Mais opções", ou vincular em Contas → Gerenciar Acesso.
+          </div>
+        )}
       </Field>
       <Field label="Produto">
         <Select value={produto} onChange={(e) => setProduto(e.target.value)}>
@@ -4755,7 +4762,12 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const norm = (s) => (s || "").trim().toLowerCase();
   // O cargueiro/conferente da compra agora guarda o NOME direto (não mais um ID
   // de um cadastro separado que dependia do backend persistir "cargueiros").
-  const ehMinha = (c) => !soMeuNome || !c.cargueiro || norm(c.cargueiro) === norm(soMeuNome);
+  // Antes: "!c.cargueiro" fazia uma compra SEM conferente definido aparecer
+  // pra TODOS os conferentes ao mesmo tempo (misturada). Agora, só conta como
+  // "minha" se o conferente realmente bater com o nome — sem conferente
+  // definido, só o gestor (soMeuNome vazio) continua vendo, pra notar que
+  // falta vincular esse cliente a alguém em Gerenciar Acesso.
+  const ehMinha = (c) => !soMeuNome || (!!c.cargueiro && norm(c.cargueiro) === norm(soMeuNome));
 
   const nomeCliente = (id) =>
     id === "ESTOQUE" ? "Estoque" : cadastros.clientes.find((cl) => cl.id === id)?.nome || "—";
@@ -5145,9 +5157,11 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
   const [q, setQ] = useState("");
   const [editandoProdutoId, setEditandoProdutoId] = useState(null);
   const [listaAberta, setListaAberta] = useState(false);
-  const filtered = estoquePorProduto.filter((p) =>
-    (p.nome || "").toLowerCase().includes(q.toLowerCase())
-  );
+  const [mostrarZerados, setMostrarZerados] = useState(false);
+  const filtered = estoquePorProduto
+    .filter((p) => (p.nome || "").toLowerCase().includes(q.toLowerCase()))
+    .filter((p) => mostrarZerados || p.saldo !== 0);
+  const zeradosEscondidos = estoquePorProduto.filter((p) => (p.nome || "").toLowerCase().includes(q.toLowerCase()) && p.saldo === 0).length;
   // Abre sozinha quando a pessoa começa a digitar uma busca — não faz
   // sentido pedir pra tocar em "Ver produtos" depois de já ter procurado um.
   const mostrarLista = listaAberta || q.trim() !== "";
@@ -5215,6 +5229,25 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
               style={{ paddingLeft: 34 }}
             />
           </div>
+
+          {!mostrarZerados && zeradosEscondidos > 0 && (
+            <button
+              onClick={() => setMostrarZerados(true)}
+              className="text-xs font-bold mb-3"
+              style={{ color: C.inkSoft }}
+            >
+              {zeradosEscondidos} produto(s) zerado(s) escondido(s) — ver todos
+            </button>
+          )}
+          {mostrarZerados && (
+            <button
+              onClick={() => setMostrarZerados(false)}
+              className="text-xs font-bold mb-3"
+              style={{ color: C.inkSoft }}
+            >
+              Esconder produtos zerados de novo
+            </button>
+          )}
 
           <ListaCascata
             titulo="Produtos"
@@ -6131,11 +6164,28 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
   const [editandoProdutorId, setEditandoProdutorId] = useState(null);
   const [qClientes, setQClientes] = useState("");
   const [qProdutores, setQProdutores] = useState("");
-  const [clientesAbertos, setClientesAbertos] = useState(false);
-  const [produtoresAbertos, setProdutoresAbertos] = useState(false);
 
-  const clientesFiltrados = contaClientes.filter((c) => (c.nome || "").toLowerCase().includes(qClientes.toLowerCase()));
-  const produtoresFiltrados = contaProdutores.filter((p) => (p.nome || "").toLowerCase().includes(qProdutores.toLowerCase()));
+  const [verTodosClientes, setVerTodosClientes] = useState(false);
+  const [verTodosProdutores, setVerTodosProdutores] = useState(false);
+  const hoje = todayISO();
+
+  const clienteTeveMovimentoHoje = (clienteId) =>
+    transacoes.vendas.some((v) => v.clienteId === clienteId && v.data === hoje) ||
+    transacoes.recebimentos.some((r) => r.clienteId === clienteId && r.data === hoje);
+  const produtorTeveMovimentoHoje = (produtorId) =>
+    transacoes.compras.some((c) => c.produtorId === produtorId && c.data === hoje) ||
+    transacoes.pagamentos.some((p) => p.produtorId === produtorId && p.data === hoje);
+
+  // Por padrão só mostra quem mexeu HOJE (mesmo que ainda deva de antes) —
+  // digitar uma busca ou tocar em "ver todos" revela o restante.
+  const clientesFiltrados = contaClientes
+    .filter((c) => (c.nome || "").toLowerCase().includes(qClientes.toLowerCase()))
+    .filter((c) => verTodosClientes || qClientes.trim() !== "" || clienteTeveMovimentoHoje(c.id));
+  const produtoresFiltrados = contaProdutores
+    .filter((p) => (p.nome || "").toLowerCase().includes(qProdutores.toLowerCase()))
+    .filter((p) => verTodosProdutores || qProdutores.trim() !== "" || produtorTeveMovimentoHoje(p.id));
+  const clientesEscondidosHoje = !verTodosClientes && qClientes.trim() === "" ? contaClientes.length - clientesFiltrados.length : 0;
+  const produtoresEscondidosHoje = !verTodosProdutores && qProdutores.trim() === "" ? contaProdutores.length - produtoresFiltrados.length : 0;
 
   const addCliente = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
@@ -6249,14 +6299,30 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
             value={qClientes}
             onChange={(e) => setQClientes(e.target.value)}
           />
-          <ListaCascata
-            titulo="Clientes"
-            icon={ShoppingBasket}
-            count={clientesFiltrados.length}
-            aberto={clientesAbertos || qClientes.trim() !== ""}
-            onToggle={() => setClientesAbertos((v) => !v)}
-            vazio="Nenhum cliente encontrado."
-          >
+          {clientesEscondidosHoje > 0 && (
+            <button
+              onClick={() => setVerTodosClientes(true)}
+              className="text-xs font-bold mb-1 mt-1"
+              style={{ color: C.inkSoft }}
+            >
+              Mostrando só quem mexeu hoje · {clientesEscondidosHoje} cliente(s) escondido(s) — ver todos
+            </button>
+          )}
+          {verTodosClientes && (
+            <button
+              onClick={() => setVerTodosClientes(false)}
+              className="text-xs font-bold mb-1 mt-1"
+              style={{ color: C.inkSoft }}
+            >
+              Voltar a mostrar só quem mexeu hoje
+            </button>
+          )}
+          {clientesFiltrados.length === 0 ? (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>Nenhum cliente encontrado.</p>
+            </Card>
+          ) : (
+          <>
           {clientesFiltrados.map((c) => (
             <Card
               key={c.id}
@@ -6319,7 +6385,8 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
               )}
             </Card>
           ))}
-          </ListaCascata>
+          </>
+          )}
         </div>
       )}
 
@@ -6330,14 +6397,30 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
             value={qProdutores}
             onChange={(e) => setQProdutores(e.target.value)}
           />
-          <ListaCascata
-            titulo="Produtores"
-            icon={Package}
-            count={produtoresFiltrados.length}
-            aberto={produtoresAbertos || qProdutores.trim() !== ""}
-            onToggle={() => setProdutoresAbertos((v) => !v)}
-            vazio="Nenhum produtor encontrado."
-          >
+          {produtoresEscondidosHoje > 0 && (
+            <button
+              onClick={() => setVerTodosProdutores(true)}
+              className="text-xs font-bold mb-1 mt-1"
+              style={{ color: C.inkSoft }}
+            >
+              Mostrando só quem mexeu hoje · {produtoresEscondidosHoje} produtor(es) escondido(s) — ver todos
+            </button>
+          )}
+          {verTodosProdutores && (
+            <button
+              onClick={() => setVerTodosProdutores(false)}
+              className="text-xs font-bold mb-1 mt-1"
+              style={{ color: C.inkSoft }}
+            >
+              Voltar a mostrar só quem mexeu hoje
+            </button>
+          )}
+          {produtoresFiltrados.length === 0 ? (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>Nenhum produtor encontrado.</p>
+            </Card>
+          ) : (
+          <>
           {produtoresFiltrados.map((p) => (
             <Card
               key={p.id}
@@ -6400,7 +6483,8 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
               )}
             </Card>
           ))}
-          </ListaCascata>
+          </>
+          )}
         </div>
       )}
     </div>
