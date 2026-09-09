@@ -24,6 +24,7 @@ import {
   TrendingDown,
   ShoppingCart,
   Menu,
+  Calendar,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
@@ -2831,12 +2832,16 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
                           {totalQtd.toFixed(1).replace(/\.0$/, "")} CX · {fmtMoney(totalValor)}
                         </div>
                       </div>
-                      {comprasProdutor.map((c) => (
+                      {comprasProdutor.map((c) => {
+                        const unidadeItem = unidadeDoProduto(c.produto, cadastros.produtos);
+                        const mostrarCx = unidadeItem !== "CX" && Number(c.quantidadeCaixas) > 0;
+                        return (
                         <div key={c.id} className="text-xs mb-0.5 flex justify-between" style={{ color: C.inkSoft }}>
-                          <span>{c.produto} - {c.quantidade} {unidadeDoProduto(c.produto, cadastros.produtos)}</span>
+                          <span>{c.produto} - {c.quantidade} {unidadeItem}{mostrarCx && ` (${c.quantidadeCaixas} CX)`}</span>
                           <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorFinal || c.valorTotal)}</span>
                         </div>
-                      ))}
+                        );
+                      })}
                       {setRecibo && (
                         <button
                           onClick={() => setRecibo({ tipo: "compra", item: comprasProdutor[0] })}
@@ -3373,12 +3378,16 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
                   <div className="font-bold text-sm" style={{ color: C.blue600 }}>👤 {cliente?.nome || "—"}</div>
                   <div className="text-xs font-bold" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(totalCliente)}</div>
                 </div>
-                {vendasCliente.map((v) => (
+                {vendasCliente.map((v) => {
+                  const unidadeV = unidadeDoProduto(v.produto, cadastros.produtos);
+                  const mostrarCxV = unidadeV !== "CX" && Number(v.quantidadeCaixas) > 0;
+                  return (
                   <div key={v.id} className="text-xs mb-1 flex justify-between" style={{ color: C.inkSoft }}>
-                    <span>{v.produto} - {v.quantidade} {unidadeDoProduto(v.produto, cadastros.produtos)} · {v.status}</span>
+                    <span>{v.produto} - {v.quantidade} {unidadeV}{mostrarCxV && ` (${v.quantidadeCaixas} CX)`} · {v.status}</span>
                     <span style={{ fontFamily: monoFont }}>{fmtMoney(v.valorFinal || v.valorTotal)}</span>
                   </div>
-                ))}
+                  );
+                })}
               </Card>
             );
           })}
@@ -3479,8 +3488,14 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       showToast("Escolha cliente ou marque Para Estoque");
       return;
     }
+    // Antes dava pra "pular" esse aviso confirmando um popup — na correria do
+    // pátio isso fazia a caixa ficar zerada sem querer. Agora é travado: sem
+    // preencher quantas caixas, não salva.
     const aviso = avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos);
-    if (aviso && !window.confirm(`${aviso}\n\nSalvar mesmo assim?`)) return;
+    if (aviso) {
+      showToast(aviso);
+      return;
+    }
     setSalvando(true);
     const nova = {
       id: uid(),
@@ -3618,11 +3633,6 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           ))}
         </Select>
         <QuickAddProduto onAdd={addProduto} />
-        {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) && (
-          <div className="text-xs mt-1 p-2 rounded" style={{ background: C.amberSoft, color: C.rust }}>
-            ⚠️ {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)}
-          </div>
-        )}
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Quantidade">
@@ -3747,7 +3757,16 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         onClick={salvar}
         icon={ArrowDownCircle}
         tone="green"
-        disabled={salvando || !produtorId || !produto || !quantidade || !valorUnit || Number(quantidade) <= 0 || Number(valorUnit) <= 0}
+        disabled={
+          salvando ||
+          !produtorId ||
+          !produto ||
+          !quantidade ||
+          !valorUnit ||
+          Number(quantidade) <= 0 ||
+          Number(valorUnit) <= 0 ||
+          !!avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)
+        }
       >
         {salvando ? "Salvando…" : "Registrar Compra"}
       </PrimaryButton>
@@ -3860,7 +3879,11 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
                                     <div className="flex-1">
                                       <div className="font-bold text-sm">{c.produto}</div>
                                       <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
-                                        {c.quantidade} {unidadeDoProduto(c.produto, cadastros.produtos)} · {fmtMoney(c.valorFinal || c.valorTotal)}
+                                        {(() => {
+                                          const unidadeItem = unidadeDoProduto(c.produto, cadastros.produtos);
+                                          const mostrarCx = unidadeItem !== "CX" && Number(c.quantidadeCaixas) > 0;
+                                          return `${c.quantidade} ${unidadeItem}${mostrarCx ? ` (${c.quantidadeCaixas} CX)` : ""}`;
+                                        })()} · {fmtMoney(c.valorFinal || c.valorTotal)}
                                       </div>
                                       <div className="flex gap-3 mt-1">
                                         <button
@@ -3944,7 +3967,10 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
     if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!clienteId || !produto || !quantidade || !precoUnit) return;
     const aviso = avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos);
-    if (aviso && !window.confirm(`${aviso}\n\nSalvar mesmo assim?`)) return;
+    if (aviso) {
+      showToast(aviso);
+      return;
+    }
     setSalvando(true);
     const novaId = uid();
     const nova = {
@@ -4066,11 +4092,6 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
             </option>
           ))}
         </Select>
-        {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) && (
-          <div className="text-xs mt-1 p-2 rounded" style={{ background: C.amberSoft, color: C.rust }}>
-            ⚠️ {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)}
-          </div>
-        )}
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Quantidade">
@@ -4148,7 +4169,16 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
         onClick={salvar}
         icon={ArrowUpCircle}
         tone="blue"
-        disabled={salvando || !clienteId || !produto || !quantidade || !precoUnit || Number(quantidade) <= 0 || Number(precoUnit) <= 0}
+        disabled={
+          salvando ||
+          !clienteId ||
+          !produto ||
+          !quantidade ||
+          !precoUnit ||
+          Number(quantidade) <= 0 ||
+          Number(precoUnit) <= 0 ||
+          !!avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)
+        }
       >
         {salvando ? "Salvando…" : "Registrar Venda"}
       </PrimaryButton>
@@ -4183,7 +4213,13 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
                 <div className="flex justify-between mb-2">
                   <div className="flex-1">
                     <div className="font-bold text-sm">{cliente?.nome || "—"}</div>
-                    <div className="text-xs" style={{ color: C.inkSoft }}>{v.produto} • {v.quantidade} {unidadeDoProduto(v.produto, cadastros.produtos)}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>
+                      {v.produto} • {(() => {
+                        const unidadeV = unidadeDoProduto(v.produto, cadastros.produtos);
+                        const mostrarCxV = unidadeV !== "CX" && Number(v.quantidadeCaixas) > 0;
+                        return `${v.quantidade} ${unidadeV}${mostrarCxV ? ` (${v.quantidadeCaixas} CX)` : ""}`;
+                      })()}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(v.valorFinal ?? v.valorTotal)}</div>
@@ -4578,7 +4614,11 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
         <div className="flex-1">
           <div className="font-bold text-sm">{clienteNome(v.clienteId)}</div>
           <div className="text-xs" style={{ color: C.inkSoft }}>
-            {v.produto} · {v.quantidade} {unidadeDoProduto(v.produto, cadastros.produtos)} · {fmtDate(v.data)}
+            {v.produto} · {(() => {
+              const unidadeV = unidadeDoProduto(v.produto, cadastros.produtos);
+              const mostrarCxV = unidadeV !== "CX" && Number(v.quantidadeCaixas) > 0;
+              return `${v.quantidade} ${unidadeV}${mostrarCxV ? ` (${v.quantidadeCaixas} CX)` : ""}`;
+            })()} · {fmtDate(v.data)}
           </div>
           <div className="text-xs mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5" style={{ color: C.inkSoft }}>
             <span>
@@ -4680,7 +4720,11 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
                   <div>
                     <div className="font-bold text-sm">{clienteNome(v.clienteId)}</div>
                     <div className="text-xs" style={{ color: C.inkSoft }}>
-                      {v.produto} · {v.quantidade} {unidadeDoProduto(v.produto, cadastros.produtos)} · {fmtDate(v.data)}
+                      {v.produto} · {(() => {
+                        const unidadeV = unidadeDoProduto(v.produto, cadastros.produtos);
+                        const mostrarCxV = unidadeV !== "CX" && Number(v.quantidadeCaixas) > 0;
+                        return `${v.quantidade} ${unidadeV}${mostrarCxV ? ` (${v.quantidadeCaixas} CX)` : ""}`;
+                      })()} · {fmtDate(v.data)}
                     </div>
                   </div>
                   <button
@@ -4760,14 +4804,25 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const [dataConferidas, setDataConferidas] = useState(todayISO()); // Conferidas só mostra o dia selecionado, começando em hoje
 
   const norm = (s) => (s || "").trim().toLowerCase();
-  // O cargueiro/conferente da compra agora guarda o NOME direto (não mais um ID
-  // de um cadastro separado que dependia do backend persistir "cargueiros").
-  // Antes: "!c.cargueiro" fazia uma compra SEM conferente definido aparecer
-  // pra TODOS os conferentes ao mesmo tempo (misturada). Agora, só conta como
-  // "minha" se o conferente realmente bater com o nome — sem conferente
-  // definido, só o gestor (soMeuNome vazio) continua vendo, pra notar que
-  // falta vincular esse cliente a alguém em Gerenciar Acesso.
-  const ehMinha = (c) => !soMeuNome || (!!c.cargueiro && norm(c.cargueiro) === norm(soMeuNome));
+  // Antes, a visibilidade de cada conferente dependia só do texto solto no
+  // campo "cargueiro" de cada compra — o que podia ficar desatualizado ou
+  // capturar compra de empresa errada. Agora a fonte confiável é o vínculo
+  // feito em Contas → Gerenciar Acesso (clientesIds): o conferente só vê as
+  // empresas que estão marcadas pra ele ali, ponto. O nome no "cargueiro"
+  // ainda serve de reforço manual pra casos sem empresa vinculável (ex.:
+  // compra Para Estoque).
+  const meuRegistro = soMeuNome
+    ? normalizarEquipe(cadastros.compradoresVendedores).find(
+        (e) => e.funcao === "conferente" && norm(e.nome) === norm(soMeuNome)
+      )
+    : null;
+  const minhasEmpresas = meuRegistro?.clientesIds || [];
+  const ehMinha = (c) => {
+    if (!soMeuNome) return true; // gestor vê tudo
+    if (c.clienteDestino !== "ESTOQUE" && minhasEmpresas.includes(c.clienteDestino)) return true;
+    if (c.cargueiro && norm(c.cargueiro) === norm(soMeuNome)) return true;
+    return false;
+  };
 
   const nomeCliente = (id) =>
     id === "ESTOQUE" ? "Estoque" : cadastros.clientes.find((cl) => cl.id === id)?.nome || "—";
@@ -4864,11 +4919,14 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const ConferirForm = ({ c }) => {
     const [qtd, setQtd] = useState(String(c.quantidade));
     const divergencia = Number(qtd) - Number(c.quantidade);
+    const unidadeC = unidadeDoProduto(c.produto, cadastros.produtos);
+    const mostrarCaixasC = unidadeC !== "CX" && Number(c.quantidadeCaixas) > 0;
     return (
       <Card key={c.id}>
         <div className="font-bold text-sm">{c.produto}</div>
         <div className="text-xs mb-3" style={{ color: C.inkSoft }}>
-          {produtorNome(c.produtorId)} · pedido: {c.quantidade} {unidadeDoProduto(c.produto, cadastros.produtos)} · {fmtDate(c.data)}
+          {produtorNome(c.produtorId)} · pedido: {c.quantidade} {unidadeC}
+          {mostrarCaixasC && ` (${c.quantidadeCaixas} CX)`} · {fmtDate(c.data)}
         </div>
         <Field label="Quantidade Recebida">
           <TextInput
@@ -4908,13 +4966,16 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
   const CompraRow = ({ c }) => {
     if (conferindoId === c.id) return <ConferirForm c={c} />;
     const temDivergencia = c.entregaConfirmada && c.divergencia !== null && c.divergencia !== 0;
+    const unidadeC = unidadeDoProduto(c.produto, cadastros.produtos);
+    const mostrarCaixasC = unidadeC !== "CX" && Number(c.quantidadeCaixas) > 0;
     return (
       <Card key={c.id}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1">
             <div className="font-bold text-sm">{c.produto}</div>
             <div className="text-xs" style={{ color: C.inkSoft }}>
-              {produtorNome(c.produtorId)} · pedido: {c.quantidade} {unidadeDoProduto(c.produto, cadastros.produtos)} · {fmtDate(c.data)}
+              {produtorNome(c.produtorId)} · pedido: {c.quantidade} {unidadeC}
+              {mostrarCaixasC && ` (${c.quantidadeCaixas} CX)`} · {fmtDate(c.data)}
             </div>
             {c.cargueiro && (
               <div className="text-xs" style={{ color: C.inkSoft }}>
@@ -5156,15 +5217,14 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
   const [view, setView] = useState("estoque");
   const [q, setQ] = useState("");
   const [editandoProdutoId, setEditandoProdutoId] = useState(null);
-  const [listaAberta, setListaAberta] = useState(false);
-  const [mostrarZerados, setMostrarZerados] = useState(false);
-  const filtered = estoquePorProduto
-    .filter((p) => (p.nome || "").toLowerCase().includes(q.toLowerCase()))
-    .filter((p) => mostrarZerados || p.saldo !== 0);
-  const zeradosEscondidos = estoquePorProduto.filter((p) => (p.nome || "").toLowerCase().includes(q.toLowerCase()) && p.saldo === 0).length;
-  // Abre sozinha quando a pessoa começa a digitar uma busca — não faz
-  // sentido pedir pra tocar em "Ver produtos" depois de já ter procurado um.
-  const mostrarLista = listaAberta || q.trim() !== "";
+  const [zeradosAbertos, setZeradosAbertos] = useState(false);
+  const buscados = estoquePorProduto.filter((p) => (p.nome || "").toLowerCase().includes(q.toLowerCase()));
+  // Saldo positivo fica sempre visível — é o que interessa no dia a dia.
+  // Zerado ou negativo (sem estoque) vai pra dentro da cascata, e some da
+  // frente sozinho quando alguém compra/carrega e o saldo volta a ficar
+  // positivo, porque recalcula a cada carregamento.
+  const positivos = buscados.filter((p) => p.saldo > 0);
+  const zeradosOuNegativos = buscados.filter((p) => p.saldo <= 0);
 
   const editarProduto = async (dadosAtualizados) => {
     const next = {
@@ -5230,34 +5290,8 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
             />
           </div>
 
-          {!mostrarZerados && zeradosEscondidos > 0 && (
-            <button
-              onClick={() => setMostrarZerados(true)}
-              className="text-xs font-bold mb-3"
-              style={{ color: C.inkSoft }}
-            >
-              {zeradosEscondidos} produto(s) zerado(s) escondido(s) — ver todos
-            </button>
-          )}
-          {mostrarZerados && (
-            <button
-              onClick={() => setMostrarZerados(false)}
-              className="text-xs font-bold mb-3"
-              style={{ color: C.inkSoft }}
-            >
-              Esconder produtos zerados de novo
-            </button>
-          )}
-
-          <ListaCascata
-            titulo="Produtos"
-            icon={Package}
-            count={filtered.length}
-            aberto={mostrarLista}
-            onToggle={() => setListaAberta((v) => !v)}
-            vazio="Nenhum produto encontrado."
-          >
-            {filtered.map((p) => {
+          {(() => {
+            const CardProduto = (p) => {
               const baixo = p.saldo < p.estoqueMinimo;
               return (
                 <Card key={p.id}>
@@ -5271,11 +5305,13 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
                     <div className="text-right">
                       <div
                         className="text-lg font-bold"
-                        style={{ fontFamily: monoFont, color: baixo ? C.rust : C.green700 }}
+                        style={{ fontFamily: monoFont, color: p.saldo <= 0 ? C.rust : baixo ? C.rust : C.green700 }}
                       >
                         {p.saldo}
                       </div>
-                      <Badge tone={baixo ? "danger" : "ok"}>{baixo ? "abaixo do mínimo" : "ok"}</Badge>
+                      <Badge tone={p.saldo <= 0 || baixo ? "danger" : "ok"}>
+                        {p.saldo <= 0 ? "sem estoque" : baixo ? "abaixo do mínimo" : "ok"}
+                      </Badge>
                     </div>
                   </div>
                   <div
@@ -5313,8 +5349,33 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
                   )}
                 </Card>
               );
-            })}
-          </ListaCascata>
+            };
+
+            return (
+              <>
+                {positivos.length === 0 ? (
+                  <Card>
+                    <p className="text-sm" style={{ color: C.inkSoft }}>Nenhum produto com saldo encontrado.</p>
+                  </Card>
+                ) : (
+                  <div className="flex flex-col gap-2 mb-3">
+                    {positivos.map(CardProduto)}
+                  </div>
+                )}
+
+                <ListaCascata
+                  titulo="Zerados / Negativos"
+                  icon={AlertTriangle}
+                  count={zeradosOuNegativos.length}
+                  aberto={zeradosAbertos || q.trim() !== ""}
+                  onToggle={() => setZeradosAbertos((v) => !v)}
+                  vazio="Nenhum produto zerado."
+                >
+                  {zeradosOuNegativos.map(CardProduto)}
+                </ListaCascata>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -6164,28 +6225,33 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
   const [editandoProdutorId, setEditandoProdutorId] = useState(null);
   const [qClientes, setQClientes] = useState("");
   const [qProdutores, setQProdutores] = useState("");
-
-  const [verTodosClientes, setVerTodosClientes] = useState(false);
-  const [verTodosProdutores, setVerTodosProdutores] = useState(false);
+  const [outrosClientesAbertos, setOutrosClientesAbertos] = useState(false);
+  const [outrosProdutoresAbertos, setOutrosProdutoresAbertos] = useState(false);
+  const [dataClientes, setDataClientes] = useState(""); // "" = qualquer dia (menos hoje)
+  const [dataProdutores, setDataProdutores] = useState("");
   const hoje = todayISO();
 
-  const clienteTeveMovimentoHoje = (clienteId) =>
-    transacoes.vendas.some((v) => v.clienteId === clienteId && v.data === hoje) ||
-    transacoes.recebimentos.some((r) => r.clienteId === clienteId && r.data === hoje);
-  const produtorTeveMovimentoHoje = (produtorId) =>
-    transacoes.compras.some((c) => c.produtorId === produtorId && c.data === hoje) ||
-    transacoes.pagamentos.some((p) => p.produtorId === produtorId && p.data === hoje);
+  const clienteTeveMovimentoEm = (clienteId, data) =>
+    transacoes.vendas.some((v) => v.clienteId === clienteId && v.data === data) ||
+    transacoes.recebimentos.some((r) => r.clienteId === clienteId && r.data === data);
+  const produtorTeveMovimentoEm = (produtorId, data) =>
+    transacoes.compras.some((c) => c.produtorId === produtorId && c.data === data) ||
+    transacoes.pagamentos.some((p) => p.produtorId === produtorId && p.data === data);
 
-  // Por padrão só mostra quem mexeu HOJE (mesmo que ainda deva de antes) —
-  // digitar uma busca ou tocar em "ver todos" revela o restante.
-  const clientesFiltrados = contaClientes
-    .filter((c) => (c.nome || "").toLowerCase().includes(qClientes.toLowerCase()))
-    .filter((c) => verTodosClientes || qClientes.trim() !== "" || clienteTeveMovimentoHoje(c.id));
-  const produtoresFiltrados = contaProdutores
-    .filter((p) => (p.nome || "").toLowerCase().includes(qProdutores.toLowerCase()))
-    .filter((p) => verTodosProdutores || qProdutores.trim() !== "" || produtorTeveMovimentoHoje(p.id));
-  const clientesEscondidosHoje = !verTodosClientes && qClientes.trim() === "" ? contaClientes.length - clientesFiltrados.length : 0;
-  const produtoresEscondidosHoje = !verTodosProdutores && qProdutores.trim() === "" ? contaProdutores.length - produtoresFiltrados.length : 0;
+  // Hoje fica sempre visível na tela. O resto (outros dias) vai pra dentro
+  // de uma cascata — ela só mostra quem você está procurando (por nome, na
+  // busca acima) ou quem mexeu num dia específico, escolhido no campo de
+  // data lá dentro. Sem escolher nada, mostra todo mundo que já mexeu em
+  // algum dia que não seja hoje, pra dar pra rolar manualmente também.
+  const clientesBuscados = contaClientes.filter((c) => (c.nome || "").toLowerCase().includes(qClientes.toLowerCase()));
+  const clientesHoje = clientesBuscados.filter((c) => clienteTeveMovimentoEm(c.id, hoje));
+  const clientesOutrosTodos = clientesBuscados.filter((c) => !clienteTeveMovimentoEm(c.id, hoje));
+  const clientesOutrosExibidos = dataClientes ? clientesOutrosTodos.filter((c) => clienteTeveMovimentoEm(c.id, dataClientes)) : clientesOutrosTodos;
+
+  const produtoresBuscados = contaProdutores.filter((p) => (p.nome || "").toLowerCase().includes(qProdutores.toLowerCase()));
+  const produtoresHoje = produtoresBuscados.filter((p) => produtorTeveMovimentoEm(p.id, hoje));
+  const produtoresOutrosTodos = produtoresBuscados.filter((p) => !produtorTeveMovimentoEm(p.id, hoje));
+  const produtoresOutrosExibidos = dataProdutores ? produtoresOutrosTodos.filter((p) => produtorTeveMovimentoEm(p.id, dataProdutores)) : produtoresOutrosTodos;
 
   const addCliente = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
@@ -6299,94 +6365,119 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
             value={qClientes}
             onChange={(e) => setQClientes(e.target.value)}
           />
-          {clientesEscondidosHoje > 0 && (
-            <button
-              onClick={() => setVerTodosClientes(true)}
-              className="text-xs font-bold mb-1 mt-1"
-              style={{ color: C.inkSoft }}
-            >
-              Mostrando só quem mexeu hoje · {clientesEscondidosHoje} cliente(s) escondido(s) — ver todos
-            </button>
-          )}
-          {verTodosClientes && (
-            <button
-              onClick={() => setVerTodosClientes(false)}
-              className="text-xs font-bold mb-1 mt-1"
-              style={{ color: C.inkSoft }}
-            >
-              Voltar a mostrar só quem mexeu hoje
-            </button>
-          )}
-          {clientesFiltrados.length === 0 ? (
-            <Card>
-              <p className="text-sm" style={{ color: C.inkSoft }}>Nenhum cliente encontrado.</p>
-            </Card>
-          ) : (
-          <>
-          {clientesFiltrados.map((c) => (
-            <Card
-              key={c.id}
-              className="cursor-pointer"
-              onClick={() => setExpanded(expanded === c.id ? null : c.id)}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-sm">{c.nome}</div>
-                  <div className="text-xs" style={{ color: C.inkSoft }}>
-                    Limite: {c.limiteCredito ? fmtMoney(c.limiteCredito) : "não definido"}
-                  </div>
-                </div>
-                <div className="text-right flex items-center gap-1">
+          {(() => {
+            const CardCliente = (c) => (
+              <Card
+                key={c.id}
+                className="cursor-pointer"
+                onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+              >
+                <div className="flex items-center justify-between">
                   <div>
-                    <div
-                      className="text-lg font-bold"
-                      style={{ fontFamily: monoFont, color: c.acima ? C.rust : C.green700 }}
-                    >
-                      {fmtMoney(c.saldo)}
+                    <div className="font-bold text-sm">{c.nome}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>
+                      Limite: {c.limiteCredito ? fmtMoney(c.limiteCredito) : "não definido"}
                     </div>
-                    <Badge tone={c.acima ? "danger" : "ok"}>
-                      {c.acima ? "acima do limite" : "ok"}
-                    </Badge>
                   </div>
-                  <ChevronRight
-                    size={16}
-                    style={{
-                      color: C.inkSoft,
-                      transform: expanded === c.id ? "rotate(90deg)" : "none",
-                    }}
-                  />
-                </div>
-              </div>
-              {expanded === c.id && (
-                <>
-                  <ExtratoCliente clienteId={c.id} transacoes={transacoes} setRecibo={setRecibo} />
-                  {editandoClienteId === c.id ? (
-                    <EditarCliente
-                      cliente={c}
-                      onSalvar={editarCliente}
-                      onCancelar={(e) => {
-                        e?.stopPropagation?.();
-                        setEditandoClienteId(null);
+                  <div className="text-right flex items-center gap-1">
+                    <div>
+                      <div
+                        className="text-lg font-bold"
+                        style={{ fontFamily: monoFont, color: c.acima ? C.rust : C.green700 }}
+                      >
+                        {fmtMoney(c.saldo)}
+                      </div>
+                      <Badge tone={c.acima ? "danger" : "ok"}>
+                        {c.acima ? "acima do limite" : "ok"}
+                      </Badge>
+                    </div>
+                    <ChevronRight
+                      size={16}
+                      style={{
+                        color: C.inkSoft,
+                        transform: expanded === c.id ? "rotate(90deg)" : "none",
                       }}
                     />
-                  ) : (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditandoClienteId(c.id);
-                      }}
-                      className="text-xs font-bold mt-2"
-                      style={{ color: C.amber500 }}
-                    >
-                      ✏️ Editar Cadastro
-                    </button>
+                  </div>
+                </div>
+                {expanded === c.id && (
+                  <>
+                    <ExtratoCliente clienteId={c.id} transacoes={transacoes} setRecibo={setRecibo} />
+                    {editandoClienteId === c.id ? (
+                      <EditarCliente
+                        cliente={c}
+                        onSalvar={editarCliente}
+                        onCancelar={(e) => {
+                          e?.stopPropagation?.();
+                          setEditandoClienteId(null);
+                        }}
+                      />
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditandoClienteId(c.id);
+                        }}
+                        className="text-xs font-bold mt-2"
+                        style={{ color: C.amber500 }}
+                      >
+                        ✏️ Editar Cadastro
+                      </button>
+                    )}
+                  </>
+                )}
+              </Card>
+            );
+
+            return (
+              <>
+                {qClientes.trim() === "" && (
+                  <>
+                    <SectionTitle icon={ShoppingBasket}>Hoje</SectionTitle>
+                    {clientesHoje.length === 0 ? (
+                      <Card>
+                        <p className="text-sm" style={{ color: C.inkSoft }}>Nenhum cliente com movimento hoje.</p>
+                      </Card>
+                    ) : (
+                      clientesHoje.map(CardCliente)
+                    )}
+                  </>
+                )}
+
+                <ListaCascata
+                  titulo={qClientes.trim() !== "" ? "Resultado da busca" : "Outros dias"}
+                  icon={Calendar}
+                  count={qClientes.trim() !== "" ? clientesBuscados.length : clientesOutrosExibidos.length}
+                  aberto={outrosClientesAbertos || qClientes.trim() !== ""}
+                  onToggle={() => setOutrosClientesAbertos((v) => !v)}
+                  vazio="Nenhum cliente encontrado."
+                >
+                  {qClientes.trim() === "" && (
+                    <Field label="Ver um dia específico (opcional)">
+                      <div className="flex gap-2">
+                        <TextInput
+                          type="date"
+                          value={dataClientes}
+                          onChange={(e) => setDataClientes(e.target.value)}
+                          max={hoje}
+                        />
+                        {dataClientes && (
+                          <button
+                            onClick={() => setDataClientes("")}
+                            className="px-3 rounded-lg text-xs font-bold"
+                            style={{ background: C.cardAlt, color: C.inkSoft }}
+                          >
+                            Limpar
+                          </button>
+                        )}
+                      </div>
+                    </Field>
                   )}
-                </>
-              )}
-            </Card>
-          ))}
-          </>
-          )}
+                  {(qClientes.trim() !== "" ? clientesBuscados : clientesOutrosExibidos).map(CardCliente)}
+                </ListaCascata>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -6397,94 +6488,119 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
             value={qProdutores}
             onChange={(e) => setQProdutores(e.target.value)}
           />
-          {produtoresEscondidosHoje > 0 && (
-            <button
-              onClick={() => setVerTodosProdutores(true)}
-              className="text-xs font-bold mb-1 mt-1"
-              style={{ color: C.inkSoft }}
-            >
-              Mostrando só quem mexeu hoje · {produtoresEscondidosHoje} produtor(es) escondido(s) — ver todos
-            </button>
-          )}
-          {verTodosProdutores && (
-            <button
-              onClick={() => setVerTodosProdutores(false)}
-              className="text-xs font-bold mb-1 mt-1"
-              style={{ color: C.inkSoft }}
-            >
-              Voltar a mostrar só quem mexeu hoje
-            </button>
-          )}
-          {produtoresFiltrados.length === 0 ? (
-            <Card>
-              <p className="text-sm" style={{ color: C.inkSoft }}>Nenhum produtor encontrado.</p>
-            </Card>
-          ) : (
-          <>
-          {produtoresFiltrados.map((p) => (
-            <Card
-              key={p.id}
-              className="cursor-pointer"
-              onClick={() => setExpanded(expanded === p.id ? null : p.id)}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-sm">{p.nome}</div>
-                  <div className="text-xs" style={{ color: C.inkSoft }}>
-                    {p.cidade || "—"}
-                  </div>
-                </div>
-                <div className="text-right flex items-center gap-1">
+          {(() => {
+            const CardProdutor = (p) => (
+              <Card
+                key={p.id}
+                className="cursor-pointer"
+                onClick={() => setExpanded(expanded === p.id ? null : p.id)}
+              >
+                <div className="flex items-center justify-between">
                   <div>
-                    <div
-                      className="text-lg font-bold"
-                      style={{ fontFamily: monoFont, color: p.pendente ? C.amber600 : C.green700 }}
-                    >
-                      {fmtMoney(p.saldo)}
+                    <div className="font-bold text-sm">{p.nome}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>
+                      {p.cidade || "—"}
                     </div>
-                    <Badge tone={p.pendente ? "warn" : "ok"}>
-                      {p.pendente ? "a pagar" : "quitado"}
-                    </Badge>
                   </div>
-                  <ChevronRight
-                    size={16}
-                    style={{
-                      color: C.inkSoft,
-                      transform: expanded === p.id ? "rotate(90deg)" : "none",
-                    }}
-                  />
-                </div>
-              </div>
-              {expanded === p.id && (
-                <>
-                  <ExtratoProdutor produtorId={p.id} transacoes={transacoes} setRecibo={setRecibo} />
-                  {editandoProdutorId === p.id ? (
-                    <EditarProdutor
-                      produtor={p}
-                      onSalvar={editarProdutor}
-                      onCancelar={(e) => {
-                        e?.stopPropagation?.();
-                        setEditandoProdutorId(null);
+                  <div className="text-right flex items-center gap-1">
+                    <div>
+                      <div
+                        className="text-lg font-bold"
+                        style={{ fontFamily: monoFont, color: p.pendente ? C.amber600 : C.green700 }}
+                      >
+                        {fmtMoney(p.saldo)}
+                      </div>
+                      <Badge tone={p.pendente ? "warn" : "ok"}>
+                        {p.pendente ? "a pagar" : "quitado"}
+                      </Badge>
+                    </div>
+                    <ChevronRight
+                      size={16}
+                      style={{
+                        color: C.inkSoft,
+                        transform: expanded === p.id ? "rotate(90deg)" : "none",
                       }}
                     />
-                  ) : (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditandoProdutorId(p.id);
-                      }}
-                      className="text-xs font-bold mt-2"
-                      style={{ color: C.amber500 }}
-                    >
-                      ✏️ Editar Cadastro
-                    </button>
+                  </div>
+                </div>
+                {expanded === p.id && (
+                  <>
+                    <ExtratoProdutor produtorId={p.id} transacoes={transacoes} setRecibo={setRecibo} />
+                    {editandoProdutorId === p.id ? (
+                      <EditarProdutor
+                        produtor={p}
+                        onSalvar={editarProdutor}
+                        onCancelar={(e) => {
+                          e?.stopPropagation?.();
+                          setEditandoProdutorId(null);
+                        }}
+                      />
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditandoProdutorId(p.id);
+                        }}
+                        className="text-xs font-bold mt-2"
+                        style={{ color: C.amber500 }}
+                      >
+                        ✏️ Editar Cadastro
+                      </button>
+                    )}
+                  </>
+                )}
+              </Card>
+            );
+
+            return (
+              <>
+                {qProdutores.trim() === "" && (
+                  <>
+                    <SectionTitle icon={Package}>Hoje</SectionTitle>
+                    {produtoresHoje.length === 0 ? (
+                      <Card>
+                        <p className="text-sm" style={{ color: C.inkSoft }}>Nenhum produtor com movimento hoje.</p>
+                      </Card>
+                    ) : (
+                      produtoresHoje.map(CardProdutor)
+                    )}
+                  </>
+                )}
+
+                <ListaCascata
+                  titulo={qProdutores.trim() !== "" ? "Resultado da busca" : "Outros dias"}
+                  icon={Calendar}
+                  count={qProdutores.trim() !== "" ? produtoresBuscados.length : produtoresOutrosExibidos.length}
+                  aberto={outrosProdutoresAbertos || qProdutores.trim() !== ""}
+                  onToggle={() => setOutrosProdutoresAbertos((v) => !v)}
+                  vazio="Nenhum produtor encontrado."
+                >
+                  {qProdutores.trim() === "" && (
+                    <Field label="Ver um dia específico (opcional)">
+                      <div className="flex gap-2">
+                        <TextInput
+                          type="date"
+                          value={dataProdutores}
+                          onChange={(e) => setDataProdutores(e.target.value)}
+                          max={hoje}
+                        />
+                        {dataProdutores && (
+                          <button
+                            onClick={() => setDataProdutores("")}
+                            className="px-3 rounded-lg text-xs font-bold"
+                            style={{ background: C.cardAlt, color: C.inkSoft }}
+                          >
+                            Limpar
+                          </button>
+                        )}
+                      </div>
+                    </Field>
                   )}
-                </>
-              )}
-            </Card>
-          ))}
-          </>
-          )}
+                  {(qProdutores.trim() !== "" ? produtoresBuscados : produtoresOutrosExibidos).map(CardProdutor)}
+                </ListaCascata>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
