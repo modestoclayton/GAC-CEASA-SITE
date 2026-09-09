@@ -5355,7 +5355,11 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
               <>
                 {positivos.length === 0 ? (
                   <Card>
-                    <p className="text-sm" style={{ color: C.inkSoft }}>Nenhum produto com saldo encontrado.</p>
+                    <p className="text-sm" style={{ color: C.inkSoft }}>
+                      Nenhum produto com saldo positivo agora — isso é normal se as compras
+                      são feitas direto pra cliente (só compra "Para Estoque" conta aqui).
+                      Veja a lista completa logo abaixo.
+                    </p>
                   </Card>
                 ) : (
                   <div className="flex flex-col gap-2 mb-3">
@@ -5367,9 +5371,9 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
                   titulo="Zerados / Negativos"
                   icon={AlertTriangle}
                   count={zeradosOuNegativos.length}
-                  aberto={zeradosAbertos || q.trim() !== ""}
+                  aberto={zeradosAbertos || q.trim() !== "" || positivos.length === 0}
                   onToggle={() => setZeradosAbertos((v) => !v)}
-                  vazio="Nenhum produto zerado."
+                  vazio="Nenhum produto cadastrado ainda."
                 >
                   {zeradosOuNegativos.map(CardProduto)}
                 </ListaCascata>
