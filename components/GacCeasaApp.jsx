@@ -2045,38 +2045,113 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
 /* ---------------------------------------------------------------------- */
 /* Registrar Tab                                                          */
 /* ---------------------------------------------------------------------- */
-const TIPOS = [
-  { id: "compra", label: "Compra", icon: ArrowDownCircle },
-  { id: "venda", label: "Venda", icon: ArrowUpCircle },
+const TIPOS_SECUNDARIOS = [
+  { id: "entregas", label: "Entregas", icon: Truck },
   { id: "recebimento", label: "Recebi de Cliente", icon: HandCoins },
   { id: "pagamento", label: "Paguei Produtor", icon: Landmark },
-  { id: "entregas", label: "Entregas", icon: Truck },
   { id: "conferencia", label: "Conferência Compras", icon: ClipboardCheck },
 ];
 
+// Bloco grande — usado pra Compra e Venda, os dois movimentos mais comuns.
+// Só ícone (já existente no app) + gradiente de cor — nenhuma imagem nova,
+// pra não pesar o app.
+function BlocoGrandeMovimento({ label, sub, icon: Icon, corA, corB, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="relative rounded-2xl p-4 text-left overflow-hidden flex flex-col justify-between"
+      style={{
+        background: `linear-gradient(135deg, ${corA}, ${corB})`,
+        minHeight: 132,
+        boxShadow: "0 6px 18px rgba(0,0,0,0.3)",
+      }}
+    >
+      <div
+        className="flex items-center justify-center rounded-full mb-3"
+        style={{ width: 44, height: 44, background: "rgba(255,255,255,0.2)" }}
+      >
+        <Icon size={22} color="#fff" strokeWidth={2.25} />
+      </div>
+      <div>
+        <div className="text-lg font-extrabold text-white leading-tight" style={{ fontFamily: displayFont }}>
+          {label}
+        </div>
+        <div className="text-xs text-white opacity-85 mt-0.5">{sub}</div>
+      </div>
+      <div
+        className="absolute bottom-3 right-3 flex items-center justify-center rounded-full"
+        style={{ width: 26, height: 26, background: "rgba(255,255,255,0.25)" }}
+      >
+        <ChevronRight size={16} color="#fff" />
+      </div>
+    </button>
+  );
+}
+
 function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
-  const [tipo, setTipo] = useState("compra");
+  const [tipo, setTipo] = useState(null); // null = menu inicial
+
+  if (!tipo) {
+    return (
+      <div>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <BlocoGrandeMovimento
+            label="Compras"
+            sub="Produtos, produtores e fornecedores"
+            icon={ArrowDownCircle}
+            corA={C.green700}
+            corB={C.green900}
+            onClick={() => setTipo("compra")}
+          />
+          <BlocoGrandeMovimento
+            label="Vendas"
+            sub="Clientes, nota, vale e boleto"
+            icon={ArrowUpCircle}
+            corA={C.blue600}
+            corB={C.green900}
+            onClick={() => setTipo("venda")}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {TIPOS_SECUNDARIOS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTipo(t.id)}
+              className="flex flex-col items-center justify-center gap-1.5 rounded-xl py-4 px-2 text-center"
+              style={{ background: C.cardAlt, border: `1px solid ${C.line}` }}
+            >
+              <t.icon size={20} style={{ color: C.amber500 }} />
+              <span className="text-xs font-bold" style={{ color: C.ink, fontFamily: displayFont }}>
+                {t.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const tituloTela = {
+    compra: "Compras",
+    venda: "Vendas",
+    entregas: "Entregas",
+    recebimento: "Recebi de Cliente",
+    pagamento: "Paguei Produtor",
+    conferencia: "Conferência Compras",
+  }[tipo];
 
   return (
     <div>
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        {TIPOS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTipo(t.id)}
-            className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold"
-            style={{
-              background: tipo === t.id ? C.green700 : C.cardAlt,
-              color: tipo === t.id ? "#fff" : C.ink,
-              border: `1px solid ${tipo === t.id ? C.green700 : C.line}`,
-              fontFamily: displayFont,
-              fontWeight: 800,
-            }}
-          >
-            <t.icon size={16} />
-            {t.label}
-          </button>
-        ))}
+      <button
+        onClick={() => setTipo(null)}
+        className="flex items-center gap-1 text-sm font-bold mb-3"
+        style={{ color: C.inkSoft }}
+      >
+        <ChevronRight size={16} style={{ transform: "rotate(180deg)" }} />
+        Voltar ao menu
+      </button>
+      <div className="text-xs uppercase tracking-widest font-bold mb-3" style={{ color: C.inkSoft }}>
+        {tituloTela}
       </div>
 
       {tipo === "compra" && (
@@ -3283,6 +3358,8 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [editValor, setEditValor] = useState("");
   const [expandidoDestino, setExpandidoDestino] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [mostrarMaisOpcoes, setMostrarMaisOpcoes] = useState(false);
+  const [mostrarMaisAcoes, setMostrarMaisAcoes] = useState(false);
 
   // Conferente fixo por empresa: quando muda o cliente destino, se essa empresa
   // tem um conferente vinculado em Contas → Gerenciar Acesso, já pré-seleciona
@@ -3416,13 +3493,35 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   return (
     <>
       <Card>
-        <div className="flex flex-col gap-2 mb-4">
-          <button onClick={() => setView("registrar")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "registrar" ? C.green700 : C.cardAlt, color: view === "registrar" ? "#fff" : C.ink }}>➕ Registrar</button>
-          <button onClick={() => setView("requisicao")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "requisicao" ? C.green700 : C.cardAlt, color: view === "requisicao" ? "#fff" : C.ink }}>📋 Requisição</button>
-          <button onClick={() => setView("folha-pedido")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "folha-pedido" ? C.green700 : C.cardAlt, color: view === "folha-pedido" ? "#fff" : C.ink }}>📄 Folha Pedido</button>
-          <button onClick={() => setView("folha-carga")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "folha-carga" ? C.green700 : C.cardAlt, color: view === "folha-carga" ? "#fff" : C.ink }}>📦 Folha Carga</button>
-          <button onClick={() => setView("relatorio-mensal")} className="w-full text-left px-3 py-3 rounded text-sm font-bold" style={{ background: view === "relatorio-mensal" ? C.green700 : C.cardAlt, color: view === "relatorio-mensal" ? "#fff" : C.ink }}>📅 Relatório Mensal</button>
-        </div>
+        {view === "registrar" ? (
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={() => setMostrarMaisAcoes((v) => !v)}
+              className="text-xs font-bold flex items-center gap-1"
+              style={{ color: C.inkSoft }}
+            >
+              Mais ações
+              <ChevronRight size={14} style={{ transform: mostrarMaisAcoes ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setView("registrar")}
+            className="flex items-center gap-1 text-sm font-bold mb-3"
+            style={{ color: C.inkSoft }}
+          >
+            <ChevronRight size={16} style={{ transform: "rotate(180deg)" }} />
+            Voltar ao registro
+          </button>
+        )}
+        {view === "registrar" && mostrarMaisAcoes && (
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <button onClick={() => setView("requisicao")} className="px-3 py-2.5 rounded text-xs font-bold" style={{ background: C.cardAlt, color: C.ink }}>📋 Requisição</button>
+            <button onClick={() => setView("folha-pedido")} className="px-3 py-2.5 rounded text-xs font-bold" style={{ background: C.cardAlt, color: C.ink }}>📄 Folha Pedido</button>
+            <button onClick={() => setView("folha-carga")} className="px-3 py-2.5 rounded text-xs font-bold" style={{ background: C.cardAlt, color: C.ink }}>📦 Folha Carga</button>
+            <button onClick={() => setView("relatorio-mensal")} className="px-3 py-2.5 rounded text-xs font-bold" style={{ background: C.cardAlt, color: C.ink }}>📅 Relatório Mensal</button>
+          </div>
+        )}
 
         {view === "registrar" && (
           <>
@@ -3436,34 +3535,6 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         </Select>
         <QuickAddProdutor onAdd={addProdutor} />
       </Field>
-      {produtorSelecionado && (
-        <div className="mb-3 p-2 rounded-lg" style={{ background: produtorSelecionado.temCNPJ ? "#E8F5E9" : "#FFEBEE" }}>
-          <div className="text-xs font-bold" style={{ color: produtorSelecionado.temCNPJ ? "#2E7D32" : "#C62828" }}>
-            {produtorSelecionado.temCNPJ ? "✓ Produtor com CNPJ" : "⚠ Produtor sem CNPJ (CPF)"}
-          </div>
-          {temDesconto && (
-            <div className="text-xs mt-1" style={{ color: "#C62828" }}>
-              Desconto Fundo Rural de 1.63% será aplicado
-            </div>
-          )}
-          <div className="text-xs mt-1" style={{ color: "#555" }}>
-            Pagamento: {produtorSelecionado.pagamento || "não definido"}
-            {produtorSelecionado.pagamento === "BOLETO"
-              ? " — não gera vale na Finalização"
-              : " — gera vale na Finalização"}
-          </div>
-        </div>
-      )}
-      <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={isEstoque}
-            onChange={(e) => setIsEstoque(e.target.checked)}
-          />
-          <span style={{ color: C.ink }}>📦 Para Estoque?</span>
-        </label>
-      </div>
       <Field label="Para Quem (Cliente Destino)">
         <Select 
           value={clienteDestino} 
@@ -3491,30 +3562,6 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
             ⚠️ {avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)}
           </div>
         )}
-      </Field>
-      
-      <Field label="Cargueiro / Conferente">
-        <Select value={cargueiro} onChange={(e) => setCargueiro(e.target.value)}>
-          <option value="">Selecione um conferente</option>
-          {normalizarEquipe(cadastros.compradoresVendedores)
-            .filter((e) => e.funcao === "conferente")
-            .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"))
-            .map((e) => (
-              <option key={e.id} value={e.nome}>
-                {e.nome}
-              </option>
-            ))}
-        </Select>
-        <QuickAddInline placeholder="Nome do novo conferente" onAdd={addCargueiro} />
-        <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
-          {!isEstoque &&
-          clienteDestino &&
-          normalizarEquipe(cadastros.compradoresVendedores).some(
-            (e) => e.funcao === "conferente" && (e.clientesIds || []).includes(clienteDestino) && e.nome === cargueiro
-          )
-            ? "🔒 Fixo pra esta empresa — pré-selecionado automaticamente."
-            : "O conferente selecionado é quem vai conferir essa entrega — quando ele entrar como Conferente com esse mesmo nome, só essa carga aparece pra ele."}
-        </div>
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Quantidade">
@@ -3566,6 +3613,75 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           Total a Pagar: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
         </div>
       </div>
+
+      <button
+        onClick={() => setMostrarMaisOpcoes((v) => !v)}
+        className="w-full flex items-center justify-between px-1 py-2 mb-2"
+      >
+        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: C.inkSoft }}>
+          Mais opções (estoque, conferente)
+        </span>
+        <ChevronRight
+          size={16}
+          style={{ color: C.inkSoft, transform: mostrarMaisOpcoes ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
+        />
+      </button>
+      {mostrarMaisOpcoes && (
+        <div className="mb-3">
+          {produtorSelecionado && (
+            <div className="mb-3 p-2 rounded-lg" style={{ background: produtorSelecionado.temCNPJ ? "#E8F5E9" : "#FFEBEE" }}>
+              <div className="text-xs font-bold" style={{ color: produtorSelecionado.temCNPJ ? "#2E7D32" : "#C62828" }}>
+                {produtorSelecionado.temCNPJ ? "✓ Produtor com CNPJ" : "⚠ Produtor sem CNPJ (CPF)"}
+              </div>
+              {temDesconto && (
+                <div className="text-xs mt-1" style={{ color: "#C62828" }}>
+                  Desconto Fundo Rural de 1.63% será aplicado
+                </div>
+              )}
+              <div className="text-xs mt-1" style={{ color: "#555" }}>
+                Pagamento: {produtorSelecionado.pagamento || "não definido"}
+                {produtorSelecionado.pagamento === "BOLETO"
+                  ? " — não gera vale na Finalização"
+                  : " — gera vale na Finalização"}
+              </div>
+            </div>
+          )}
+          <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isEstoque}
+                onChange={(e) => setIsEstoque(e.target.checked)}
+              />
+              <span style={{ color: C.ink }}>📦 Para Estoque?</span>
+            </label>
+          </div>
+          <Field label="Cargueiro / Conferente">
+            <Select value={cargueiro} onChange={(e) => setCargueiro(e.target.value)}>
+              <option value="">Selecione um conferente</option>
+              {normalizarEquipe(cadastros.compradoresVendedores)
+                .filter((e) => e.funcao === "conferente")
+                .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"))
+                .map((e) => (
+                  <option key={e.id} value={e.nome}>
+                    {e.nome}
+                  </option>
+                ))}
+            </Select>
+            <QuickAddInline placeholder="Nome do novo conferente" onAdd={addCargueiro} />
+            <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+              {!isEstoque &&
+              clienteDestino &&
+              normalizarEquipe(cadastros.compradoresVendedores).some(
+                (e) => e.funcao === "conferente" && (e.clientesIds || []).includes(clienteDestino) && e.nome === cargueiro
+              )
+                ? "🔒 Fixo pra esta empresa — pré-selecionado automaticamente."
+                : "O conferente selecionado é quem vai conferir essa entrega — quando ele entrar como Conferente com esse mesmo nome, só essa carga aparece pra ele."}
+            </div>
+          </Field>
+        </div>
+      )}
+
       <PrimaryButton
         onClick={salvar}
         icon={ArrowDownCircle}
@@ -3741,6 +3857,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const [editQtd, setEditQtd] = useState("");
   const [editPreco, setEditPreco] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [mostrarMaisOpcoes, setMostrarMaisOpcoes] = useState(false);
   const total = (Number(quantidade) || 0) * (Number(precoUnit) || 0);
   
   // Verifica se cliente tem desconto fundo rural
@@ -3839,10 +3956,26 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   return (
     <>
       <Card>
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button onClick={() => setView("registrar")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "registrar" ? C.green700 : C.cardAlt, color: view === "registrar" ? "#fff" : C.ink }}>➕ Registrar</button>
-          <button onClick={() => setView("relatorio")} className="px-3 py-2 rounded text-xs font-bold" style={{ background: view === "relatorio" ? C.green700 : C.cardAlt, color: view === "relatorio" ? "#fff" : C.ink }}>🧾 Relatório do Dia</button>
-        </div>
+        {view === "registrar" ? (
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={() => setView("relatorio")}
+              className="text-xs font-bold flex items-center gap-1"
+              style={{ color: C.inkSoft }}
+            >
+              🧾 Relatório do Dia
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setView("registrar")}
+            className="flex items-center gap-1 text-sm font-bold mb-3"
+            style={{ color: C.inkSoft }}
+          >
+            <ChevronRight size={16} style={{ transform: "rotate(180deg)" }} />
+            Voltar ao registro
+          </button>
+        )}
 
         {view === "registrar" && (
           <>
@@ -3914,12 +4047,6 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
           </div>
         </Field>
       )}
-      <Field label="Status do pagamento">
-        <Select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="Pendente">Pendente</option>
-          <option value="Pago">Pago</option>
-        </Select>
-      </Field>
       <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
         <div className="text-sm font-bold mb-2" style={{ color: C.ink }}>
           Subtotal: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
@@ -3933,6 +4060,28 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
           Total: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
         </div>
       </div>
+
+      <button
+        onClick={() => setMostrarMaisOpcoes((v) => !v)}
+        className="w-full flex items-center justify-between px-1 py-2 mb-2"
+      >
+        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: C.inkSoft }}>
+          Mais opções (status do pagamento)
+        </span>
+        <ChevronRight
+          size={16}
+          style={{ color: C.inkSoft, transform: mostrarMaisOpcoes ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
+        />
+      </button>
+      {mostrarMaisOpcoes && (
+        <Field label="Status do pagamento">
+          <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="Pendente">Pendente</option>
+            <option value="Pago">Pago</option>
+          </Select>
+        </Field>
+      )}
+
       <PrimaryButton
         onClick={salvar}
         icon={ArrowUpCircle}
