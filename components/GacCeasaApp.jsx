@@ -345,6 +345,47 @@ function SectionTitle({ children, icon: Icon }) {
   );
 }
 
+// Bloco de lista em cascata — fechada por padrão, mostrando só o título e a
+// contagem. Toca pra abrir e ver os itens. Mesmo padrão já usado em
+// "Entregues" (EntregasTab), agora reaproveitado em Alertas, Estoque e
+// Conta Corrente pra essas listas não ficarem tomando a tela toda de cara.
+function ListaCascata({ titulo, icon: Icon, count, aberto, onToggle, children, vazio }) {
+  return (
+    <div className="mb-2">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-1 py-2"
+      >
+        <div className="flex items-center gap-2">
+          {Icon && <Icon size={16} style={{ color: C.green700 }} />}
+          <span className="font-bold text-sm" style={{ fontFamily: displayFont, color: C.green700 }}>
+            {titulo} ({count})
+          </span>
+        </div>
+        <ChevronRight
+          size={18}
+          style={{
+            color: C.inkSoft,
+            transform: aberto ? "rotate(90deg)" : "rotate(0deg)",
+            transition: "transform 0.15s",
+          }}
+        />
+      </button>
+      {aberto && (
+        <div className="flex flex-col gap-2 mt-1">
+          {count === 0 ? (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>{vazio}</p>
+            </Card>
+          ) : (
+            children
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Badge({ children, tone = "ok" }) {
   const color =
     tone === "ok" ? "#6FCF97" : tone === "warn" ? C.amber500 : C.rust;
@@ -400,19 +441,25 @@ function Select(props) {
   );
 }
 
-function PrimaryButton({ children, onClick, disabled, icon: Icon }) {
+function PrimaryButton({ children, onClick, disabled, icon: Icon, tone = "amber" }) {
+  const cores = {
+    amber: { bg: C.amber500, fg: C.green900, shadow: "rgba(224,165,38,0.35)" },
+    green: { bg: C.green700, fg: "#fff", shadow: "rgba(61,122,0,0.35)" },
+    blue: { bg: C.blue600, fg: "#fff", shadow: "rgba(0,118,255,0.35)" },
+  };
+  const cor = cores[tone] || cores.amber;
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-bold text-sm active:scale-95 transition-transform"
       style={{
-        background: disabled ? "#3A4A41" : C.amber500,
-        color: disabled ? C.inkSoft : C.green900,
+        background: disabled ? "#3A4A41" : cor.bg,
+        color: disabled ? C.inkSoft : cor.fg,
         fontFamily: displayFont,
         fontWeight: 800,
         letterSpacing: 0.3,
-        boxShadow: disabled ? "none" : "0 4px 14px rgba(224,165,38,0.35)",
+        boxShadow: disabled ? "none" : `0 4px 14px ${cor.shadow}`,
       }}
     >
       {Icon && <Icon size={16} />}
@@ -1909,6 +1956,8 @@ function NavButton({ active, icon: Icon, label, onClick }) {
 /* ---------------------------------------------------------------------- */
 function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores, transacoes, cadastros }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+  const [alertasAbertos, setAlertasAbertos] = useState(false);
+  const [acoesFinAbertas, setAcoesFinAbertas] = useState(false);
   
   // Calcula totais de CX para o dia selecionado
   const comprasDodia = transacoes.compras.filter((c) => c.data === dataSelecionada);
@@ -1986,57 +2035,59 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
         />
       </div>
 
-      <SectionTitle icon={AlertTriangle}>Alertas de estoque</SectionTitle>
-      {alertas.length === 0 ? (
-        <Card>
-          <p className="text-sm" style={{ color: C.inkSoft }}>
-            Nenhum produto abaixo do estoque mínimo.
-          </p>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {alertas.map((a) => (
-            <Card key={a.id} className="flex items-center justify-between">
-              <div>
-                <div className="font-bold text-sm">{a.nome}</div>
-                <div className="text-xs" style={{ color: C.inkSoft }}>
-                  Saldo {a.saldo} / mínimo {a.estoqueMinimo} {a.unidade}
-                </div>
+      <ListaCascata
+        titulo="Alertas de estoque"
+        icon={AlertTriangle}
+        count={alertas.length}
+        aberto={alertasAbertos}
+        onToggle={() => setAlertasAbertos((v) => !v)}
+        vazio="Nenhum produto abaixo do estoque mínimo."
+      >
+        {alertas.map((a) => (
+          <Card key={a.id} className="flex items-center justify-between">
+            <div>
+              <div className="font-bold text-sm">{a.nome}</div>
+              <div className="text-xs" style={{ color: C.inkSoft }}>
+                Saldo {a.saldo} / mínimo {a.estoqueMinimo} {a.unidade}
               </div>
-              <Badge tone="danger">repor</Badge>
-            </Card>
-          ))}
-        </div>
-      )}
+            </div>
+            <Badge tone="danger">repor</Badge>
+          </Card>
+        ))}
+      </ListaCascata>
 
       {(clientesAcima.length > 0 || produtoresPendentes.length > 0) && (
-        <>
-          <SectionTitle icon={Landmark}>Ações financeiras</SectionTitle>
-          <div className="flex flex-col gap-2">
-            {clientesAcima.map((c) => (
-              <Card key={c.id} className="flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-sm">{c.nome}</div>
-                  <div className="text-xs" style={{ color: C.inkSoft }}>
-                    Saldo devedor {fmtMoney(c.saldo)} — acima do limite
-                  </div>
+        <ListaCascata
+          titulo="Ações financeiras"
+          icon={Landmark}
+          count={clientesAcima.length + produtoresPendentes.length}
+          aberto={acoesFinAbertas}
+          onToggle={() => setAcoesFinAbertas((v) => !v)}
+          vazio="Nenhuma ação pendente."
+        >
+          {clientesAcima.map((c) => (
+            <Card key={c.id} className="flex items-center justify-between">
+              <div>
+                <div className="font-bold text-sm">{c.nome}</div>
+                <div className="text-xs" style={{ color: C.inkSoft }}>
+                  Saldo devedor {fmtMoney(c.saldo)} — acima do limite
                 </div>
-                <Badge tone="danger">cobrar</Badge>
-              </Card>
-            ))}
-            {produtoresPendentes.map((p) => (
-              <Card key={p.id} className="flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-sm">{p.nome}</div>
-                  <div className="text-xs" style={{ color: C.inkSoft }}>
-                    A pagar {fmtMoney(p.saldo)}
-                  </div>
+              </div>
+              <Badge tone="danger">cobrar</Badge>
+            </Card>
+          ))}
+          {produtoresPendentes.map((p) => (
+            <Card key={p.id} className="flex items-center justify-between">
+              <div>
+                <div className="font-bold text-sm">{p.nome}</div>
+                <div className="text-xs" style={{ color: C.inkSoft }}>
+                  A pagar {fmtMoney(p.saldo)}
                 </div>
-                <Badge tone="warn">pagar</Badge>
-              </Card>
-            ))}
-          </div>
-        </>
+              </div>
+              <Badge tone="warn">pagar</Badge>
+            </Card>
+          ))}
+        </ListaCascata>
       )}
     </div>
   );
@@ -2046,10 +2097,10 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
 /* Registrar Tab                                                          */
 /* ---------------------------------------------------------------------- */
 const TIPOS_SECUNDARIOS = [
-  { id: "entregas", label: "Entregas", icon: Truck },
-  { id: "recebimento", label: "Recebi de Cliente", icon: HandCoins },
-  { id: "pagamento", label: "Paguei Produtor", icon: Landmark },
-  { id: "conferencia", label: "Conferência Compras", icon: ClipboardCheck },
+  { id: "entregas", label: "Entregas", icon: Truck, tone: "blue" },
+  { id: "recebimento", label: "Recebi de Cliente", icon: HandCoins, tone: "blue" },
+  { id: "pagamento", label: "Paguei Produtor", icon: Landmark, tone: "green" },
+  { id: "conferencia", label: "Conferência Compras", icon: ClipboardCheck, tone: "green" },
 ];
 
 // Bloco grande — usado pra Compra e Venda, os dois movimentos mais comuns.
@@ -2113,19 +2164,22 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
           />
         </div>
         <div className="grid grid-cols-2 gap-2">
-          {TIPOS_SECUNDARIOS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTipo(t.id)}
-              className="flex flex-col items-center justify-center gap-1.5 rounded-xl py-4 px-2 text-center"
-              style={{ background: C.cardAlt, border: `1px solid ${C.line}` }}
-            >
-              <t.icon size={20} style={{ color: C.amber500 }} />
-              <span className="text-xs font-bold" style={{ color: C.ink, fontFamily: displayFont }}>
-                {t.label}
-              </span>
-            </button>
-          ))}
+          {TIPOS_SECUNDARIOS.map((t) => {
+            const cor = t.tone === "blue" ? C.blue600 : C.green700;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTipo(t.id)}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl py-4 px-2 text-center"
+                style={{ background: C.cardAlt, border: `1px solid ${C.line}` }}
+              >
+                <t.icon size={20} style={{ color: cor }} />
+                <span className="text-xs font-bold" style={{ color: C.ink, fontFamily: displayFont }}>
+                  {t.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     );
@@ -3685,6 +3739,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       <PrimaryButton
         onClick={salvar}
         icon={ArrowDownCircle}
+        tone="green"
         disabled={salvando || !produtorId || !produto || !quantidade || !valorUnit || Number(quantidade) <= 0 || Number(valorUnit) <= 0}
       >
         {salvando ? "Salvando…" : "Registrar Compra"}
@@ -4056,7 +4111,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
             Desconto (-1.63%): <span style={{ fontFamily: monoFont }}>{fmtMoney(desconto)}</span>
           </div>
         )}
-        <div className="text-sm font-bold" style={{ color: C.green700 }}>
+        <div className="text-sm font-bold" style={{ color: C.blue600 }}>
           Total: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
         </div>
       </div>
@@ -4085,6 +4140,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
       <PrimaryButton
         onClick={salvar}
         icon={ArrowUpCircle}
+        tone="blue"
         disabled={salvando || !clienteId || !produto || !quantidade || !precoUnit || Number(quantidade) <= 0 || Number(precoUnit) <= 0}
       >
         {salvando ? "Salvando…" : "Registrar Venda"}
@@ -4251,7 +4307,7 @@ function EntregaVendaForm({ vendaId, initial, venda, transacoes, persistTransaco
         </Field>
       )}
       <div className="flex gap-2">
-        <PrimaryButton onClick={salvarEntrega} icon={Truck}>
+        <PrimaryButton onClick={salvarEntrega} icon={Truck} tone="blue">
           Salvar Entrega
         </PrimaryButton>
       </div>
@@ -4357,6 +4413,7 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
       <PrimaryButton
         onClick={salvar}
         icon={HandCoins}
+        tone="blue"
         disabled={salvando || !clienteId || !valor || Number(valor) <= 0}
       >
         {salvando ? "Salvando…" : tipo === "pagamento" ? "Registrar Recebimento" : "Registrar Desconto/Ajuste"}
@@ -4447,6 +4504,7 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
       <PrimaryButton
         onClick={salvar}
         icon={Landmark}
+        tone="green"
         disabled={salvando || !produtorId || !valor || Number(valor) <= 0}
       >
         {salvando ? "Salvando…" : tipo === "pagamento" ? "Registrar Pagamento" : "Registrar Desconto/Ajuste"}
@@ -4820,7 +4878,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
           </div>
         )}
         <div className="flex gap-2">
-          <PrimaryButton onClick={() => confirmar(c.id, qtd)} icon={Check}>
+          <PrimaryButton onClick={() => confirmar(c.id, qtd)} icon={Check} tone="green">
             Confirmar Recebimento
           </PrimaryButton>
         </div>
@@ -5086,9 +5144,13 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
   const [view, setView] = useState("estoque");
   const [q, setQ] = useState("");
   const [editandoProdutoId, setEditandoProdutoId] = useState(null);
+  const [listaAberta, setListaAberta] = useState(false);
   const filtered = estoquePorProduto.filter((p) =>
     (p.nome || "").toLowerCase().includes(q.toLowerCase())
   );
+  // Abre sozinha quando a pessoa começa a digitar uma busca — não faz
+  // sentido pedir pra tocar em "Ver produtos" depois de já ter procurado um.
+  const mostrarLista = listaAberta || q.trim() !== "";
 
   const editarProduto = async (dadosAtualizados) => {
     const next = {
@@ -5154,7 +5216,14 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
             />
           </div>
 
-          <div className="flex flex-col gap-2">
+          <ListaCascata
+            titulo="Produtos"
+            icon={Package}
+            count={filtered.length}
+            aberto={mostrarLista}
+            onToggle={() => setListaAberta((v) => !v)}
+            vazio="Nenhum produto encontrado."
+          >
             {filtered.map((p) => {
               const baixo = p.saldo < p.estoqueMinimo;
               return (
@@ -5212,14 +5281,7 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
                 </Card>
               );
             })}
-            {filtered.length === 0 && (
-              <Card>
-                <p className="text-sm" style={{ color: C.inkSoft }}>
-                  Nenhum produto encontrado.
-                </p>
-              </Card>
-            )}
-          </div>
+          </ListaCascata>
         </div>
       )}
 
@@ -5413,7 +5475,7 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
 /* ---------------------------------------------------------------------- */
 /* Gerenciar Acesso — lista de Compradores/Vendedores autorizados         */
 /* ---------------------------------------------------------------------- */
-function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistTransacoes }) {
+function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistTransacoes, sessaoEmpresa }) {
   const [rodando, setRodando] = useState(false);
   const [resultado, setResultado] = useState(null);
 
@@ -5422,12 +5484,19 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistT
     setResultado(null);
     const linhas = [];
     const marcador = "DIAG_" + Date.now();
+    const token = sessaoEmpresa?.accessToken;
+
+    if (!token) {
+      setResultado("ERRO: sem sessão de empresa ativa (accessToken vazio). Faça login novamente antes de testar.");
+      setRodando(false);
+      return;
+    }
 
     try {
-      linhas.push(`1) Enviando gravação de teste em "${tipo}.${campo}"...`);
-      const resPost = await fetch("/api/dados", {
+      linhas.push(`1) Enviando gravação de teste em "${tipo}.${campo}" (Supabase)...`);
+      const resPost = await fetch("/api/dados-empresa", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           type: tipo,
           data: montarValor(marcador),
@@ -5439,23 +5508,38 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistT
 
       linhas.push("");
       linhas.push("2) Lendo de volta pra conferir se gravou...");
-      const resGet = await fetch("/api/dados");
+      const resGet = await fetch("/api/dados-empresa", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const jsonGet = await resGet.json().catch(() => null);
-      const achou = jsonGet?.[tipo]?.[campo]?.some((p) => p.id === marcador);
+      const bloco = tipo === "cadastros" ? jsonGet?.cadastros : jsonGet?.transacoes;
+      const achou = bloco?.[campo]?.some((p) => p.id === marcador);
       linhas.push(`   Status HTTP: ${resGet.status}`);
       linhas.push(`   Marcador de teste encontrado na leitura? ${achou ? "SIM ✅" : "NÃO ❌"}`);
 
       if (achou) {
         linhas.push("");
-        linhas.push(`Tudo funcionando! A gravação em "${tipo}.${campo}" chegou na planilha.`);
+        linhas.push(`Tudo funcionando! A gravação em "${tipo}.${campo}" chegou no banco (Supabase).`);
       } else {
         linhas.push("");
         linhas.push(
-          `A gravação em "${tipo}.${campo}" NÃO chegou na planilha. Se o teste de "produtos" funcionar mas este falhar, é sinal de que o backend (/api/dados) ainda não tem uma coluna/aba mapeada pra "${campo}" dentro de "${tipo}" — precisa adicionar isso no código do servidor, não dá pra corrigir só pelo app.`
+          `A gravação em "${tipo}.${campo}" NÃO chegou no banco. Provável causa: falta coluna mapeada em "pages/api/dados-empresa.js" (funções paraLinha/paraObjeto) pra esse campo, ou a tabela/coluna não existe no Supabase ainda.`
         );
       }
     } catch (e) {
       linhas.push(`ERRO durante o teste: ${(e && e.message) || String(e)}`);
+    }
+
+    // Reverte o registro de teste depois de conferir, pra não sujar o cadastro real
+    // com marcadores "DIAG_...". Roda por baixo, sem travar a leitura do resultado.
+    try {
+      if (tipo === "cadastros") {
+        await persistCadastros({ ...cadastros, [campo]: (cadastros[campo] || []).filter((r) => (typeof r === "string" ? r : r.id) !== marcador) });
+      } else {
+        await persistTransacoes({ ...transacoes, [campo]: (transacoes[campo] || []).filter((r) => (typeof r === "string" ? r : r.id) !== marcador) });
+      }
+    } catch (e) {
+      linhas.push(`(aviso: não consegui limpar o registro de teste automaticamente — ${(e && e.message) || String(e)})`);
     }
 
     setResultado(linhas.join("\n"));
@@ -5501,8 +5585,8 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistT
   return (
     <div>
       <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
-        Testa se o app consegue escrever e reler da planilha, sem depender de
-        cadastrar nada de verdade.
+        Testa se o app consegue escrever e reler do banco (Supabase) — usa o mesmo
+        backend real das compras/vendas, e apaga o registro de teste no final.
       </p>
       <button
         onClick={testarProdutos}
@@ -5663,6 +5747,7 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
           persistCadastros={persistCadastros}
           transacoes={transacoes}
           persistTransacoes={persistTransacoes}
+          sessaoEmpresa={sessaoEmpresa}
         />
       )}
 
@@ -6044,6 +6129,13 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
   const [novoOpen, setNovoOpen] = useState(false);
   const [editandoClienteId, setEditandoClienteId] = useState(null);
   const [editandoProdutorId, setEditandoProdutorId] = useState(null);
+  const [qClientes, setQClientes] = useState("");
+  const [qProdutores, setQProdutores] = useState("");
+  const [clientesAbertos, setClientesAbertos] = useState(false);
+  const [produtoresAbertos, setProdutoresAbertos] = useState(false);
+
+  const clientesFiltrados = contaClientes.filter((c) => (c.nome || "").toLowerCase().includes(qClientes.toLowerCase()));
+  const produtoresFiltrados = contaProdutores.filter((p) => (p.nome || "").toLowerCase().includes(qProdutores.toLowerCase()));
 
   const addCliente = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
@@ -6152,7 +6244,20 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
               </button>
             </Card>
           )}
-          {contaClientes.map((c) => (
+          <TextInput
+            placeholder="Buscar cliente..."
+            value={qClientes}
+            onChange={(e) => setQClientes(e.target.value)}
+          />
+          <ListaCascata
+            titulo="Clientes"
+            icon={ShoppingBasket}
+            count={clientesFiltrados.length}
+            aberto={clientesAbertos || qClientes.trim() !== ""}
+            onToggle={() => setClientesAbertos((v) => !v)}
+            vazio="Nenhum cliente encontrado."
+          >
+          {clientesFiltrados.map((c) => (
             <Card
               key={c.id}
               className="cursor-pointer"
@@ -6214,12 +6319,26 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
               )}
             </Card>
           ))}
+          </ListaCascata>
         </div>
       )}
 
       {view === "produtores" && (
         <div className="flex flex-col gap-2">
-          {contaProdutores.map((p) => (
+          <TextInput
+            placeholder="Buscar produtor..."
+            value={qProdutores}
+            onChange={(e) => setQProdutores(e.target.value)}
+          />
+          <ListaCascata
+            titulo="Produtores"
+            icon={Package}
+            count={produtoresFiltrados.length}
+            aberto={produtoresAbertos || qProdutores.trim() !== ""}
+            onToggle={() => setProdutoresAbertos((v) => !v)}
+            vazio="Nenhum produtor encontrado."
+          >
+          {produtoresFiltrados.map((p) => (
             <Card
               key={p.id}
               className="cursor-pointer"
@@ -6281,6 +6400,7 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
               )}
             </Card>
           ))}
+          </ListaCascata>
         </div>
       )}
     </div>
