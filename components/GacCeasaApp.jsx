@@ -3604,6 +3604,16 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         </Select>
         <QuickAddProdutor onAdd={addProdutor} />
       </Field>
+      <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isEstoque}
+            onChange={(e) => setIsEstoque(e.target.checked)}
+          />
+          <span style={{ color: C.ink }}>📦 Para Estoque? (compra pra um cliente NÃO marca isso)</span>
+        </label>
+      </div>
       <Field label="Para Quem (Cliente Destino)">
         <Select 
           value={clienteDestino} 
@@ -3690,7 +3700,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         className="w-full flex items-center justify-between px-1 py-2 mb-2"
       >
         <span className="text-xs font-bold uppercase tracking-wide" style={{ color: C.inkSoft }}>
-          Mais opções (estoque, conferente)
+          Mais opções (conferente)
         </span>
         <ChevronRight
           size={16}
@@ -3717,16 +3727,6 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
               </div>
             </div>
           )}
-          <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isEstoque}
-                onChange={(e) => setIsEstoque(e.target.checked)}
-              />
-              <span style={{ color: C.ink }}>📦 Para Estoque?</span>
-            </label>
-          </div>
           <Field label="Cargueiro / Conferente">
             <Select value={cargueiro} onChange={(e) => setCargueiro(e.target.value)}>
               <option value="">Selecione um conferente</option>
