@@ -1049,6 +1049,11 @@ function EmpresaLoginView({ onEntrar }) {
   const [erro, setErro] = useState("");
   const [avisoCadastro, setAvisoCadastro] = useState("");
   const [empresaExpirada, setEmpresaExpirada] = useState(null); // { nomeEmpresa, codigoAcesso } | null
+  const [mostrarEsqueciSenha, setMostrarEsqueciSenha] = useState(false);
+  const [codigoRecuperacao, setCodigoRecuperacao] = useState("");
+  const [enviandoRecuperacao, setEnviandoRecuperacao] = useState(false);
+  const [erroRecuperacao, setErroRecuperacao] = useState("");
+  const [emailEnviadoPara, setEmailEnviadoPara] = useState(null); // string mascarada, ou null
 
   const fazerLogin = async () => {
     if (!codigoAcesso.trim() || !senha) return;
@@ -1118,6 +1123,119 @@ function EmpresaLoginView({ onEntrar }) {
   const VALOR_MENSALIDADE = "R$ 169,90";
   const CHAVE_PIX = "05564849914";
   const WHATSAPP_NUMERO = "5544998942726"; // com código do país (55) + DDD, sem espaço/traço
+
+  const solicitarRecuperacao = async () => {
+    if (!codigoRecuperacao.trim()) return;
+    setEnviandoRecuperacao(true);
+    setErroRecuperacao("");
+    try {
+      const r = await fetch("/api/empresa-esqueci-senha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigoAcesso: codigoRecuperacao }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setErroRecuperacao(j.erro || "Não foi possível enviar o link de recuperação.");
+        setEnviandoRecuperacao(false);
+        return;
+      }
+      setEmailEnviadoPara(j.emailMascarado || "seu e-mail cadastrado");
+      setEnviandoRecuperacao(false);
+    } catch (e) {
+      setErroRecuperacao((e && e.message) || String(e));
+      setEnviandoRecuperacao(false);
+    }
+  };
+
+  if (mostrarEsqueciSenha) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center p-6"
+        style={{ background: C.green900 }}
+      >
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-6">
+            <div
+              className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center font-bold text-2xl"
+              style={{ background: C.amber500, color: C.green900 }}
+            >
+              GAC
+            </div>
+            <div className="text-white font-bold text-xl" style={{ fontFamily: displayFont }}>
+              Esqueci minha senha
+            </div>
+          </div>
+
+          <Card>
+            {emailEnviadoPara ? (
+              <>
+                <div className="text-center mb-2">
+                  <div
+                    className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center"
+                    style={{ background: C.amberSoft }}
+                  >
+                    <Check size={22} style={{ color: C.amber500 }} />
+                  </div>
+                  <div className="font-bold text-sm mb-1" style={{ color: C.ink }}>
+                    Link enviado!
+                  </div>
+                  <p className="text-xs" style={{ color: C.inkSoft }}>
+                    Mandamos um link de recuperação pra <b>{emailEnviadoPara}</b>. Abre o
+                    e-mail no celular ou computador, clica no link e crie uma senha nova.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
+                  Digite o código de acesso da empresa. Vamos mandar um link de
+                  recuperação pro e-mail que está cadastrado.
+                </p>
+                <Field label="Código de Acesso">
+                  <TextInput
+                    placeholder="Ex: aguabranca"
+                    value={codigoRecuperacao}
+                    onChange={(e) => {
+                      setCodigoRecuperacao(e.target.value);
+                      setErroRecuperacao("");
+                    }}
+                    autoCapitalize="none"
+                    autoFocus
+                  />
+                </Field>
+                {erroRecuperacao && (
+                  <div className="text-sm mb-3 p-2 rounded" style={{ background: "#4A1F1F", color: "#FF8080" }}>
+                    {erroRecuperacao}
+                  </div>
+                )}
+                <PrimaryButton
+                  onClick={solicitarRecuperacao}
+                  icon={Shield}
+                  disabled={enviandoRecuperacao || !codigoRecuperacao.trim()}
+                >
+                  {enviandoRecuperacao ? "Enviando…" : "Enviar link de recuperação"}
+                </PrimaryButton>
+              </>
+            )}
+          </Card>
+
+          <button
+            onClick={() => {
+              setMostrarEsqueciSenha(false);
+              setEmailEnviadoPara(null);
+              setCodigoRecuperacao("");
+              setErroRecuperacao("");
+            }}
+            className="text-xs text-center w-full mt-4"
+            style={{ color: "rgba(255,255,255,0.6)" }}
+          >
+            ← Voltar pro login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (empresaExpirada) {
     const mensagemWhats = encodeURIComponent(
@@ -1288,6 +1406,18 @@ function EmpresaLoginView({ onEntrar }) {
               onChange={(e) => setSenha(e.target.value)}
             />
           </Field>
+          {modo === "login" && (
+            <button
+              onClick={() => {
+                setCodigoRecuperacao(codigoAcesso);
+                setMostrarEsqueciSenha(true);
+              }}
+              className="text-xs font-bold mb-3 -mt-1"
+              style={{ color: "rgba(255,255,255,0.6)" }}
+            >
+              Esqueci minha senha
+            </button>
+          )}
 
           {erro && (
             <div className="text-sm mb-3 p-2 rounded" style={{ background: "#4A1F1F", color: "#FF8080" }}>
@@ -1369,6 +1499,66 @@ export default function GacCeasaApp() {
     }
   };
 
+  // Pede um access_token novo pro Supabase usando o refresh_token guardado —
+  // sem precisar a pessoa digitar a senha de novo. O access_token dura pouco
+  // tempo (cerca de 1h); sem essa renovação automática, quem deixa o app
+  // aberto o dia todo no pátio cai num "Sessão expirada" na primeira vez que
+  // tenta salvar depois disso, e o que estava tentando registrar se perdia.
+  const renovarTokenSessao = useCallback(async () => {
+    if (!sessaoEmpresa?.refreshToken) return null;
+    try {
+      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`;
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ refresh_token: sessaoEmpresa.refreshToken }),
+      });
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (!j.access_token) return null;
+      const atualizada = {
+        accessToken: j.access_token,
+        refreshToken: j.refresh_token || sessaoEmpresa.refreshToken,
+        empresa: sessaoEmpresa.empresa,
+      };
+      setSessaoEmpresa(atualizada);
+      try {
+        localStorage.setItem(SESSAO_EMPRESA_KEY, JSON.stringify(atualizada));
+      } catch (e) {
+        /* ok */
+      }
+      return atualizada;
+    } catch (e) {
+      return null;
+    }
+  }, [sessaoEmpresa]);
+
+  // Chamada autenticada pra /api/dados-empresa: se voltar 401 (sessão
+  // expirada), tenta renovar o token sozinha e refaz a chamada UMA vez com o
+  // token novo, sem a pessoa perceber. Só desloga de verdade se a renovação
+  // também falhar (refresh_token igualmente vencido/revogado).
+  const fetchDadosEmpresa = useCallback(
+    async (options, tokenForcado) => {
+      const token = tokenForcado || sessaoEmpresa?.accessToken;
+      const res = await fetch("/api/dados-empresa", {
+        ...options,
+        headers: { ...(options?.headers || {}), Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401 && !tokenForcado) {
+        const renovada = await renovarTokenSessao();
+        if (renovada) {
+          return fetchDadosEmpresa(options, renovada.accessToken);
+        }
+        sairDaEmpresa();
+      }
+      return res;
+    },
+    [sessaoEmpresa, renovarTokenSessao]
+  );
+
   // ---- carrega da planilha (via API do servidor) + perfil do navegador ----
   useEffect(() => {
     if (!sessaoEmpresa) return;
@@ -1382,9 +1572,7 @@ export default function GacCeasaApp() {
           setLoading(false);
           return;
         }
-        const res = await fetch("/api/dados-empresa", {
-          headers: { Authorization: `Bearer ${sessaoEmpresa.accessToken}` },
-        });
+        const res = await fetchDadosEmpresa({});
         const textoBruto = await res.text();
         let json = null;
         try {
@@ -1428,18 +1616,19 @@ export default function GacCeasaApp() {
       setPerfil(perfilSalvo);
       setLoading(false);
     })();
-  }, [sessaoEmpresa]);
+    // Depende só do código da empresa (login/logout) — não do objeto
+    // sessaoEmpresa inteiro, que muda de referência a cada renovação
+    // automática de token e recarregaria tudo de novo sem necessidade.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessaoEmpresa?.empresa?.codigoAcesso]);
 
   const persistCadastros = useCallback(
     async (next) => {
       setCadastros(next);
       try {
-        const res = await fetch("/api/dados-empresa", {
+        const res = await fetchDadosEmpresa({
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${sessaoEmpresa?.accessToken}`,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "cadastros", data: next }),
         });
         const textoBruto = await res.text();
@@ -1459,19 +1648,16 @@ export default function GacCeasaApp() {
         setErroCarregamento(`DIAGNÓSTICO (salvar cadastros, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
       }
     },
-    [sessaoEmpresa]
+    [fetchDadosEmpresa]
   );
 
   const persistTransacoes = useCallback(
     async (next) => {
       setTransacoes(next);
       try {
-        const res = await fetch("/api/dados-empresa", {
+        const res = await fetchDadosEmpresa({
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${sessaoEmpresa?.accessToken}`,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "transacoes", data: next }),
         });
         const textoBruto = await res.text();
@@ -1491,7 +1677,7 @@ export default function GacCeasaApp() {
         setErroCarregamento(`DIAGNÓSTICO (salvar transacoes, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
       }
     },
-    [sessaoEmpresa]
+    [fetchDadosEmpresa]
   );
 
   const salvarPerfil = useCallback(
