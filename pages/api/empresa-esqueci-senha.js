@@ -39,7 +39,11 @@ export default async function handler(req, res) {
     // Monta a URL de volta pro app (pra onde o link do e-mail vai levar a
     // pessoa depois de clicar) — usa o domínio de quem chamou a API, então
     // funciona tanto em produção quanto em ambiente de teste/preview.
-    const origem = process.env.NEXT_PUBLIC_SITE_URL || `https://${req.headers.host}`;
+    // Fixo no domínio de produção por padrão — antes usava req.headers.host,
+    // que reflete de onde a pessoa clicou "Esqueci minha senha" (se for
+    // testado rodando local, o link do e-mail vira "localhost", que só
+    // funciona no computador de quem testou, não no celular de ninguém).
+    const origem = process.env.NEXT_PUBLIC_SITE_URL || "https://gacceasa.com.br";
 
     const publico = getSupabasePublico();
     const { error: erroReset } = await publico.auth.resetPasswordForEmail(empresa.email, {
