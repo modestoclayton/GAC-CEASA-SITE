@@ -1919,8 +1919,8 @@ export default function GacCeasaApp() {
           />
           <div className="text-center pt-6 pb-2">
             <a
-              href="https://noticias.gacceasa.com.br"
-              target="_blank"
+              href="https://astra-dashboard-kappa.vercel.app"
+target="_blank"
               rel="noopener noreferrer"
               className="text-xs"
               style={{ color: C.inkSoft, textDecoration: "underline", textUnderlineOffset: 3 }}
@@ -1959,7 +1959,8 @@ export default function GacCeasaApp() {
           />
           <div className="text-center pt-6 pb-2">
             <a
-              href="https://noticias.gacceasa.com.br"
+              href="https://astra-dashboard-kappa.vercel.app"
+
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs"
@@ -2050,7 +2051,8 @@ export default function GacCeasaApp() {
         )}
         <div className="text-center pt-6 pb-28">
           <a
-            href="https://noticias.gacceasa.com.br"
+            href="https://astra-dashboard-kappa.vercel.app"
+
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs"
