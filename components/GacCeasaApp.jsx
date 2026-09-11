@@ -25,6 +25,7 @@ import {
   ShoppingCart,
   Menu,
   Calendar,
+  Newspaper,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
@@ -1917,15 +1918,21 @@ export default function GacCeasaApp() {
             showToast={showToast}
             soMeuNome={perfil.nome}
           />
-          <div className="text-center pt-6 pb-2">
+          <div className="flex justify-center pt-6 pb-2">
             <a
               href="https://noticias.gacceasa.com.br"
-target="_blank"
+              target="_blank"
               rel="noopener noreferrer"
-              className="text-xs"
-              style={{ color: C.inkSoft, textDecoration: "underline", textUnderlineOffset: 3 }}
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold active:scale-95 transition-transform"
+              style={{
+                background: C.cardAlt,
+                border: `1px solid ${C.line}`,
+                color: C.ink,
+                boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+              }}
             >
-              📰 Notícias e Cotações
+              <Newspaper size={15} style={{ color: C.amber500 }} />
+              Notícias e Cotações
             </a>
           </div>
         </main>
@@ -1957,16 +1964,21 @@ target="_blank"
             showToast={showToast}
             soMeuNome={perfil.nome}
           />
-          <div className="text-center pt-6 pb-2">
+          <div className="flex justify-center pt-6 pb-2">
             <a
               href="https://noticias.gacceasa.com.br"
-
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs"
-              style={{ color: C.inkSoft, textDecoration: "underline", textUnderlineOffset: 3 }}
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold active:scale-95 transition-transform"
+              style={{
+                background: C.cardAlt,
+                border: `1px solid ${C.line}`,
+                color: C.ink,
+                boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+              }}
             >
-              📰 Notícias e Cotações
+              <Newspaper size={15} style={{ color: C.amber500 }} />
+              Notícias e Cotações
             </a>
           </div>
         </main>
@@ -2049,16 +2061,21 @@ target="_blank"
             sairDaEmpresa={sairDaEmpresa}
           />
         )}
-        <div className="text-center pt-6 pb-28">
+        <div className="flex justify-center pt-6 pb-28">
           <a
             href="https://noticias.gacceasa.com.br"
-
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs"
-            style={{ color: C.inkSoft, textDecoration: "underline", textUnderlineOffset: 3 }}
+            className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold active:scale-95 transition-transform"
+            style={{
+              background: C.cardAlt,
+              border: `1px solid ${C.line}`,
+              color: C.ink,
+              boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+            }}
           >
-            📰 Notícias e Cotações
+            <Newspaper size={15} style={{ color: C.amber500 }} />
+            Notícias e Cotações
           </a>
         </div>
       </main>
