@@ -25,6 +25,9 @@ export default function Home() {
           content="Gestão completa do seu pátio: compras, vendas, estoque e conta corrente. 30 dias de teste grátis."
         />
         <meta property="og:image" content="https://gacceasa.com.br/og-image.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="600" />
+        <meta property="og:image:type" content="image/png" />
         <meta property="og:url" content="https://gacceasa.com.br" />
         <meta property="og:type" content="website" />
 
