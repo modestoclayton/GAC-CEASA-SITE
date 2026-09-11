@@ -24,9 +24,9 @@ export default function Home() {
           property="og:description"
           content="Gestão completa do seu pátio: compras, vendas, estoque e conta corrente. 30 dias de teste grátis."
         />
-        <meta property="og:image" content="https://gacceasa.com.br/og-image.png" />
-        <meta property="og:image:width" content="1600" />
-        <meta property="og:image:height" content="854" />
+        <meta property="og:image" content="https://gacceasa.com.br/apple-touch-icon.png" />
+        <meta property="og:image:width" content="1254" />
+        <meta property="og:image:height" content="1254" />
         <meta property="og:image:type" content="image/png" />
         <meta property="og:url" content="https://gacceasa.com.br" />
         <meta property="og:type" content="website" />
@@ -38,7 +38,7 @@ export default function Home() {
           name="twitter:description"
           content="Gestão completa do seu pátio: compras, vendas, estoque e conta corrente."
         />
-        <meta name="twitter:image" content="https://gacceasa.com.br/og-image.png" />
+        <meta name="twitter:image" content="https://gacceasa.com.br/apple-touch-icon.png" />
       </Head>
       <GacCeasaApp />
     </>
