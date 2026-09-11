@@ -1919,7 +1919,7 @@ export default function GacCeasaApp() {
           />
           <div className="text-center pt-6 pb-2">
             <a
-              href="https://astra-dashboard-kappa.vercel.app"
+              href="https://noticias.gacceasa.com.br"
 target="_blank"
               rel="noopener noreferrer"
               className="text-xs"
@@ -1959,7 +1959,7 @@ target="_blank"
           />
           <div className="text-center pt-6 pb-2">
             <a
-              href="https://astra-dashboard-kappa.vercel.app"
+              href="https://noticias.gacceasa.com.br"
 
               target="_blank"
               rel="noopener noreferrer"
@@ -2051,7 +2051,7 @@ target="_blank"
         )}
         <div className="text-center pt-6 pb-28">
           <a
-            href="https://astra-dashboard-kappa.vercel.app"
+            href="https://noticias.gacceasa.com.br"
 
             target="_blank"
             rel="noopener noreferrer"
