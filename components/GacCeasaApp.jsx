@@ -3195,7 +3195,7 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
 
   const boxCliente = `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
     <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Para Quem (Cliente Destino)</div>
-    <div style="font-size:18px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "—"}</div>
+    <div style="font-size:18px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "â"}</div>
     ${cliente?.cidade ? `<div style="font-size:14px;color:#6E6650;">${cliente.cidade}</div>` : ""}
   </div>`;
 
@@ -3209,7 +3209,7 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
 
       <div style="margin-bottom:10px;">
         <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
-        <div style="font-size:14px;font-weight:bold;">${produtor?.nome || "—"}</div>
+        <div style="font-size:14px;font-weight:bold;">${produtor?.nome || "â"}</div>
         ${produtor?.cidade ? `<div style="font-size:11px;color:#6E6650;">${produtor.cidade}</div>` : ""}
         ${produtor?.telefone ? `<div style="font-size:11px;color:#6E6650;">Tel: ${produtor.telefone}</div>` : ""}
       </div>
@@ -3249,29 +3249,143 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
       </div>
 
       <div style="font-size:9px;text-align:center;margin-top:14px;padding-top:8px;border-top:1px solid #D8CBA0;color:#6E6650;">
-        Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
+        Documento gerado pelo GAC CEASA Manager â ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
+      </div>
+    </div>`;
+
+  const itensTermicos = itensOrdenados
+    .map((i) => {
+      const unidade = unidadeDoProduto(i.produto, cadastros.produtos);
+      const mostrarCaixas = unidade !== "CX" && Number(i.quantidadeCaixas) > 0;
+      const qtdExibida = mostrarCaixas
+        ? `${i.quantidade} ${unidade} (${i.quantidadeCaixas} CX)`
+        : `${i.quantidade} ${unidade}`;
+      return `
+        <div style="margin-bottom:6px;">
+          <div style="font-weight:bold;">${i.produto}</div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;">
+            <span>${qtdExibida}</span>
+            <span>R$ ${(i.valorUnit || 0).toFixed(2)}</span>
+            <span style="font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</span>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  const boxPagamentoTermico =
+    produtor && produtor.pagamento
+      ? `<div style="border-top:1px dashed #000;margin:6px 0;"></div>
+         <div style="margin-bottom:4px;">
+           <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Forma de Pagamento</div>
+           <div style="font-size:13px;font-weight:bold;">${produtor.pagamento}</div>
+           ${
+             produtor.pagamento !== "BOLETO" && produtor.chavePix
+               ? `<div style="font-size:11px;margin-top:2px;"><b>Chave Pix:</b> ${produtor.chavePix}</div>`
+               : ""
+           }
+         </div>`
+      : "";
+
+  const corpoValeTermico = `
+    <div class="vale-termica" style="color:#000;font-size:12px;line-height:1.4;">
+      <div style="text-align:center;margin-bottom:6px;">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
+        <div style="font-size:16px;font-weight:bold;">VALE DE COMPRA</div>
+        <div style="font-size:10px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
+      </div>
+
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+
+      <div style="margin-bottom:4px;">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Fornecedor</div>
+        <div style="font-size:13px;font-weight:bold;">${produtor?.nome || "â"}</div>
+        ${produtor?.cidade ? `<div style="font-size:11px;">${produtor.cidade}</div>` : ""}
+        ${produtor?.telefone ? `<div style="font-size:11px;">Tel: ${produtor.telefone}</div>` : ""}
+      </div>
+
+      ${boxPagamentoTermico}
+
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+
+      <div style="margin-bottom:4px;">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Para Quem (Cliente Destino)</div>
+        <div style="font-size:14px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "â"}</div>
+        ${cliente?.cidade ? `<div style="font-size:11px;">${cliente.cidade}</div>` : ""}
+      </div>
+
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+
+      <div>${itensTermicos}</div>
+
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+        <span>Total em Caixas</span>
+        <span style="font-weight:bold;">${totalCx.toFixed(1).replace(/\.0$/, "")} CX</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;">
+        <span>Subtotal</span>
+        <span>R$ ${subtotal.toFixed(2)}</span>
+      </div>
+      ${
+        desconto > 0
+          ? `<div style="display:flex;justify-content:space-between;font-size:12px;">
+               <span>Desconto (-1.63%)</span>
+               <span>-R$ ${desconto.toFixed(2)}</span>
+             </div>`
+          : ""
+      }
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+      <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:bold;">
+        <span>TOTAL DO VALE</span>
+        <span>R$ ${total.toFixed(2)}</span>
+      </div>
+
+      <div style="border-top:1px dashed #000;margin:8px 0 4px;"></div>
+      <div style="font-size:9px;text-align:center;">
+        Documento gerado pelo GAC CEASA Manager â ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
       </div>
     </div>`;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vale de Compra - ${produtor?.nome || ""}</title>
-    <style>
-      @page { size: A4 landscape; margin: 8mm; }
+    <style id="estilo-base">
       body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
       .barra-topo { position: sticky; top: 0; background: #fff; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: right; }
       .botao-imprimir { background: #1F4A30; color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 14px; cursor: pointer; }
+      .vale-termica { display: none; }
+    </style>
+    <style id="estilo-grande">
+      @page { size: A4 landscape; margin: 8mm; }
       .vale-conteudo { width: 140mm; margin: 0 auto; padding: 8mm 8mm 10mm; }
       @media print {
         .barra-topo { display: none !important; }
         body { background: #fff; }
-        /* Na impressão o vale fica encostado na borda esquerda, ocupando só
-           metade da folha — a metade direita fica livre pra imprimir outro
-           vale depois, na mesma folha em paisagem, e cortar ao meio. */
         .vale-conteudo { margin: 0; }
       }
     </style>
+    <style id="estilo-termica" disabled>
+      @page { size: auto; margin: 3mm 2mm; }
+      .vale-conteudo { display: none !important; }
+      .vale-termica { display: block !important; width: 100%; font-family: Arial, sans-serif; }
+      @media print {
+        .barra-topo { display: none !important; }
+        body { background: #fff; }
+      }
+    </style>
     </head><body>
-    <div class="barra-topo"><button class="botao-imprimir" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>
+    <div class="barra-topo">
+      <button class="botao-imprimir" onclick="imprimirModo('grande')">ð¨ï¸ Imprimir (Folha Grande)</button>
+      <button class="botao-imprimir" onclick="imprimirModo('termica')" style="margin-left:8px;background:#6E6650;">ð¨ï¸ Imprimir (TÃ©rmica Pequena)</button>
+    </div>
     ${corpoVale}
+    ${corpoValeTermico}
+    <script>
+      function imprimirModo(modo) {
+        document.getElementById('estilo-grande').disabled = (modo !== 'grande');
+        document.getElementById('estilo-termica').disabled = (modo !== 'termica');
+        window.print();
+      }
+    </script>
     </body></html>`;
 }
 
