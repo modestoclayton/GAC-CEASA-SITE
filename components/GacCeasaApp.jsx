@@ -1681,6 +1681,41 @@ export default function GacCeasaApp() {
     [fetchDadosEmpresa]
   );
 
+  // Igual a persistTransacoes, mas manda pro servidor só a tabela que de fato
+  // mudou (ex.: só "compras"), em vez do objeto "transacoes" inteiro. Isso
+  // evita que uma ação pequena (confirmar 1 compra na Conferência) dispare
+  // no servidor a "limpeza" de tabelas enormes que nem mudaram (ex.: vendas
+  // com meses de histórico), o que estava causando timeout ("Gateway
+  // Timeout" na limpeza de "vendas") mesmo em ações que não tocam em vendas.
+  const persistTabelaTransacao = useCallback(
+    async (chaveJS, arrayAtualizado) => {
+      setTransacoes((atual) => ({ ...atual, [chaveJS]: arrayAtualizado }));
+      try {
+        const res = await fetchDadosEmpresa({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "transacoes", data: { [chaveJS]: arrayAtualizado } }),
+        });
+        const textoBruto = await res.text();
+        let json = null;
+        try {
+          json = JSON.parse(textoBruto);
+        } catch (erroParse) {
+          setErroCarregamento(
+            `DIAGNÓSTICO (salvar ${chaveJS}): Status HTTP ${res.status}. Resposta não é JSON. Primeiros 300 caracteres: ${textoBruto.slice(0, 300)}`
+          );
+          return;
+        }
+        if (!res.ok || !json || !json.ok) {
+          setErroCarregamento(`DIAGNÓSTICO (salvar ${chaveJS}): HTTP ${res.status} — ${(json && json.erro) || "sem detalhe"}`);
+        }
+      } catch (e) {
+        setErroCarregamento(`DIAGNÓSTICO (salvar ${chaveJS}, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
+      }
+    },
+    [fetchDadosEmpresa]
+  );
+
   const salvarPerfil = useCallback(
     async (novoPerfil) => {
       const nomeNorm = novoPerfil.nome.trim().toLowerCase();
@@ -1915,6 +1950,7 @@ export default function GacCeasaApp() {
             cadastros={cadastros}
             transacoes={transacoes}
             persistTransacoes={persistTransacoes}
+            persistTabelaTransacao={persistTabelaTransacao}
             showToast={showToast}
             soMeuNome={perfil.nome}
           />
@@ -2033,6 +2069,7 @@ export default function GacCeasaApp() {
             transacoes={transacoes}
             persistCadastros={persistCadastros}
             persistTransacoes={persistTransacoes}
+            persistTabelaTransacao={persistTabelaTransacao}
             showToast={showToast}
             setRecibo={setRecibo}
           />
@@ -2345,7 +2382,7 @@ function BlocoGrandeMovimento({ label, sub, icon: Icon, corA, corB, onClick }) {
   );
 }
 
-function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
+function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransacoes, persistTabelaTransacao, showToast, setRecibo }) {
   const [tipo, setTipo] = useState(null); // null = menu inicial
 
   if (!tipo) {
@@ -2464,6 +2501,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
           cadastros={cadastros}
           transacoes={transacoes}
           persistTransacoes={persistTransacoes}
+          persistTabelaTransacao={persistTabelaTransacao}
           showToast={showToast}
           setRecibo={setRecibo}
         />
@@ -5114,7 +5152,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 /* ---------------------------------------------------------------------- */
 /* Conferência de Compras (cargueiro tica recebimento)                    */
 /* ---------------------------------------------------------------------- */
-function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showToast, setRecibo, soMeuNome }) {
+function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persistTabelaTransacao, showToast, setRecibo, soMeuNome }) {
   const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
   const [conferindoId, setConferindoId] = useState(null);
   const [filtroCliente, setFiltroCliente] = useState(""); // "" = mostrar todas as empresas
@@ -5205,7 +5243,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
       gerarPDFVales(comprasSemBoleto, hoje, cadastros);
     }
     // Trava: marca o dia como finalizado pra não gerar os documentos de novo
-    await persistTransacoes({ ...transacoes, diasFinalizados: [...diasFinalizados, hoje] });
+    await persistTabelaTransacao("diasFinalizados", [...diasFinalizados, hoje]);
     showToast("Conferência finalizada — documentos gerados");
   };
 
@@ -5220,7 +5258,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
         divergencia,
       };
     });
-    await persistTransacoes({ ...transacoes, compras: nextCompras });
+    await persistTabelaTransacao("compras", nextCompras);
     setConferindoId(null);
     showToast("Recebimento confirmado");
   };
@@ -5231,7 +5269,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, showT
         ? { ...c, entregaConfirmada: false, quantidadeRecebida: null, divergencia: null }
         : c
     );
-    await persistTransacoes({ ...transacoes, compras: nextCompras });
+    await persistTabelaTransacao("compras", nextCompras);
     showToast("Confirmação removida");
   };
 
