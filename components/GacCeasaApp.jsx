@@ -193,6 +193,115 @@ function calcularStatusPagamentos(debitos, pagamentos, hojeISO) {
   });
 }
 
+// Produtor de comissão ("coletor") não vende direto — o que ele traz entra
+// no estoque geral e é vendido junto com o de outros produtores do mesmo
+// produto. Pra saber quanto de cada venda pertence a qual produtor, consome
+// o estoque em ordem de chegada (PEPS/FIFO) por produto — a mesma ideia de
+// "quem entrou primeiro sai primeiro" que calcularStatusPagamentos já usa
+// pra quitação. Roda sobre TODO o histórico (a ordem de consumo do estoque
+// não muda conforme fechamento de comissão de ninguém); o corte por período
+// é aplicado depois, em calcularComissoesProdutores.
+function calcularAtribuicoesVendas(transacoes, cadastros) {
+  const porProduto = {};
+  for (const c of transacoes.compras || []) {
+    if (c.clienteDestino !== "ESTOQUE") continue; // só compra que abasteceu o estoque geral
+    if (!porProduto[c.produto]) porProduto[c.produto] = { lotes: [], vendas: [] };
+    porProduto[c.produto].lotes.push({
+      data: c.data,
+      produtorId: c.produtorId,
+      quantidadeRestante: Number(c.quantidade) || 0,
+    });
+  }
+  for (const v of transacoes.vendas || []) {
+    if (!porProduto[v.produto]) porProduto[v.produto] = { lotes: [], vendas: [] };
+    porProduto[v.produto].vendas.push(v);
+  }
+
+  const atribuicoes = []; // { vendaId, data, produto, produtorId, caixas, valor }
+
+  for (const produto of Object.keys(porProduto)) {
+    const grupo = porProduto[produto];
+    const lotes = [...grupo.lotes].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+    const vendas = [...grupo.vendas].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+    let cursor = 0;
+
+    for (const v of vendas) {
+      const totalVenda = Number(v.quantidade) || 0;
+      let restante = totalVenda;
+      if (restante <= 0) continue;
+      while (restante > 0.0001 && cursor < lotes.length) {
+        const lote = lotes[cursor];
+        if (lote.quantidadeRestante <= 0.0001) {
+          cursor++;
+          continue;
+        }
+        const consumido = Math.min(lote.quantidadeRestante, restante);
+        const fracao = consumido / totalVenda;
+        atribuicoes.push({
+          vendaId: v.id,
+          data: v.data,
+          produto,
+          produtorId: lote.produtorId,
+          caixas: fracao * caixasEquivalentes(v, cadastros.produtos),
+          valor: fracao * Number(v.valorFinal ?? v.valorTotal ?? 0),
+        });
+        lote.quantidadeRestante -= consumido;
+        restante -= consumido;
+        if (lote.quantidadeRestante <= 0.0001) cursor++;
+      }
+      // Se a venda for maior que tudo que já entrou de estoque, o excedente
+      // fica sem lote/produtor (não deveria acontecer com estoque em dia).
+    }
+  }
+  return atribuicoes;
+}
+
+// Pra cada produtor de comissão: soma de caixas e valor vendido atribuído a
+// ele desde o último fechamento (ou desde sempre, se nunca fechou), e a
+// comissão calculada em cima disso. É essa soma "corrente" que aparece na
+// tela de Comissões antes de fechar a semana/mês.
+function calcularComissoesProdutores(transacoes, cadastros) {
+  const atribuicoes = calcularAtribuicoesVendas(transacoes, cadastros);
+  const fechadas = transacoes.comissoesFechadas || [];
+
+  return cadastros.produtores
+    .filter((p) => p.pagamento === "COMISSAO")
+    .map((p) => {
+      const fechamentosDele = fechadas
+        .filter((f) => f.produtorId === p.id)
+        .sort((a, b) => (a.dataFim < b.dataFim ? -1 : a.dataFim > b.dataFim ? 1 : 0));
+      const ultimoFechamento = fechamentosDele[fechamentosDele.length - 1] || null;
+      const desde = ultimoFechamento ? ultimoFechamento.dataFim : null;
+
+      const atribuicoesDele = atribuicoes.filter(
+        (a) => a.produtorId === p.id && (!desde || a.data > desde)
+      );
+      const porProduto = {};
+      let totalCaixas = 0;
+      let totalValor = 0;
+      for (const a of atribuicoesDele) {
+        if (!porProduto[a.produto]) porProduto[a.produto] = { caixas: 0, valor: 0 };
+        porProduto[a.produto].caixas += a.caixas;
+        porProduto[a.produto].valor += a.valor;
+        totalCaixas += a.caixas;
+        totalValor += a.valor;
+      }
+      const percentual = Number(p.comissaoPercentual) || 0;
+      const comissao = totalValor * (percentual / 100);
+      return {
+        produtorId: p.id,
+        nome: p.nome,
+        percentual,
+        desde,
+        porProduto,
+        totalCaixas,
+        totalValor,
+        comissao,
+        historico: fechamentosDele.slice().reverse(),
+      };
+    });
+}
+
 const SEED_CADASTROS = {
   produtos: [
     {
@@ -263,6 +372,7 @@ const SEED_TRANSACOES = {
   pagamentos: [],
   perdas: [],
   diasFinalizados: [], // datas (YYYY-MM-DD) já finalizadas na Conferência — Finalizar não roda 2x no mesmo dia
+  comissoesFechadas: [], // fechamentos (semanais/mensais) de comissão já pagos, por produtor
 };
 
 const CAD_KEY = "gac-cadastros";
@@ -1826,6 +1936,11 @@ export default function GacCeasaApp() {
     });
   }, [cadastros.produtores, transacoes.compras, transacoes.pagamentos]);
 
+  const comissoesProdutores = useMemo(
+    () => calcularComissoesProdutores(transacoes, cadastros),
+    [transacoes.compras, transacoes.vendas, transacoes.comissoesFechadas, cadastros.produtores, cadastros.produtos]
+  );
+
   const dashboard = useMemo(() => {
     const t = todayISO();
     const faturamentoHoje = transacoes.vendas
@@ -2088,10 +2203,12 @@ export default function GacCeasaApp() {
           <ContaCorrenteTab
             contaClientes={contaClientes}
             contaProdutores={contaProdutores}
+            comissoesProdutores={comissoesProdutores}
             transacoes={transacoes}
             cadastros={cadastros}
             persistCadastros={persistCadastros}
             persistTransacoes={persistTransacoes}
+            persistTabelaTransacao={persistTabelaTransacao}
             showToast={showToast}
             setRecibo={setRecibo}
             sessaoEmpresa={sessaoEmpresa}
@@ -2740,6 +2857,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
   const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(true);
   const [pagamento, setPagamento] = useState("DINHEIRO");
   const [chavePix, setChavePix] = useState("");
+  const [comissaoPercentual, setComissaoPercentual] = useState("");
 
   const reset = () => {
     setNome("");
@@ -2749,6 +2867,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
     setTemDescontoFundoRural(true);
     setPagamento("DINHEIRO");
     setChavePix("");
+    setComissaoPercentual("");
   };
 
   if (!open)
@@ -2811,13 +2930,32 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
             <option value="BOLETO">Boleto</option>
             <option value="PIX">PIX</option>
             <option value="DINHEIRO">Dinheiro</option>
+            <option value="COMISSAO">Comissão</option>
           </Select>
           <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
             {pagamento === "BOLETO"
               ? "• Boleto não gera vale de requisição na Finalização"
+              : pagamento === "COMISSAO"
+              ? "✓ Compra entra sem valor (só quantidade) — comissão é calculada em cima do que for vendido"
               : "✓ Gera vale de requisição na Finalização"}
           </div>
         </Field>
+        {pagamento === "COMISSAO" && (
+          <Field label="Comissão (%)">
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              min="0"
+              max="100"
+              value={comissaoPercentual}
+              onChange={(e) => setComissaoPercentual(e.target.value)}
+              placeholder="Ex: 20"
+            />
+            <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+              Percentual pago a este produtor em cima do valor vendido do que ele trouxe.
+            </div>
+          </Field>
+        )}
         {pagamento !== "BOLETO" && (
           <Field label="Chave Pix">
             <TextInput
@@ -2842,6 +2980,7 @@ function QuickAddProdutor({ onAdd, standalone = false }) {
               temDescontoFundoRural,
               pagamento,
               chavePix: chavePix.trim(),
+              comissaoPercentual: Number(comissaoPercentual) || 0,
             });
             reset();
             if (!standalone) setOpen(false);
@@ -3792,6 +3931,14 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
     );
     if (fixo) setCargueiro(fixo.nome);
   }, [clienteDestino, isEstoque]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Produtor de comissão sempre entra pro estoque geral — é de lá que a venda
+  // (e a comissão calculada em cima dela) vai consumir, via FIFO por produto.
+  useEffect(() => {
+    const p = cadastros.produtores.find((p) => p.id === produtorId);
+    if (p?.pagamento === "COMISSAO") setIsEstoque(true);
+  }, [produtorId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const total = (Number(quantidade) || 0) * (Number(valorUnit) || 0);
 
   // Calcula desconto de 1.63% se produtor tem marcado desconto de fundo rural
@@ -3799,6 +3946,10 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const temDesconto = produtorSelecionado?.temDescontoFundoRural; // Desconto conforme configuração
   const desconto = temDesconto ? total * 0.0163 : 0;
   const valorFinal = total - desconto;
+  // Produtor de comissão: a compra entra sem valor (só quantidade/caixas pro
+  // estoque) — o que ele recebe é calculado depois em cima do que for vendido,
+  // na tela de Comissões, e não aqui na compra.
+  const ehComissao = produtorSelecionado?.pagamento === "COMISSAO";
 
   const addProdutor = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
@@ -3840,7 +3991,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
 
   const salvar = async () => {
     if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
-    if (!produtorId || !produto || !quantidade || !valorUnit) return;
+    if (!produtorId || !produto || !quantidade || (!ehComissao && !valorUnit)) return;
     if (!isEstoque && !clienteDestino) {
       showToast("Escolha cliente ou marque Para Estoque");
       return;
@@ -3864,10 +4015,10 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       cargueiro,
       quantidade: Number(quantidade),
       quantidadeCaixas: Number(quantidadeCaixas) || 0,
-      valorUnit: Number(valorUnit),
-      valorTotal: total,
-      desconto: desconto,
-      valorFinal: valorFinal,
+      valorUnit: ehComissao ? 0 : Number(valorUnit),
+      valorTotal: ehComissao ? 0 : total,
+      desconto: ehComissao ? 0 : desconto,
+      valorFinal: ehComissao ? 0 : valorFinal,
       entregaConfirmada: false,
       quantidadeRecebida: null,
       divergencia: null,
@@ -3962,14 +4113,20 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         <QuickAddProdutor onAdd={addProdutor} />
       </Field>
       <div className="mb-3 p-2 rounded" style={{ background: C.amberSoft }}>
-        <label className="flex items-center gap-2 cursor-pointer">
+        <label className="flex items-center gap-2" style={{ cursor: ehComissao ? "default" : "pointer" }}>
           <input
             type="checkbox"
             checked={isEstoque}
+            disabled={ehComissao}
             onChange={(e) => setIsEstoque(e.target.checked)}
           />
           <span style={{ color: C.ink }}>📦 Para Estoque? (compra pra um cliente NÃO marca isso)</span>
         </label>
+        {ehComissao && (
+          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+            🔒 Fixo pra Estoque — produtor de comissão sempre entra pelo estoque geral.
+          </div>
+        )}
       </div>
       <Field label="Para Quem (Cliente Destino)">
         <Select 
@@ -4001,7 +4158,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         </Select>
         <QuickAddProduto onAdd={addProduto} />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className={ehComissao ? "grid grid-cols-1 gap-3" : "grid grid-cols-2 gap-3"}>
         <Field label="Quantidade">
           <TextInput
             type="number"
@@ -4012,16 +4169,18 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
             placeholder="0"
           />
         </Field>
-        <Field label="Valor Unit. (R$)">
-          <TextInput
-            type="number"
-            inputMode="decimal"
-            min="0"
-            value={valorUnit}
-            onChange={(e) => setValorUnit(e.target.value)}
-            placeholder="0,00"
-          />
-        </Field>
+        {!ehComissao && (
+          <Field label="Valor Unit. (R$)">
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              min="0"
+              value={valorUnit}
+              onChange={(e) => setValorUnit(e.target.value)}
+              placeholder="0,00"
+            />
+          </Field>
+        )}
       </div>
       {unidadeDoProduto(produto, cadastros.produtos) !== "CX" && (
         <Field label={`Quantas Caixas deram esses ${quantidade || "0"} ${unidadeDoProduto(produto, cadastros.produtos) === "KG" ? "quilos" : "unidades"}?`}>
@@ -4038,19 +4197,30 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           </div>
         </Field>
       )}
-      <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
-        <div className="text-sm font-bold mb-2" style={{ color: C.ink }}>
-          Subtotal: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
-        </div>
-        {desconto > 0 && (
-          <div className="text-sm mb-2" style={{ color: C.amber500 }}>
-            Desconto (-1.63%): <span style={{ fontFamily: monoFont }}>{fmtMoney(desconto)}</span>
+      {ehComissao ? (
+        <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
+          <div className="text-sm font-bold" style={{ color: C.ink }}>
+            💰 Produtor de Comissão — compra sem valor
           </div>
-        )}
-        <div className="text-sm font-bold" style={{ color: C.green700 }}>
-          Total a Pagar: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
+          <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+            Só entra a quantidade pro estoque. O valor a pagar é calculado depois, em cima do que for vendido (aba Comissões).
+          </div>
         </div>
-      </div>
+      ) : (
+        <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
+          <div className="text-sm font-bold mb-2" style={{ color: C.ink }}>
+            Subtotal: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
+          </div>
+          {desconto > 0 && (
+            <div className="text-sm mb-2" style={{ color: C.amber500 }}>
+              Desconto (-1.63%): <span style={{ fontFamily: monoFont }}>{fmtMoney(desconto)}</span>
+            </div>
+          )}
+          <div className="text-sm font-bold" style={{ color: C.green700 }}>
+            Total a Pagar: <span style={{ fontFamily: monoFont }}>{fmtMoney(valorFinal)}</span>
+          </div>
+        </div>
+      )}
 
       <button
         onClick={() => setMostrarMaisOpcoes((v) => !v)}
@@ -4119,9 +4289,8 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
           !produtorId ||
           !produto ||
           !quantidade ||
-          !valorUnit ||
           Number(quantidade) <= 0 ||
-          Number(valorUnit) <= 0 ||
+          (!ehComissao && (!valorUnit || Number(valorUnit) <= 0)) ||
           !!avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)
         }
       >
@@ -6490,6 +6659,9 @@ function EditarProdutor({ produtor, onSalvar, onCancelar }) {
   const [temDescontoFundoRural, setTemDescontoFundoRural] = useState(!!produtor.temDescontoFundoRural);
   const [pagamento, setPagamento] = useState(produtor.pagamento || "DINHEIRO");
   const [chavePix, setChavePix] = useState(produtor.chavePix || "");
+  const [comissaoPercentual, setComissaoPercentual] = useState(
+    produtor.comissaoPercentual != null ? String(produtor.comissaoPercentual) : ""
+  );
 
   return (
     <Card style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
@@ -6537,8 +6709,27 @@ function EditarProdutor({ produtor, onSalvar, onCancelar }) {
             <option value="BOLETO">Boleto</option>
             <option value="PIX">PIX</option>
             <option value="DINHEIRO">Dinheiro</option>
+            <option value="COMISSAO">Comissão</option>
           </Select>
+          {pagamento === "COMISSAO" && (
+            <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+              Compra deste produtor entra sem valor (só quantidade) — comissão calculada em cima do vendido.
+            </div>
+          )}
         </Field>
+        {pagamento === "COMISSAO" && (
+          <Field label="Comissão (%)">
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              min="0"
+              max="100"
+              value={comissaoPercentual}
+              onChange={(e) => setComissaoPercentual(e.target.value)}
+              placeholder="Ex: 20"
+            />
+          </Field>
+        )}
         {pagamento !== "BOLETO" && (
           <Field label="Chave Pix">
             <TextInput
@@ -6565,6 +6756,7 @@ function EditarProdutor({ produtor, onSalvar, onCancelar }) {
               temDescontoFundoRural,
               pagamento,
               chavePix: chavePix.trim(),
+              comissaoPercentual: Number(comissaoPercentual) || 0,
             });
           }}
         >
@@ -6578,7 +6770,7 @@ function EditarProdutor({ produtor, onSalvar, onCancelar }) {
   );
 }
 
-function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastros, persistCadastros, persistTransacoes, showToast, setRecibo, sessaoEmpresa, sairDaEmpresa }) {
+function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores, transacoes, cadastros, persistCadastros, persistTransacoes, persistTabelaTransacao, showToast, setRecibo, sessaoEmpresa, sairDaEmpresa }) {
   const [view, setView] = useState("clientes");
   const [expanded, setExpanded] = useState(null);
   const [novoOpen, setNovoOpen] = useState(false);
@@ -6666,6 +6858,21 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
           </button>
         ))}
       </div>
+      {comissoesProdutores.length > 0 && (
+        <button
+          onClick={() => setView("comissoes")}
+          className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-bold mb-2"
+          style={{
+            background: view === "comissoes" ? C.green700 : C.cardAlt,
+            color: view === "comissoes" ? "#fff" : C.ink,
+            border: `1px solid ${view === "comissoes" ? C.green700 : C.line}`,
+            fontFamily: displayFont,
+            fontWeight: 800,
+          }}
+        >
+          💰 Comissões
+        </button>
+      )}
       <button
         onClick={() => setView("acesso")}
         className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-bold mb-4"
@@ -6680,6 +6887,16 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
         <Shield size={14} />
         Gerenciar Acesso (Comprador/Vendedor)
       </button>
+
+      {view === "comissoes" && (
+        <ComissoesView
+          comissoesProdutores={comissoesProdutores}
+          transacoes={transacoes}
+          cadastros={cadastros}
+          persistTabelaTransacao={persistTabelaTransacao}
+          showToast={showToast}
+        />
+      )}
 
       {view === "acesso" && (
         <GerenciarAcessoView
@@ -6964,6 +7181,175 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, transacoes, cadastro
           })()}
         </div>
       )}
+    </div>
+  );
+}
+
+// Recibo simples (HTML pra imprimir/salvar) do fechamento de comissão de um
+// produtor — mesma técnica de "baixar HTML e imprimir" já usada nos vales de
+// compra, só que aqui é um resumo do período em vez de uma carga do dia.
+function imprimirFechamentoComissao(c, periodo, cadastros) {
+  const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+  const linhasProduto = Object.entries(c.porProduto)
+    .map(
+      ([produto, dados]) =>
+        `<tr><td>${produto}</td><td style="text-align:right">${dados.caixas.toFixed(1)}</td><td style="text-align:right">${fmtMoney(dados.valor)}</td></tr>`
+    )
+    .join("");
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Comissão - ${produtor?.nome || ""}</title>
+  <style>body{font-family:Arial;margin:24px;color:#1a1a1a}h1{font-size:18px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#1E4A30;color:#fff;padding:8px;text-align:left}td{padding:8px;border-bottom:1px solid #ddd}.total{font-weight:bold;text-align:right;padding:14px;font-size:16px;border-top:3px solid #1E4A30;margin-top:10px}.info{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:12px}</style>
+  </head><body>
+  <h1>💰 VALE DE COMISSÃO — ${periodo === "mensal" ? "Mensal" : "Semanal"}</h1>
+  <div class="info">
+    <div><b>Produtor:</b> ${produtor?.nome || ""}</div>
+    <div><b>Período:</b> ${c.desde ? new Date(c.desde + "T00:00:00").toLocaleDateString("pt-BR") + " até " : "desde o início até "}${new Date().toLocaleDateString("pt-BR")}</div>
+    <div><b>Comissão:</b> ${c.percentual}%</div>
+  </div>
+  <table><thead><tr><th>Produto</th><th style="text-align:right">Caixas</th><th style="text-align:right">Valor Vendido</th></tr></thead>
+  <tbody>${linhasProduto}</tbody></table>
+  <div class="total">Total vendido: ${fmtMoney(c.totalValor)} — Comissão a pagar: ${fmtMoney(c.comissao)}</div>
+  </body></html>`;
+  baixarHtml(html, `Comissao-${slugify(produtor?.nome)}-${todayISO()}.html`);
+}
+
+function ComissoesView({ comissoesProdutores, transacoes, cadastros, persistTabelaTransacao, showToast }) {
+  const [processando, setProcessando] = useState(null);
+  const [historicoAberto, setHistoricoAberto] = useState(null);
+
+  const fechar = async (c, periodo) => {
+    if (c.totalCaixas <= 0) {
+      showToast("Nada a fechar — sem vendas atribuídas a esse produtor ainda");
+      return;
+    }
+    const confirmado = window.confirm(
+      `Fechar comissão ${periodo === "mensal" ? "mensal" : "semanal"} de ${c.nome}?\n\n` +
+        `Caixas vendidas: ${c.totalCaixas.toFixed(1)}\nValor vendido: ${fmtMoney(c.totalValor)}\n` +
+        `Comissão (${c.percentual}%): ${fmtMoney(c.comissao)}\n\n` +
+        `Isso gera um pagamento marcado como pago e zera a contagem — as vendas já contadas não entram de novo no próximo fechamento.`
+    );
+    if (!confirmado) return;
+    setProcessando(c.produtorId);
+    try {
+      const hoje = todayISO();
+      const pagamentoId = uid();
+      const fechamento = {
+        id: uid(),
+        produtorId: c.produtorId,
+        periodo,
+        dataInicio: c.desde || null,
+        dataFim: hoje,
+        caixas: c.totalCaixas,
+        valorVendido: c.totalValor,
+        percentual: c.percentual,
+        valorComissao: c.comissao,
+        pagamentoId,
+      };
+      const pagamento = {
+        id: pagamentoId,
+        data: hoje,
+        produtorId: c.produtorId,
+        valor: c.comissao,
+        tipo: "pagamento",
+        formaPagamento: "COMISSAO",
+        obs: `Comissão ${periodo === "mensal" ? "mensal" : "semanal"} — ${c.totalCaixas.toFixed(1)} cx vendidas`,
+      };
+      await persistTabelaTransacao("comissoesFechadas", [...(transacoes.comissoesFechadas || []), fechamento]);
+      await persistTabelaTransacao("pagamentos", [pagamento, ...transacoes.pagamentos]);
+      imprimirFechamentoComissao(c, periodo, cadastros);
+      showToast("✅ Comissão fechada e vale gerado");
+    } finally {
+      setProcessando(null);
+    }
+  };
+
+  if (comissoesProdutores.length === 0) {
+    return (
+      <Card>
+        <div className="text-sm" style={{ color: C.inkSoft }}>
+          Nenhum produtor cadastrado com pagamento por Comissão ainda.
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {comissoesProdutores.map((c) => (
+        <Card key={c.produtorId}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="font-bold" style={{ color: C.ink, fontFamily: displayFont }}>
+              {c.nome}
+            </div>
+            <div className="text-xs font-bold" style={{ color: C.amber500 }}>
+              {c.percentual}% de comissão
+            </div>
+          </div>
+          <div className="text-xs mb-2" style={{ color: C.inkSoft }}>
+            Período atual: {c.desde ? `desde ${new Date(c.desde + "T00:00:00").toLocaleDateString("pt-BR")}` : "desde o início"}
+          </div>
+          {Object.keys(c.porProduto).length === 0 ? (
+            <div className="text-xs mb-2" style={{ color: C.inkSoft }}>
+              Ainda não há venda atribuída a este produtor no período atual.
+            </div>
+          ) : (
+            <div className="mb-2">
+              {Object.entries(c.porProduto).map(([produto, dados]) => (
+                <div key={produto} className="flex justify-between text-xs py-1" style={{ borderBottom: `1px solid ${C.line}` }}>
+                  <span style={{ color: C.ink }}>{produto}</span>
+                  <span style={{ color: C.inkSoft }}>
+                    {dados.caixas.toFixed(1)} cx · {fmtMoney(dados.valor)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-between text-sm font-bold mb-3" style={{ color: C.green700 }}>
+            <span>Comissão a pagar</span>
+            <span style={{ fontFamily: monoFont }}>{fmtMoney(c.comissao)}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => fechar(c, "semanal")}
+              disabled={processando === c.produtorId}
+              className="px-3 py-2 rounded-lg text-xs font-bold"
+              style={{ background: C.cardAlt, color: C.ink, border: `1px solid ${C.line}` }}
+            >
+              Fechar Semanal
+            </button>
+            <button
+              onClick={() => fechar(c, "mensal")}
+              disabled={processando === c.produtorId}
+              className="px-3 py-2 rounded-lg text-xs font-bold"
+              style={{ background: C.green700, color: "#fff" }}
+            >
+              Fechar Mensal
+            </button>
+          </div>
+          {c.historico.length > 0 && (
+            <div className="mt-3">
+              <button
+                onClick={() => setHistoricoAberto(historicoAberto === c.produtorId ? null : c.produtorId)}
+                className="text-xs font-bold"
+                style={{ color: C.inkSoft }}
+              >
+                {historicoAberto === c.produtorId ? "▲ Ocultar histórico" : `▼ Ver histórico (${c.historico.length})`}
+              </button>
+              {historicoAberto === c.produtorId && (
+                <div className="mt-2">
+                  {c.historico.map((f) => (
+                    <div key={f.id} className="flex justify-between text-xs py-1" style={{ borderBottom: `1px solid ${C.line}` }}>
+                      <span style={{ color: C.inkSoft }}>
+                        {f.periodo === "mensal" ? "Mensal" : "Semanal"} até {new Date(f.dataFim + "T00:00:00").toLocaleDateString("pt-BR")} · {Number(f.caixas).toFixed(1)} cx
+                      </span>
+                      <span style={{ color: C.ink }}>{fmtMoney(f.valorComissao)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      ))}
     </div>
   );
 }
