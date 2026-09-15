@@ -60,6 +60,7 @@ const TABELAS_TRANSACOES = {
   pagamentos: "pagamentos",
   perdas: "perdas",
   diasFinalizados: "dias_finalizados",
+  comissoesFechadas: "comissoes_fechadas",
 };
 
 // ------------------------------------------------------------------------
@@ -103,6 +104,7 @@ function paraLinha(chaveJS, empresaId, r) {
       tem_desconto_fundo_rural: !!r.temDescontoFundoRural,
       pagamento: r.pagamento || "DINHEIRO",
       chave_pix: r.chavePix || "",
+      comissao_percentual: r.comissaoPercentual || 0,
     };
   }
   if (chaveJS === "compradoresVendedores") {
@@ -201,6 +203,21 @@ function paraLinha(chaveJS, empresaId, r) {
     const dataStr = typeof r === "string" ? r : "";
     return { id: dataStr, empresa_id: empresaId, data_finalizada: dataStr };
   }
+  if (chaveJS === "comissoesFechadas") {
+    return {
+      id: r.id,
+      empresa_id: empresaId,
+      produtor_id: r.produtorId || null,
+      periodo: r.periodo || "semanal",
+      data_inicio: r.dataInicio || null,
+      data_fim: r.dataFim || null,
+      caixas: r.caixas || 0,
+      valor_vendido: r.valorVendido || 0,
+      percentual: r.percentual || 0,
+      valor_comissao: r.valorComissao || 0,
+      pagamento_id: r.pagamentoId || null,
+    };
+  }
   return null;
 }
 
@@ -239,6 +256,7 @@ function paraObjeto(chaveJS, linha) {
       temDescontoFundoRural: !!linha.tem_desconto_fundo_rural,
       pagamento: linha.pagamento,
       chavePix: linha.chave_pix,
+      comissaoPercentual: Number(linha.comissao_percentual) || 0,
     };
   }
   if (chaveJS === "compradoresVendedores") {
@@ -329,6 +347,20 @@ function paraObjeto(chaveJS, linha) {
   }
   if (chaveJS === "diasFinalizados") {
     return linha.data_finalizada;
+  }
+  if (chaveJS === "comissoesFechadas") {
+    return {
+      id: linha.id,
+      produtorId: linha.produtor_id,
+      periodo: linha.periodo,
+      dataInicio: linha.data_inicio,
+      dataFim: linha.data_fim,
+      caixas: Number(linha.caixas) || 0,
+      valorVendido: Number(linha.valor_vendido) || 0,
+      percentual: Number(linha.percentual) || 0,
+      valorComissao: Number(linha.valor_comissao) || 0,
+      pagamentoId: linha.pagamento_id,
+    };
   }
   return linha;
 }
