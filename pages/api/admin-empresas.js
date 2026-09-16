@@ -35,13 +35,62 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-      const { empresaId, ehPago } = req.body || {};
+      const { empresaId, ehPago, nomeEmpresa, email } = req.body || {};
       if (!empresaId) return res.status(400).json({ ok: false, erro: "empresaId é obrigatório." });
 
-      const { error } = await admin
-        .from("empresas")
-        .update({ eh_pago: !!ehPago })
-        .eq("id", empresaId);
+      const atualizacoes = {};
+
+      if (typeof ehPago === "boolean") {
+        atualizacoes.eh_pago = ehPago;
+      }
+
+      if (typeof nomeEmpresa === "string" && nomeEmpresa.trim()) {
+        // É esse nome que aparece no topo do vale/pedido de venda — corrige
+        // aqui quando a pessoa cadastrou um nome de brincadeira/apelido de
+        // grupo em vez do nome pelo qual é conhecida no CEASA.
+        atualizacoes.nome_empresa = nomeEmpresa.trim();
+      }
+
+      if (typeof email === "string" && email.trim()) {
+        // Sempre em minúsculo, pra não repetir o problema de reset de senha
+        // que não chega quando o e-mail salvo tem letra maiúscula.
+        const emailNormalizado = email.trim().toLowerCase();
+
+        // Precisa do user_id pra também corrigir o e-mail de login no
+        // Supabase Auth — se só corrigir na tabela empresas, login e reset
+        // de senha continuam usando o e-mail antigo/errado por baixo dos
+        // panos.
+        const { data: empresaAtual, error: erroBusca } = await admin
+          .from("empresas")
+          .select("user_id")
+          .eq("id", empresaId)
+          .maybeSingle();
+
+        if (erroBusca || !empresaAtual) {
+          return res.status(400).json({ ok: false, erro: "Empresa não encontrada." });
+        }
+
+        const { error: erroAuth } = await admin.auth.admin.updateUserById(empresaAtual.user_id, {
+          email: emailNormalizado,
+          email_confirm: true,
+        });
+
+        if (erroAuth) {
+          const msg = erroAuth.message || String(erroAuth);
+          if (msg.toLowerCase().includes("already registered") || msg.toLowerCase().includes("already exists")) {
+            return res.status(400).json({ ok: false, erro: "Esse e-mail já está em uso por outra conta." });
+          }
+          return res.status(400).json({ ok: false, erro: msg });
+        }
+
+        atualizacoes.email = emailNormalizado;
+      }
+
+      if (Object.keys(atualizacoes).length === 0) {
+        return res.status(400).json({ ok: false, erro: "Nada para atualizar." });
+      }
+
+      const { error } = await admin.from("empresas").update(atualizacoes).eq("id", empresaId);
 
       if (error) return res.status(500).json({ ok: false, erro: error.message });
       return res.status(200).json({ ok: true });
