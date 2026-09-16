@@ -5728,9 +5728,16 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
   const minhasEmpresas = meuRegistro?.clientesIds || [];
   const ehMinha = (c) => {
     if (!soMeuNome) return true; // gestor vê tudo
-    if (c.clienteDestino !== "ESTOQUE" && minhasEmpresas.includes(c.clienteDestino)) return true;
-    if (c.cargueiro && norm(c.cargueiro) === norm(soMeuNome)) return true;
-    return false;
+    if (c.clienteDestino !== "ESTOQUE") {
+      // Empresa real: só o vínculo de Gerenciar Acesso decide — nunca o texto
+      // solto do "cargueiro". Sem isso, uma compra de outra empresa que por
+      // acaso tenha o nome do conferente anotado no cargueiro (ex.: ele
+      // carregou aquela caixa também) aparecia pra ele mesmo sem autorização.
+      return minhasEmpresas.includes(c.clienteDestino);
+    }
+    // "Para Estoque" não tem empresa pra vincular, então aqui sim vale o
+    // reforço manual pelo nome no cargueiro.
+    return !!(c.cargueiro && norm(c.cargueiro) === norm(soMeuNome));
   };
 
   const nomeCliente = (id) =>
