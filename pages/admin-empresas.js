@@ -58,6 +58,60 @@ export default function AdminEmpresas() {
     }
   };
 
+  const editarNome = async (empresaId, nomeAtual) => {
+    const novoNome = window.prompt(
+      "Nome da empresa (é esse nome que aparece no topo do vale/pedido de venda):",
+      nomeAtual
+    );
+    if (novoNome === null) return; // cancelou
+    if (!novoNome.trim()) {
+      alert("O nome não pode ficar em branco.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/admin-empresas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": senha },
+        body: JSON.stringify({ empresaId, nomeEmpresa: novoNome.trim() }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        alert("Erro: " + j.erro);
+        return;
+      }
+      carregar(senha);
+    } catch (e) {
+      alert("Erro: " + ((e && e.message) || String(e)));
+    }
+  };
+
+  const editarEmail = async (empresaId, emailAtual) => {
+    const novoEmail = window.prompt(
+      "E-mail de login (usado pra recuperar senha — corrigido também no login, não só aqui):",
+      emailAtual
+    );
+    if (novoEmail === null) return; // cancelou
+    if (!novoEmail.trim() || !novoEmail.includes("@")) {
+      alert("Informe um e-mail válido.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/admin-empresas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": senha },
+        body: JSON.stringify({ empresaId, email: novoEmail.trim() }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        alert("Erro: " + j.erro);
+        return;
+      }
+      carregar(senha);
+    } catch (e) {
+      alert("Erro: " + ((e && e.message) || String(e)));
+    }
+  };
+
   if (!autenticado) {
     return (
       <div style={est.pagina}>
@@ -105,7 +159,7 @@ export default function AdminEmpresas() {
               )}
             </div>
           </div>
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
             {e.eh_pago ? (
               <button
                 style={{ ...est.botaoAcao, background: "#6B1F1F", color: "#fff" }}
@@ -121,6 +175,18 @@ export default function AdminEmpresas() {
                 ✓ Marcar como Pago
               </button>
             )}
+            <button
+              style={{ ...est.botaoAcao, background: "#2A3B4D", color: "#fff" }}
+              onClick={() => editarNome(e.id, e.nome_empresa)}
+            >
+              ✎ Editar nome
+            </button>
+            <button
+              style={{ ...est.botaoAcao, background: "#2A3B4D", color: "#fff" }}
+              onClick={() => editarEmail(e.id, e.email)}
+            >
+              ✎ Editar e-mail
+            </button>
           </div>
         </div>
       ))}
