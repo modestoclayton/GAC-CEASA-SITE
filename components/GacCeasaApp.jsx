@@ -373,6 +373,7 @@ const SEED_TRANSACOES = {
   perdas: [],
   diasFinalizados: [], // datas (YYYY-MM-DD) já finalizadas na Conferência — Finalizar não roda 2x no mesmo dia
   comissoesFechadas: [], // fechamentos (semanais/mensais) de comissão já pagos, por produtor
+  pedidosAumento: [], // solicitações de aumento de quantidade feitas pelo Distribuidor
 };
 
 const CAD_KEY = "gac-cadastros";
@@ -665,6 +666,11 @@ const FUNCOES = [
     id: "entregador",
     label: "Entregador",
     desc: "Acesso só às entregas com o seu nome como carregador.",
+  },
+  {
+    id: "distribuidor",
+    label: "Distribuidor",
+    desc: "Só visualização dos pedidos que são pra você — sem editar. Pode pedir aumento de quantidade.",
   },
 ];
 
@@ -1139,9 +1145,9 @@ function CadastroPerfil({ onSalvar }) {
         </PrimaryButton>
       </Card>
       <p className="text-xs text-center mt-4" style={{ color: C.inkSoft }}>
-        O acesso de Comprador/Vendedor só é liberado pra nomes já cadastrados
-        na lista de autorizados. Conferente e Entregador não precisam de
-        cadastro prévio.
+        O acesso de Comprador/Vendedor e de Distribuidor só é liberado pra
+        nomes já cadastrados na lista de autorizados. Conferente e Entregador
+        não precisam de cadastro prévio.
       </p>
     </div>
   );
@@ -1859,6 +1865,23 @@ export default function GacCeasaApp() {
         }
       }
 
+      if (novoPerfil.funcao === "distribuidor") {
+        // Distribuidor vê preço e valor de uma empresa específica, então
+        // (diferente de Conferente/Entregador) precisa já estar cadastrado
+        // e vinculado — não dá pra deixar qualquer nome entrar aqui.
+        const equipe = normalizarEquipe(cadastros.compradoresVendedores);
+        const jaAutorizado = equipe.some(
+          (e) => e.funcao === "distribuidor" && e.nome.trim().toLowerCase() === nomeNorm
+        );
+        if (!jaAutorizado) {
+          return {
+            ok: false,
+            message:
+              "Seu nome não está cadastrado como Distribuidor. Peça pra quem administra te adicionar em Contas → Gerenciar Acesso.",
+          };
+        }
+      }
+
       setPerfil(novoPerfil);
       let storageFalhou = false;
       try {
@@ -2144,6 +2167,52 @@ export default function GacCeasaApp() {
     );
   }
 
+  /* ---------------- acesso restrito: Distribuidor ---------------- */
+  if (perfil.funcao === "distribuidor") {
+    return (
+      <div
+        className="mx-auto max-w-md lg:max-w-2xl flex flex-col"
+        style={{
+          background: "linear-gradient(160deg, #173A26 0%, #0B2417 55%, #081C11 100%)",
+          minHeight: "100vh",
+          boxShadow: "0 0 60px rgba(0,0,0,0.15)",
+          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        }}
+      >
+        {bannerErro}
+        <PerfilHeader perfil={perfil} titulo="Meus Pedidos" onTrocar={trocarPerfil} nomeEmpresa={cadastros.nomeEmpresa} />
+        <main className="flex-1 px-4 py-4 overflow-y-auto">
+          {/* Distribuidor só visualiza os pedidos dele e pode solicitar aumento — sem editar/excluir nada */}
+          <MeusPedidosDistribuidorTab
+            cadastros={cadastros}
+            transacoes={transacoes}
+            persistTabelaTransacao={persistTabelaTransacao}
+            showToast={showToast}
+            soMeuNome={perfil.nome}
+          />
+          <div className="flex justify-center pt-6 pb-2">
+            <a
+              href="https://noticias.gacceasa.com.br"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold active:scale-95 transition-transform"
+              style={{
+                background: C.cardAlt,
+                border: `1px solid ${C.line}`,
+                color: C.ink,
+                boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+              }}
+            >
+              <Newspaper size={15} style={{ color: C.amber500 }} />
+              Notícias e Cotações
+            </a>
+          </div>
+        </main>
+        {toast && <ToastBanner toast={toast} />}
+      </div>
+    );
+  }
+
   /* ---------------- acesso completo: Comprador/Vendedor ---------------- */
   return (
     <div
@@ -2182,6 +2251,8 @@ export default function GacCeasaApp() {
             contaProdutores={contaProdutores}
             transacoes={transacoes}
             cadastros={cadastros}
+            persistTabelaTransacao={persistTabelaTransacao}
+            showToast={showToast}
           />
         )}
         {tab === "registrar" && (
@@ -2320,11 +2391,12 @@ function NavButton({ active, icon: Icon, label, onClick }) {
 /* ---------------------------------------------------------------------- */
 /* Dashboard Tab                                                          */
 /* ---------------------------------------------------------------------- */
-function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores, transacoes, cadastros }) {
+function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores, transacoes, cadastros, persistTabelaTransacao, showToast }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [alertasAbertos, setAlertasAbertos] = useState(true);
   const [acoesFinAbertas, setAcoesFinAbertas] = useState(false);
-  
+  const [pedidosAbertos, setPedidosAbertos] = useState(true);
+
   // Calcula totais de CX para o dia selecionado
   const comprasDodia = transacoes.compras.filter((c) => c.data === dataSelecionada);
   const vendasDoDia = transacoes.vendas.filter((v) => v.data === dataSelecionada);
@@ -2340,6 +2412,18 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const alertas = estoquePorProduto.filter((e) => e.saldo < e.estoqueMinimo);
   const clientesAcima = contaClientes.filter((c) => c.acima);
   const produtoresPendentes = contaProdutores.filter((p) => p.pendente);
+  const pedidosAumentoPendentes = (transacoes.pedidosAumento || [])
+    .filter((p) => p.status === "pendente")
+    .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+  const nomeClienteDoPedido = (clienteId) => cadastros.clientes.find((c) => c.id === clienteId)?.nome || "—";
+
+  const atenderPedidoAumento = async (pedidoId) => {
+    const next = (transacoes.pedidosAumento || []).map((p) =>
+      p.id === pedidoId ? { ...p, status: "atendida" } : p
+    );
+    await persistTabelaTransacao("pedidosAumento", next);
+    showToast && showToast("Pedido marcado como atendido");
+  };
 
   return (
     <div>
@@ -2418,6 +2502,36 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
               </div>
             </div>
             <Badge tone="danger">repor</Badge>
+          </Card>
+        ))}
+      </ListaCascata>
+
+      <ListaCascata
+        titulo="Pedidos de aumento (Distribuidor)"
+        icon={ArrowUpCircle}
+        count={pedidosAumentoPendentes.length}
+        aberto={pedidosAbertos}
+        onToggle={() => setPedidosAbertos((v) => !v)}
+        vazio="Nenhum pedido de aumento pendente."
+      >
+        {pedidosAumentoPendentes.map((p) => (
+          <Card key={p.id} className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-bold text-sm">{p.produto} · +{p.quantidadeExtra}</div>
+              <div className="text-xs" style={{ color: C.inkSoft }}>
+                {nomeClienteDoPedido(p.clienteId)} · {p.distribuidorNome} · {fmtDate(p.data)}
+              </div>
+              {p.observacao && (
+                <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>"{p.observacao}"</div>
+              )}
+            </div>
+            <button
+              onClick={() => atenderPedidoAumento(p.id)}
+              className="text-xs font-bold px-2.5 py-1.5 rounded-lg flex-shrink-0"
+              style={{ background: C.green700, color: "#fff" }}
+            >
+              ✓ Atendido
+            </button>
           </Card>
         ))}
       </ListaCascata>
@@ -5368,6 +5482,226 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
 }
 
 /* ---------------------------------------------------------------------- */
+/* Meus Pedidos — tela do Distribuidor: só visualização das compras       */
+/* destinadas a ele, com opção de pedir aumento de quantidade.            */
+/* ---------------------------------------------------------------------- */
+function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransacao, showToast, soMeuNome }) {
+  const norm = (s) => (s || "").trim().toLowerCase();
+  const meuRegistro = normalizarEquipe(cadastros.compradoresVendedores).find(
+    (e) => e.funcao === "distribuidor" && norm(e.nome) === norm(soMeuNome)
+  );
+  const minhasEmpresas = meuRegistro?.clientesIds || [];
+
+  const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [produtoPedido, setProdutoPedido] = useState(cadastros.produtos[0]?.nome || "");
+  const [qtdPedido, setQtdPedido] = useState("");
+  const [obsPedido, setObsPedido] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  const minhasCompras = transacoes.compras.filter(
+    (c) => minhasEmpresas.includes(c.clienteDestino) && c.data === dataSelecionada
+  );
+  const produtoresUnicos = [...new Set(minhasCompras.map((c) => c.produtorId))];
+  const totalQtd = minhasCompras.reduce((s, c) => s + caixasEquivalentes(c, cadastros.produtos), 0);
+  const totalValor = minhasCompras.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
+
+  const meusPedidosAumento = (transacoes.pedidosAumento || [])
+    .filter((p) => minhasEmpresas.includes(p.clienteId))
+    .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+
+  const enviarPedido = async () => {
+    if (!produtoPedido || !qtdPedido || Number(qtdPedido) <= 0) {
+      showToast("Escolha o produto e a quantidade");
+      return;
+    }
+    setEnviando(true);
+    const novo = {
+      id: uid(),
+      clienteId: minhasEmpresas[0],
+      distribuidorNome: soMeuNome,
+      produto: produtoPedido,
+      quantidadeExtra: Number(qtdPedido),
+      observacao: obsPedido.trim(),
+      data: todayISO(),
+      status: "pendente",
+      criadoEm: new Date().toISOString(),
+    };
+    await persistTabelaTransacao("pedidosAumento", [novo, ...(transacoes.pedidosAumento || [])]);
+    setQtdPedido("");
+    setObsPedido("");
+    setMostrarForm(false);
+    setEnviando(false);
+    showToast("Pedido enviado!");
+  };
+
+  const cancelarPedido = async (id) => {
+    const next = (transacoes.pedidosAumento || []).filter((p) => p.id !== id);
+    await persistTabelaTransacao("pedidosAumento", next);
+    showToast("Pedido cancelado");
+  };
+
+  if (minhasEmpresas.length === 0) {
+    return (
+      <Card>
+        <p className="text-sm" style={{ color: C.inkSoft }}>
+          Seu acesso de Distribuidor ainda não está vinculado a nenhuma
+          empresa. Peça pra quem administra vincular seu nome em Contas →
+          Gerenciar Acesso.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
+        Aqui você vê o que está sendo comprado pra você — só visualização. Se
+        precisar de mais quantidade ou de algo que ainda não está na lista,
+        use "Pedir aumento".
+      </p>
+
+      <Field label="Ver pedidos deste dia">
+        <TextInput
+          type="date"
+          value={dataSelecionada}
+          onChange={(e) => setDataSelecionada(e.target.value)}
+          max={todayISO()}
+        />
+      </Field>
+
+      <div className="flex items-center justify-between mb-2 mt-3">
+        <SectionTitle icon={Package}>Seus Itens</SectionTitle>
+        <div className="text-xs font-bold" style={{ color: C.inkSoft, fontFamily: monoFont }}>
+          {totalQtd.toFixed(1).replace(/\.0$/, "")} CX · {fmtMoney(totalValor)}
+        </div>
+      </div>
+
+      {minhasCompras.length === 0 ? (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            {dataSelecionada === todayISO()
+              ? "Nenhum item registrado hoje."
+              : `Nenhum item registrado em ${fmtDate(dataSelecionada)}.`}
+          </p>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-2 mb-4">
+          {produtoresUnicos.map((produtorId) => {
+            const produtor = cadastros.produtores.find((p) => p.id === produtorId);
+            const itens = minhasCompras.filter((c) => c.produtorId === produtorId);
+            return (
+              <Card key={produtorId} style={{ background: C.cardAlt }}>
+                <div className="text-xs font-bold mb-2 uppercase tracking-wide" style={{ color: C.green700 }}>
+                  {produtor?.nome || "—"}
+                </div>
+                {itens.map((c) => {
+                  const unidadeItem = unidadeDoProduto(c.produto, cadastros.produtos);
+                  const mostrarCx = unidadeItem !== "CX" && Number(c.quantidadeCaixas) > 0;
+                  return (
+                    <div key={c.id} className="text-sm mb-1 flex justify-between">
+                      <span>
+                        {c.produto} — {c.quantidade} {unidadeItem}
+                        {mostrarCx && ` (${c.quantidadeCaixas} CX)`}
+                      </span>
+                      <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorFinal || c.valorTotal)}</span>
+                    </div>
+                  );
+                })}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {!mostrarForm ? (
+        <PrimaryButton onClick={() => setMostrarForm(true)} icon={ArrowUpCircle} tone="amber">
+          Pedir aumento
+        </PrimaryButton>
+      ) : (
+        <Card style={{ background: C.amberSoft }}>
+          <div className="font-bold text-sm mb-2">Pedir aumento de quantidade</div>
+          <Field label="Produto">
+            <Select value={produtoPedido} onChange={(e) => setProdutoPedido(e.target.value)}>
+              {cadastros.produtos.map((p) => (
+                <option key={p.id} value={p.nome}>
+                  {p.nome}
+                </option>
+              ))}
+            </Select>
+            <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+              Pode escolher um produto que já está na sua lista de hoje (pra
+              aumentar) ou um novo que ainda não pediu.
+            </div>
+          </Field>
+          <Field label="Quantidade extra desejada">
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              value={qtdPedido}
+              onChange={(e) => setQtdPedido(e.target.value)}
+              placeholder="Ex: 10"
+            />
+          </Field>
+          <Field label="Observação (opcional)">
+            <TextInput
+              value={obsPedido}
+              onChange={(e) => setObsPedido(e.target.value)}
+              placeholder="Ex: pra entrega de sexta"
+            />
+          </Field>
+          <div className="flex gap-3 mt-1">
+            <PrimaryButton onClick={enviarPedido} disabled={enviando} icon={Check} tone="green">
+              {enviando ? "Enviando..." : "Enviar Pedido"}
+            </PrimaryButton>
+            <button onClick={() => setMostrarForm(false)} className="text-xs font-bold" style={{ color: C.inkSoft }}>
+              Cancelar
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {meusPedidosAumento.length > 0 && (
+        <>
+          <SectionTitle icon={ArrowUpCircle} style={{ marginTop: 20 }}>
+            Seus Pedidos de Aumento
+          </SectionTitle>
+          <div className="flex flex-col gap-2">
+            {meusPedidosAumento.map((p) => (
+              <Card key={p.id}>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-bold text-sm">
+                      {p.produto} · +{p.quantidadeExtra}
+                    </div>
+                    {p.observacao && (
+                      <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>
+                        "{p.observacao}"
+                      </div>
+                    )}
+                    <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>{fmtDate(p.data)}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge tone={p.status === "pendente" ? "warn" : "ok"}>
+                      {p.status === "pendente" ? "pendente" : "atendido"}
+                    </Badge>
+                    {p.status === "pendente" && (
+                      <button onClick={() => cancelarPedido(p.id)} className="text-xs font-bold" style={{ color: C.rust }}>
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /* Conferência de Compras (cargueiro tica recebimento)                    */
 /* ---------------------------------------------------------------------- */
 function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persistTabelaTransacao, showToast, setRecibo, soMeuNome }) {
@@ -6308,7 +6642,7 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
   const [empresasEmEdicao, setEmpresasEmEdicao] = useState([]);
   const equipe = normalizarEquipe(cadastros.compradoresVendedores);
 
-  const rotuloFuncao = { gestor: "Comprador/Vendedor", conferente: "Conferente", entregador: "Entregador" };
+  const rotuloFuncao = { gestor: "Comprador/Vendedor", conferente: "Conferente", entregador: "Entregador", distribuidor: "Distribuidor" };
   const nomeEmpresa = (clienteId) => cadastros.clientes.find((c) => c.id === clienteId)?.nome || "";
   const clientesOrdenados = [...cadastros.clientes].sort((a, b) =>
     (a.nome || "").localeCompare(b.nome || "", "pt-BR")
@@ -6428,11 +6762,13 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
         <>
           <p className="text-xs mb-3" style={{ color: C.inkSoft }}>
             Cadastre aqui todo mundo que usa o app: Comprador/Vendedor (acesso
-            completo), Conferente e Entregador. Só o Comprador/Vendedor precisa
-            estar na lista pra conseguir entrar — Conferente e Entregador
-            digitam o nome livremente, mas cadastrar eles aqui já vincula as
-            empresas que atendem (pode marcar mais de uma), pra não precisar
-            escolher toda vez na compra.
+            completo), Conferente, Entregador e Distribuidor. Comprador/Vendedor
+            e Distribuidor precisam estar na lista pra conseguir entrar —
+            Conferente e Entregador digitam o nome livremente, mas cadastrar
+            eles aqui já vincula as empresas que atendem (pode marcar mais de
+            uma), pra não precisar escolher toda vez na compra. Pro
+            Distribuidor, marque a empresa (cliente) dele — é só o que ele vai
+            ver, e sem poder editar nada.
           </p>
           <Card className="mb-3">
             <Field label="Nome">
@@ -6447,10 +6783,11 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
                 <option value="gestor">Comprador/Vendedor</option>
                 <option value="conferente">Conferente</option>
                 <option value="entregador">Entregador</option>
+                <option value="distribuidor">Distribuidor</option>
               </Select>
             </Field>
-            {(novaFuncao === "conferente" || novaFuncao === "entregador") && (
-              <Field label="Empresas que atende (marque quantas precisar)">
+            {(novaFuncao === "conferente" || novaFuncao === "entregador" || novaFuncao === "distribuidor") && (
+              <Field label={novaFuncao === "distribuidor" ? "Empresa dele (o que ele vai ver)" : "Empresas que atende (marque quantas precisar)"}>
                 <div className="flex flex-col gap-1.5 rounded-lg p-2" style={{ background: C.cardAlt, border: `1px solid ${C.line}`, maxHeight: 200, overflowY: "auto" }}>
                   {clientesOrdenados.length === 0 ? (
                     <span className="text-xs" style={{ color: C.inkSoft }}>Nenhum cliente cadastrado ainda.</span>
@@ -6468,7 +6805,9 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
                   )}
                 </div>
                 <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
-                  Se não marcar nenhuma, esse conferente não aparece pré-selecionado — dá pra escolher ele manualmente em qualquer compra mesmo assim.
+                  {novaFuncao === "distribuidor"
+                    ? "Sem marcar uma empresa, o Distribuidor entra mas não vê nada — marque a empresa (cliente) que ele representa."
+                    : "Se não marcar nenhuma, esse conferente não aparece pré-selecionado — dá pra escolher ele manualmente em qualquer compra mesmo assim."}
                 </div>
               </Field>
             )}
@@ -6506,7 +6845,7 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
                       </div>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
-                      {(e.funcao === "conferente" || e.funcao === "entregador") && (
+                      {(e.funcao === "conferente" || e.funcao === "entregador" || e.funcao === "distribuidor") && (
                         <button
                           onClick={() => (editandoId === e.id ? setEditandoId(null) : iniciarEdicao(e))}
                           className="text-xs font-bold"
