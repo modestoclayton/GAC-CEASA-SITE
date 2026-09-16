@@ -5604,7 +5604,7 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
                         {c.produto} — {c.quantidade} {unidadeItem}
                         {mostrarCx && ` (${c.quantidadeCaixas} CX)`}
                       </span>
-                      <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorFinal || c.valorTotal)}</span>
+                      <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorUnit)} un</span>
                     </div>
                   );
                 })}
