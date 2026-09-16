@@ -1484,10 +1484,13 @@ function EmpresaLoginView({ onEntrar }) {
           {modo === "cadastro" && (
             <Field label="Nome da Empresa">
               <TextInput
-                placeholder="Ex: Água Branca Distribuidora"
+                placeholder="Ex: Marquinhos Batata"
                 value={nomeEmpresa}
                 onChange={(e) => setNomeEmpresa(e.target.value)}
               />
+              <div className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.5)" }}>
+                Esse é o nome que vai aparecer no topo do vale e do pedido de venda — coloque o nome pelo qual você é conhecido no CEASA, não um apelido de grupo.
+              </div>
             </Field>
           )}
           <Field label="Código de Acesso">
@@ -1497,6 +1500,9 @@ function EmpresaLoginView({ onEntrar }) {
               onChange={(e) => setCodigoAcesso(e.target.value)}
               autoCapitalize="none"
             />
+            <div className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.5)" }}>
+              É só pra você entrar no sistema (como um usuário). Pode ser qualquer palavra — não aparece em nenhum documento.
+            </div>
           </Field>
           {modo === "cadastro" && (
             <Field label="E-mail">
