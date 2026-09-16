@@ -3925,6 +3925,10 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   const [salvando, setSalvando] = useState(false);
   const [mostrarMaisOpcoes, setMostrarMaisOpcoes] = useState(false);
   const [mostrarMaisAcoes, setMostrarMaisAcoes] = useState(false);
+  // Data que a lista "Minhas Compras" mostra pra editar/excluir — antes era
+  // sempre hoje, então a compra de ontem "desaparecia" no dia seguinte e não
+  // dava pra corrigir quantidade/valor na conferência do dia depois.
+  const [dataFiltro, setDataFiltro] = useState(todayISO());
 
   // Conferente fixo por empresa: quando muda o cliente destino, se essa empresa
   // tem um conferente vinculado em Contas → Gerenciar Acesso, já pré-seleciona
@@ -4312,13 +4316,31 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
         </button>
       )}
 
-      <SectionTitle icon={Package} style={{ marginTop: 20 }}>Minhas Compras do Dia</SectionTitle>
+      <SectionTitle icon={Package} style={{ marginTop: 20 }}>Minhas Compras</SectionTitle>
 
-      {transacoes.compras.filter((c) => c.data === todayISO()).length === 0 ? (
-        <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma compra registrada hoje.</p></Card>
+      <Field label="Ver / editar compras deste dia">
+        <TextInput
+          type="date"
+          value={dataFiltro}
+          onChange={(e) => setDataFiltro(e.target.value)}
+          max={todayISO()}
+        />
+        <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+          {dataFiltro === todayISO()
+            ? "Mostrando hoje. Troque a data pra ver e corrigir compras de dias anteriores (ex: na conferência de segunda-feira)."
+            : `Mostrando ${fmtDate(dataFiltro)}.`}
+        </div>
+      </Field>
+
+      {transacoes.compras.filter((c) => c.data === dataFiltro).length === 0 ? (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            {dataFiltro === todayISO() ? "Nenhuma compra registrada hoje." : `Nenhuma compra registrada em ${fmtDate(dataFiltro)}.`}
+          </p>
+        </Card>
       ) : (
         (() => {
-          const comprasHojeTodas = transacoes.compras.filter((c) => c.data === todayISO());
+          const comprasHojeTodas = transacoes.compras.filter((c) => c.data === dataFiltro);
           // Agrupa por destino (ESTOQUE fica sempre em primeiro, depois clientes em ordem alfabética)
           const gruposDestino = [...new Set(comprasHojeTodas.map((c) => c.clienteDestino))].sort((a, b) => {
             if (a === "ESTOQUE") return -1;
@@ -4475,6 +4497,9 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
   const [editPreco, setEditPreco] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [mostrarMaisOpcoes, setMostrarMaisOpcoes] = useState(false);
+  // Mesma lógica da Compra: sem isso, a venda de ontem "desaparecia" no dia
+  // seguinte e não dava pra corrigir quantidade/preço na conferência.
+  const [dataFiltro, setDataFiltro] = useState(todayISO());
   const total = (Number(quantidade) || 0) * (Number(precoUnit) || 0);
   
   // Verifica se cliente tem desconto fundo rural
@@ -4715,13 +4740,31 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
         {salvando ? "Salvando…" : "Registrar Venda"}
       </PrimaryButton>
 
-      <SectionTitle icon={ShoppingBasket} style={{ marginTop: 20 }}>Minhas Vendas do Dia</SectionTitle>
+      <SectionTitle icon={ShoppingBasket} style={{ marginTop: 20 }}>Minhas Vendas</SectionTitle>
 
-      {transacoes.vendas.filter((v) => v.data === todayISO()).length === 0 ? (
-        <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma venda registrada hoje.</p></Card>
+      <Field label="Ver / editar vendas deste dia">
+        <TextInput
+          type="date"
+          value={dataFiltro}
+          onChange={(e) => setDataFiltro(e.target.value)}
+          max={todayISO()}
+        />
+        <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+          {dataFiltro === todayISO()
+            ? "Mostrando hoje. Troque a data pra ver e corrigir vendas de dias anteriores (ex: na conferência de segunda-feira)."
+            : `Mostrando ${fmtDate(dataFiltro)}.`}
+        </div>
+      </Field>
+
+      {transacoes.vendas.filter((v) => v.data === dataFiltro).length === 0 ? (
+        <Card>
+          <p className="text-sm" style={{ color: C.inkSoft }}>
+            {dataFiltro === todayISO() ? "Nenhuma venda registrada hoje." : `Nenhuma venda registrada em ${fmtDate(dataFiltro)}.`}
+          </p>
+        </Card>
       ) : (
         <div className="flex flex-col gap-2">
-          {transacoes.vendas.filter((v) => v.data === todayISO()).map((v) => {
+          {transacoes.vendas.filter((v) => v.data === dataFiltro).map((v) => {
             const cliente = cadastros.clientes.find((c) => c.id === v.clienteId);
             if (editandoId === v.id) {
               return (
