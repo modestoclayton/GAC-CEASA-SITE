@@ -22,6 +22,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, erro: "Código de acesso inválido." });
   }
 
+  // Sempre em minúsculo: evita que "Fulano@gmail.com" e "fulano@gmail.com"
+  // sejam tratados como e-mails diferentes em algum lugar do fluxo (o que já
+  // causou reset de senha que não chegava pra quem digitou com maiúscula).
+  const emailNormalizado = email.trim().toLowerCase();
+
   try {
     const admin = getSupabaseAdmin();
 
@@ -43,7 +48,7 @@ export default async function handler(req, res) {
     // (sem exigir clique em link de confirmação, pra manter o cadastro
     // rápido durante a fase de testes com poucos clientes).
     const { data: novoUsuario, error: erroAuth } = await admin.auth.admin.createUser({
-      email: email.trim(),
+      email: emailNormalizado,
       password: senha,
       email_confirm: true,
     });
@@ -62,7 +67,7 @@ export default async function handler(req, res) {
     const { error: erroInsert } = await admin.from("empresas").insert({
       nome_empresa: nomeEmpresa.trim(),
       codigo_acesso: codigo,
-      email: email.trim(),
+      email: emailNormalizado,
       user_id: novoUsuario.user.id,
     });
 
