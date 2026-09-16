@@ -61,6 +61,7 @@ const TABELAS_TRANSACOES = {
   perdas: "perdas",
   diasFinalizados: "dias_finalizados",
   comissoesFechadas: "comissoes_fechadas",
+  pedidosAumento: "pedidos_aumento",
 };
 
 // ------------------------------------------------------------------------
@@ -218,6 +219,20 @@ function paraLinha(chaveJS, empresaId, r) {
       pagamento_id: r.pagamentoId || null,
     };
   }
+  if (chaveJS === "pedidosAumento") {
+    return {
+      id: r.id,
+      empresa_id: empresaId,
+      cliente_id: r.clienteId || null,
+      distribuidor_nome: r.distribuidorNome || "",
+      produto: r.produto || "",
+      quantidade_extra: r.quantidadeExtra || 0,
+      observacao: r.observacao || "",
+      data: r.data || null,
+      status: r.status || "pendente",
+      criado_em: r.criadoEm || null,
+    };
+  }
   return null;
 }
 
@@ -360,6 +375,19 @@ function paraObjeto(chaveJS, linha) {
       percentual: Number(linha.percentual) || 0,
       valorComissao: Number(linha.valor_comissao) || 0,
       pagamentoId: linha.pagamento_id,
+    };
+  }
+  if (chaveJS === "pedidosAumento") {
+    return {
+      id: linha.id,
+      clienteId: linha.cliente_id,
+      distribuidorNome: linha.distribuidor_nome,
+      produto: linha.produto,
+      quantidadeExtra: Number(linha.quantidade_extra) || 0,
+      observacao: linha.observacao,
+      data: linha.data,
+      status: linha.status,
+      criadoEm: linha.criado_em,
     };
   }
   return linha;
