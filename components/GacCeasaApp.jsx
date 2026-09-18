@@ -374,6 +374,7 @@ const SEED_TRANSACOES = {
   diasFinalizados: [], // datas (YYYY-MM-DD) já finalizadas na Conferência — Finalizar não roda 2x no mesmo dia
   comissoesFechadas: [], // fechamentos (semanais/mensais) de comissão já pagos, por produtor
   pedidosAumento: [], // solicitações de aumento de quantidade feitas pelo Distribuidor
+  pedidosDistribuidor: [], // pedido do Distribuidor feito ANTES da compra (o que ele quer que compre pra ele)
 };
 
 const CAD_KEY = "gac-cadastros";
@@ -2435,6 +2436,7 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const [alertasAbertos, setAlertasAbertos] = useState(true);
   const [acoesFinAbertas, setAcoesFinAbertas] = useState(false);
   const [pedidosAbertos, setPedidosAbertos] = useState(true);
+  const [pedidosDistribuidorAbertos, setPedidosDistribuidorAbertos] = useState(true);
 
   // Calcula totais de CX para o dia selecionado
   const comprasDodia = transacoes.compras.filter((c) => c.data === dataSelecionada);
@@ -2463,6 +2465,23 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
     await persistTabelaTransacao("pedidosAumento", next);
     showToast && showToast("Pedido marcado como atendido");
   };
+
+  // Pedido do Distribuidor feito ANTES da compra (o que ele já pediu pra
+  // aquele dia) — serve de checklist pra você olhar enquanto compra. O
+  // "atendido" aqui não é marcado manualmente: é calculado sozinho
+  // comparando com o que já foi lançado em compras pra empresa dele, no
+  // mesmo dia, com o mesmo nome de produto.
+  const norm = (s) => (s || "").trim().toLowerCase();
+  const pedidosDistribuidorDoDia = (transacoes.pedidosDistribuidor || [])
+    .filter((p) => p.data === dataSelecionada)
+    .map((p) => {
+      const compradoQtd = comprasDodia
+        .filter((c) => c.clienteDestino === p.clienteId && norm(c.produto) === norm(p.produto))
+        .reduce((s, c) => s + (Number(c.quantidade) || 0), 0);
+      const situacao = compradoQtd <= 0 ? "pendente" : compradoQtd < Number(p.quantidade) ? "parcial" : "atendido";
+      return { ...p, compradoQtd, situacao };
+    })
+    .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"));
 
   return (
     <div>
@@ -2571,6 +2590,35 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
             >
               ✓ Atendido
             </button>
+          </Card>
+        ))}
+      </ListaCascata>
+
+      <ListaCascata
+        titulo="Pedidos do Distribuidor"
+        icon={ClipboardCheck}
+        count={pedidosDistribuidorDoDia.filter((p) => p.situacao !== "atendido").length}
+        aberto={pedidosDistribuidorAbertos}
+        onToggle={() => setPedidosDistribuidorAbertos((v) => !v)}
+        vazio="Nenhum pedido de Distribuidor pra esta data."
+      >
+        {pedidosDistribuidorDoDia.map((p) => (
+          <Card key={p.id} className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-bold text-sm">
+                {p.produto} · pediu {p.quantidade}
+                {p.situacao === "parcial" && ` (comprou ${p.compradoQtd})`}
+              </div>
+              <div className="text-xs" style={{ color: C.inkSoft }}>
+                {nomeClienteDoPedido(p.clienteId)} · {p.distribuidorNome}
+              </div>
+              {p.observacao && (
+                <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>"{p.observacao}"</div>
+              )}
+            </div>
+            <Badge tone={p.situacao === "atendido" ? "ok" : p.situacao === "parcial" ? "warn" : "danger"}>
+              {p.situacao === "atendido" ? "comprado" : p.situacao === "parcial" ? "parcial" : "falta comprar"}
+            </Badge>
           </Card>
         ))}
       </ListaCascata>
@@ -5540,6 +5588,19 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   const [obsPedido, setObsPedido] = useState("");
   const [enviando, setEnviando] = useState(false);
 
+  // "Fazer Pedido" — o distribuidor lança AQUI o que ele quer comprado, antes
+  // da compra acontecer, em vez de mandar por papel/WhatsApp. Fica separado
+  // do "Pedir aumento" (aquele é sobre algo que já foi comprado e precisa de
+  // mais). Sem trava de data/hora: pode lançar, editar (cancelar e relançar)
+  // a qualquer momento — inclusive pra um dia futuro, já que a ideia é
+  // avisar ANTES da compra.
+  const [dataNovoPedido, setDataNovoPedido] = useState(todayISO());
+  const [mostrarFormPedido, setMostrarFormPedido] = useState(false);
+  const [produtoNovoPedido, setProdutoNovoPedido] = useState(cadastros.produtos[0]?.nome || "");
+  const [qtdNovoPedido, setQtdNovoPedido] = useState("");
+  const [obsNovoPedido, setObsNovoPedido] = useState("");
+  const [enviandoPedido, setEnviandoPedido] = useState(false);
+
   const minhasCompras = transacoes.compras.filter(
     (c) => minhasEmpresas.includes(c.clienteDestino) && c.data === dataSelecionada
   );
@@ -5556,6 +5617,55 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   const meusPedidosAumento = (transacoes.pedidosAumento || [])
     .filter((p) => minhasEmpresas.includes(p.clienteId))
     .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+
+  // Mesma lógica de comparação do Dashboard: o status não é marcado por
+  // ninguém, é calculado batendo a quantidade pedida com a soma do que já
+  // foi lançado em compras pra essa empresa, nesse dia, com o mesmo nome de
+  // produto (sem diferenciar maiúscula/minúscula).
+  const meusPedidosDistribuidor = (transacoes.pedidosDistribuidor || [])
+    .filter((p) => minhasEmpresas.includes(p.clienteId))
+    .map((p) => {
+      const compradoQtd = transacoes.compras
+        .filter((c) => c.clienteDestino === p.clienteId && c.data === p.data && norm(c.produto) === norm(p.produto))
+        .reduce((s, c) => s + (Number(c.quantidade) || 0), 0);
+      const situacao = compradoQtd <= 0 ? "pendente" : compradoQtd < Number(p.quantidade) ? "parcial" : "atendido";
+      return { ...p, compradoQtd, situacao };
+    })
+    .sort(
+      (a, b) =>
+        (b.data || "").localeCompare(a.data || "") ||
+        (a.produto || "").localeCompare(b.produto || "", "pt-BR")
+    );
+
+  const enviarPedidoDistribuidor = async () => {
+    if (!produtoNovoPedido || !qtdNovoPedido || Number(qtdNovoPedido) <= 0) {
+      showToast("Escolha o produto e a quantidade");
+      return;
+    }
+    setEnviandoPedido(true);
+    const novo = {
+      id: uid(),
+      clienteId: minhasEmpresas[0],
+      distribuidorNome: soMeuNome,
+      produto: produtoNovoPedido,
+      quantidade: Number(qtdNovoPedido),
+      observacao: obsNovoPedido.trim(),
+      data: dataNovoPedido,
+      criadoEm: new Date().toISOString(),
+    };
+    await persistTabelaTransacao("pedidosDistribuidor", [novo, ...(transacoes.pedidosDistribuidor || [])]);
+    setQtdNovoPedido("");
+    setObsNovoPedido("");
+    setMostrarFormPedido(false);
+    setEnviandoPedido(false);
+    showToast("Pedido enviado!");
+  };
+
+  const removerPedidoDistribuidor = async (id) => {
+    const next = (transacoes.pedidosDistribuidor || []).filter((p) => p.id !== id);
+    await persistTabelaTransacao("pedidosDistribuidor", next);
+    showToast("Pedido removido");
+  };
 
   const enviarPedido = async () => {
     if (!produtoPedido || !qtdPedido || Number(qtdPedido) <= 0) {
@@ -5661,6 +5771,99 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
         </div>
       )}
 
+      <div className="flex items-center justify-between mb-2 mt-5">
+        <SectionTitle icon={ClipboardCheck}>Fazer Pedido</SectionTitle>
+      </div>
+      <p className="text-xs mb-2" style={{ color: C.inkSoft }}>
+        Lance aqui o que você quer que seja comprado, antes da compra
+        acontecer — em vez de mandar por papel ou WhatsApp. Depois você vê
+        aqui mesmo o que já foi comprado e o que ainda falta.
+      </p>
+
+      {!mostrarFormPedido ? (
+        <PrimaryButton onClick={() => setMostrarFormPedido(true)} icon={ClipboardCheck} tone="green">
+          Novo Pedido
+        </PrimaryButton>
+      ) : (
+        <Card style={{ background: C.greenSoft || C.cardAlt }}>
+          <div className="font-bold text-sm mb-2">Novo pedido</div>
+          <Field label="Para qual dia">
+            <TextInput
+              type="date"
+              value={dataNovoPedido}
+              onChange={(e) => setDataNovoPedido(e.target.value)}
+            />
+          </Field>
+          <Field label="Produto">
+            <Select value={produtoNovoPedido} onChange={(e) => setProdutoNovoPedido(e.target.value)}>
+              {cadastros.produtos.map((p) => (
+                <option key={p.id} value={p.nome}>
+                  {p.nome}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Quantidade desejada">
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              value={qtdNovoPedido}
+              onChange={(e) => setQtdNovoPedido(e.target.value)}
+              placeholder="Ex: 20"
+            />
+          </Field>
+          <Field label="Observação (opcional)">
+            <TextInput
+              value={obsNovoPedido}
+              onChange={(e) => setObsNovoPedido(e.target.value)}
+              placeholder="Ex: se tiver bem maduro"
+            />
+          </Field>
+          <div className="flex gap-3 mt-1">
+            <PrimaryButton onClick={enviarPedidoDistribuidor} disabled={enviandoPedido} icon={Check} tone="green">
+              {enviandoPedido ? "Enviando..." : "Enviar Pedido"}
+            </PrimaryButton>
+            <button onClick={() => setMostrarFormPedido(false)} className="text-xs font-bold" style={{ color: C.inkSoft }}>
+              Cancelar
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {meusPedidosDistribuidor.length > 0 && (
+        <div className="flex flex-col gap-2 mt-3">
+          {meusPedidosDistribuidor.map((p) => (
+            <Card key={p.id}>
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-bold text-sm">
+                    {p.produto} · pediu {p.quantidade}
+                    {p.situacao === "parcial" && ` (comprou ${p.compradoQtd})`}
+                  </div>
+                  {p.observacao && (
+                    <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>
+                      "{p.observacao}"
+                    </div>
+                  )}
+                  <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>{fmtDate(p.data)}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <Badge tone={p.situacao === "atendido" ? "ok" : p.situacao === "parcial" ? "warn" : "danger"}>
+                    {p.situacao === "atendido" ? "comprado" : p.situacao === "parcial" ? "parcial" : "falta comprar"}
+                  </Badge>
+                  <button onClick={() => removerPedidoDistribuidor(p.id)} className="text-xs font-bold" style={{ color: C.rust }}>
+                    Remover
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-2 mt-5">
+        <SectionTitle icon={ArrowUpCircle}>Pedir Aumento</SectionTitle>
+      </div>
       {!mostrarForm ? (
         <PrimaryButton onClick={() => setMostrarForm(true)} icon={ArrowUpCircle} tone="amber">
           Pedir aumento
