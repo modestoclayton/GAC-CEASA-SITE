@@ -5540,12 +5540,13 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   const minhasCompras = transacoes.compras.filter(
     (c) => minhasEmpresas.includes(c.clienteDestino) && c.data === dataSelecionada
   );
-  // O produtor mantém a ordem em que apareceu na compra (não precisa ser
-  // alfabético) — quem importa achar rápido é o PRODUTO, por isso só ele
-  // é ordenado alfabeticamente dentro de cada bloco de produtor (mais
-  // abaixo). Mesmo que um produtor só tenha 1 ou 2 itens, continua com o
-  // próprio bloco separado (não junta com "outros").
-  const produtoresUnicos = [...new Set(minhasCompras.map((c) => c.produtorId))];
+  // Lista única (não separada por produtor) e ordenada só pelo nome do
+  // produto — igual ao Extrato por Cliente. Assim o produto que ele
+  // procura (ex.: Abacate) sempre aparece no mesmo lugar, não importa de
+  // qual produtor veio; o produtor aparece só como legenda embaixo do item.
+  const itensOrdenados = [...minhasCompras].sort((a, b) =>
+    (a.produto || "").localeCompare(b.produto || "", "pt-BR")
+  );
   const totalQtd = minhasCompras.reduce((s, c) => s + caixasEquivalentes(c, cadastros.produtos), 0);
   const totalValor = minhasCompras.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
 
@@ -5630,29 +5631,27 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
         </Card>
       ) : (
         <div className="flex flex-col gap-2 mb-4">
-          {produtoresUnicos.map((produtorId) => {
-            const produtor = cadastros.produtores.find((p) => p.id === produtorId);
-            const itens = minhasCompras
-              .filter((c) => c.produtorId === produtorId)
-              .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"));
+          {itensOrdenados.map((c) => {
+            const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+            const unidadeItem = unidadeDoProduto(c.produto, cadastros.produtos);
+            const mostrarCx = unidadeItem !== "CX" && Number(c.quantidadeCaixas) > 0;
             return (
-              <Card key={produtorId} style={{ background: C.cardAlt }}>
-                <div className="text-xs font-bold mb-2 uppercase tracking-wide" style={{ color: C.green700 }}>
-                  {produtor?.nome || "—"}
-                </div>
-                {itens.map((c) => {
-                  const unidadeItem = unidadeDoProduto(c.produto, cadastros.produtos);
-                  const mostrarCx = unidadeItem !== "CX" && Number(c.quantidadeCaixas) > 0;
-                  return (
-                    <div key={c.id} className="text-sm mb-1 flex justify-between">
-                      <span>
-                        {c.produto} — {c.quantidade} {unidadeItem}
-                        {mostrarCx && ` (${c.quantidadeCaixas} CX)`}
-                      </span>
-                      <span style={{ fontFamily: monoFont }}>{fmtMoney(c.valorUnit)} un</span>
+              <Card key={c.id} style={{ background: C.cardAlt }}>
+                <div className="flex justify-between">
+                  <div>
+                    <div className="font-bold text-sm">{c.produto}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>{produtor?.nome || "—"}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-sm">
+                      {c.quantidade} {unidadeItem}
+                      {mostrarCx && ` (${c.quantidadeCaixas} CX)`}
                     </div>
-                  );
-                })}
+                    <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
+                      {fmtMoney(c.valorUnit)} un
+                    </div>
+                  </div>
+                </div>
               </Card>
             );
           })}
@@ -5807,11 +5806,16 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
   const pendentes = filtroCliente ? pendentesTodas.filter((c) => c.clienteDestino === filtroCliente) : pendentesTodas;
   const confirmadas = filtroCliente ? confirmadasTodas.filter((c) => c.clienteDestino === filtroCliente) : confirmadasTodas;
 
+  // Mesmo padrão da Folha de Pedido/Carga/Vale: dentro de cada empresa, os
+  // itens vêm em ordem alfabética por produto — assim quem tá conferindo
+  // acha rápido, sem depender de qual produtor entrou primeiro na compra.
   const agruparPorCliente = (lista) =>
     ordenarClientes([...new Set(lista.map((c) => c.clienteDestino))]).map((id) => ({
       id,
       nome: nomeCliente(id),
-      itens: lista.filter((c) => c.clienteDestino === id),
+      itens: lista
+        .filter((c) => c.clienteDestino === id)
+        .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR")),
     }));
 
   // Dados de hoje pra liberar o "Finalizar Conferência" (sempre olha tudo, não só o filtrado)
