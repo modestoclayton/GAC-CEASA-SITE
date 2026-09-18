@@ -1774,6 +1774,45 @@ export default function GacCeasaApp() {
     [fetchDadosEmpresa]
   );
 
+  // Igual a persistCadastros, mas manda pro servidor só a lista que de fato
+  // mudou (ex.: só "compradoresVendedores"), em vez do objeto "cadastros"
+  // inteiro. Sem isso, qualquer tela que chamasse persistCadastros({...cadastros, X})
+  // mandava de volta TODAS as outras listas (produtos, clientes, produtores,
+  // equipe) do jeito que estavam na memória daquele aparelho/aba naquele
+  // momento — e o servidor apaga do banco qualquer linha que não vier nessa
+  // lista. Se alguém cadastrasse um Distribuidor num aparelho e, pouco
+  // depois, uma ação qualquer em OUTRO aparelho/aba (com o cadastro ainda
+  // desatualizado) disparasse persistCadastros, o nome novo era apagado
+  // silenciosamente — mesmo padrão do bug já corrigido em persistTabelaTransacao.
+  const persistTabelaCadastro = useCallback(
+    async (chaveJS, arrayAtualizado) => {
+      setCadastros((atual) => ({ ...atual, [chaveJS]: arrayAtualizado }));
+      try {
+        const res = await fetchDadosEmpresa({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "cadastros", data: { [chaveJS]: arrayAtualizado } }),
+        });
+        const textoBruto = await res.text();
+        let json = null;
+        try {
+          json = JSON.parse(textoBruto);
+        } catch (erroParse) {
+          setErroCarregamento(
+            `DIAGNÓSTICO (salvar ${chaveJS}): Status HTTP ${res.status}. Resposta não é JSON. Primeiros 300 caracteres: ${textoBruto.slice(0, 300)}`
+          );
+          return;
+        }
+        if (!res.ok || !json || !json.ok) {
+          setErroCarregamento(`DIAGNÓSTICO (salvar ${chaveJS}): HTTP ${res.status} — ${(json && json.erro) || "sem detalhe"}`);
+        }
+      } catch (e) {
+        setErroCarregamento(`DIAGNÓSTICO (salvar ${chaveJS}, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
+      }
+    },
+    [fetchDadosEmpresa]
+  );
+
   const persistTransacoes = useCallback(
     async (next) => {
       setTransacoes(next);
@@ -1849,13 +1888,10 @@ export default function GacCeasaApp() {
 
         if (gestores.length === 0) {
           // ninguém cadastrado ainda como gestor: este nome vira a base da lista de autorizados
-          await persistCadastros({
-            ...cadastros,
-            compradoresVendedores: [
-              ...equipe,
-              { id: uid(), nome: novoPerfil.nome.trim(), funcao: "gestor", clientesIds: [] },
-            ],
-          });
+          await persistTabelaCadastro("compradoresVendedores", [
+            ...equipe,
+            { id: uid(), nome: novoPerfil.nome.trim(), funcao: "gestor", clientesIds: [] },
+          ]);
         } else if (!jaAutorizado) {
           return {
             ok: false,
@@ -1902,7 +1938,7 @@ export default function GacCeasaApp() {
       }
       return { ok: true };
     },
-    [cadastros, persistCadastros]
+    [cadastros, persistTabelaCadastro]
   );
 
   const trocarPerfil = useCallback(async () => {
@@ -2260,6 +2296,7 @@ export default function GacCeasaApp() {
             cadastros={cadastros}
             transacoes={transacoes}
             persistCadastros={persistCadastros}
+            persistTabelaCadastro={persistTabelaCadastro}
             persistTransacoes={persistTransacoes}
             persistTabelaTransacao={persistTabelaTransacao}
             showToast={showToast}
@@ -2273,6 +2310,7 @@ export default function GacCeasaApp() {
             transacoes={transacoes}
             persistTransacoes={persistTransacoes}
             persistCadastros={persistCadastros}
+            persistTabelaCadastro={persistTabelaCadastro}
             showToast={showToast}
           />
         )}
@@ -2284,6 +2322,7 @@ export default function GacCeasaApp() {
             transacoes={transacoes}
             cadastros={cadastros}
             persistCadastros={persistCadastros}
+            persistTabelaCadastro={persistTabelaCadastro}
             persistTransacoes={persistTransacoes}
             persistTabelaTransacao={persistTabelaTransacao}
             showToast={showToast}
@@ -2619,7 +2658,7 @@ function BlocoGrandeMovimento({ label, sub, icon: Icon, corA, corB, onClick }) {
   );
 }
 
-function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransacoes, persistTabelaTransacao, showToast, setRecibo }) {
+function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, showToast, setRecibo }) {
   const [tipo, setTipo] = useState(null); // null = menu inicial
 
   if (!tipo) {
@@ -2693,6 +2732,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
           cadastros={cadastros}
           transacoes={transacoes}
           persistCadastros={persistCadastros}
+          persistTabelaCadastro={persistTabelaCadastro}
           persistTransacoes={persistTransacoes}
           showToast={showToast}
           setRecibo={setRecibo}
@@ -2703,6 +2743,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTransaco
           cadastros={cadastros}
           transacoes={transacoes}
           persistCadastros={persistCadastros}
+          persistTabelaCadastro={persistTabelaCadastro}
           persistTransacoes={persistTransacoes}
           showToast={showToast}
           setRecibo={setRecibo}
@@ -4021,7 +4062,7 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
   );
 }
 
-function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
+function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCadastro, persistTransacoes, showToast, setRecibo }) {
   const [produtorId, setProdutorId] = useState(cadastros.produtores[0]?.id || "");
   const [clienteDestino, setClienteDestino] = useState(cadastros.clientes[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
@@ -4077,8 +4118,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
 
   const addProdutor = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
-    const next = { ...cadastros, produtores: [...cadastros.produtores, novo] };
-    await persistCadastros(next);
+    await persistTabelaCadastro("produtores", [...cadastros.produtores, novo]);
     setProdutorId(novo.id);
   };
   const addProduto = async (dados) => {
@@ -4091,8 +4131,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       precoVenda: 0,
       estoqueMinimo: 0,
     };
-    const next = { ...cadastros, produtos: [...cadastros.produtos, novo] };
-    await persistCadastros(next);
+    await persistTabelaCadastro("produtos", [...cadastros.produtos, novo]);
     setProduto(novo.nome);
   };
 
@@ -4109,7 +4148,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
       funcao: "conferente",
       clientesIds: isEstoque ? [] : [clienteDestino],
     };
-    await persistCadastros({ ...cadastros, compradoresVendedores: [...equipeAtual, novo] });
+    await persistTabelaCadastro("compradoresVendedores", [...equipeAtual, novo]);
     setCargueiro(nomeLimpo);
   };
 
@@ -4597,7 +4636,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTransacoes
   );
 }
 
-function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes, showToast, setRecibo }) {
+function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadastro, persistTransacoes, showToast, setRecibo }) {
   const [view, setView] = useState("registrar");
   const [clienteId, setClienteId] = useState(cadastros.clientes[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
@@ -4629,8 +4668,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTransacoes,
 
   const addCliente = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
-    const next = { ...cadastros, clientes: [...cadastros.clientes, novo] };
-    await persistCadastros(next);
+    await persistTabelaCadastro("clientes", [...cadastros.clientes, novo]);
     setClienteId(novo.id);
   };
 
@@ -5502,7 +5540,15 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   const minhasCompras = transacoes.compras.filter(
     (c) => minhasEmpresas.includes(c.clienteDestino) && c.data === dataSelecionada
   );
-  const produtoresUnicos = [...new Set(minhasCompras.map((c) => c.produtorId))];
+  // Mesmo padrão da Folha de Pedido/Extrato: produtor em ordem alfabética,
+  // e dentro de cada produtor, os produtos também em ordem alfabética —
+  // mesmo que aquele produtor só tenha 1 ou 2 itens, ele continua com o
+  // próprio bloco separado (não junta com "outros").
+  const produtoresUnicos = [...new Set(minhasCompras.map((c) => c.produtorId))].sort((a, b) => {
+    const nomeA = cadastros.produtores.find((p) => p.id === a)?.nome || "";
+    const nomeB = cadastros.produtores.find((p) => p.id === b)?.nome || "";
+    return nomeA.localeCompare(nomeB, "pt-BR");
+  });
   const totalQtd = minhasCompras.reduce((s, c) => s + caixasEquivalentes(c, cadastros.produtos), 0);
   const totalValor = minhasCompras.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
 
@@ -5589,7 +5635,9 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
         <div className="flex flex-col gap-2 mb-4">
           {produtoresUnicos.map((produtorId) => {
             const produtor = cadastros.produtores.find((p) => p.id === produtorId);
-            const itens = minhasCompras.filter((c) => c.produtorId === produtorId);
+            const itens = minhasCompras
+              .filter((c) => c.produtorId === produtorId)
+              .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"));
             return (
               <Card key={produtorId} style={{ background: C.cardAlt }}>
                 <div className="text-xs font-bold mb-2 uppercase tracking-wide" style={{ color: C.green700 }}>
@@ -6129,7 +6177,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
 /* ---------------------------------------------------------------------- */
 const MOTIVOS_PERDA = ["Deterioração", "Quebra/Dano", "Vencido", "Outro"];
 
-function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoes, persistCadastros, showToast }) {
+function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoes, persistCadastros, persistTabelaCadastro, showToast }) {
   const [view, setView] = useState("estoque");
   const [q, setQ] = useState("");
   const [editandoProdutoId, setEditandoProdutoId] = useState(null);
@@ -6143,11 +6191,10 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
   const zeradosOuNegativos = buscados.filter((p) => p.saldo <= 0);
 
   const editarProduto = async (dadosAtualizados) => {
-    const next = {
-      ...cadastros,
-      produtos: cadastros.produtos.map((p) => (p.id === dadosAtualizados.id ? dadosAtualizados : p)),
-    };
-    await persistCadastros(next);
+    await persistTabelaCadastro(
+      "produtos",
+      cadastros.produtos.map((p) => (p.id === dadosAtualizados.id ? dadosAtualizados : p))
+    );
     setEditandoProdutoId(null);
     if (showToast) showToast("Produto atualizado");
   };
@@ -6157,11 +6204,7 @@ function EstoqueTab({ estoquePorProduto, cadastros, transacoes, persistTransacoe
       `Excluir "${produto.nome}"?\n\nIsso não apaga compras/vendas já registradas com esse produto — só remove ele da lista de cadastro.`
     );
     if (!confirmado) return;
-    const next = {
-      ...cadastros,
-      produtos: cadastros.produtos.filter((p) => p.id !== produto.id),
-    };
-    await persistCadastros(next);
+    await persistTabelaCadastro("produtos", cadastros.produtos.filter((p) => p.id !== produto.id));
     if (showToast) showToast("Produto excluído");
   };
 
@@ -6489,7 +6532,7 @@ function PerdasTab({ cadastros, transacoes, persistTransacoes, showToast }) {
 /* ---------------------------------------------------------------------- */
 /* Gerenciar Acesso — lista de Compradores/Vendedores autorizados         */
 /* ---------------------------------------------------------------------- */
-function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistTransacoes, sessaoEmpresa }) {
+function DiagnosticoPlanilha({ cadastros, persistCadastros, persistTabelaCadastro, transacoes, persistTransacoes, persistTabelaTransacao, sessaoEmpresa }) {
   const [rodando, setRodando] = useState(false);
   const [resultado, setResultado] = useState(null);
 
@@ -6548,9 +6591,9 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistT
     // com marcadores "DIAG_...". Roda por baixo, sem travar a leitura do resultado.
     try {
       if (tipo === "cadastros") {
-        await persistCadastros({ ...cadastros, [campo]: (cadastros[campo] || []).filter((r) => (typeof r === "string" ? r : r.id) !== marcador) });
+        await persistTabelaCadastro(campo, (cadastros[campo] || []).filter((r) => (typeof r === "string" ? r : r.id) !== marcador));
       } else {
-        await persistTransacoes({ ...transacoes, [campo]: (transacoes[campo] || []).filter((r) => (typeof r === "string" ? r : r.id) !== marcador) });
+        await persistTabelaTransacao(campo, (transacoes[campo] || []).filter((r) => (typeof r === "string" ? r : r.id) !== marcador));
       }
     } catch (e) {
       linhas.push(`(aviso: não consegui limpar o registro de teste automaticamente — ${(e && e.message) || String(e)})`);
@@ -6640,7 +6683,7 @@ function DiagnosticoPlanilha({ cadastros, persistCadastros, transacoes, persistT
   );
 }
 
-function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistTransacoes, showToast, sessaoEmpresa, sairDaEmpresa }) {
+function GerenciarAcessoView({ cadastros, persistCadastros, persistTabelaCadastro, transacoes, persistTransacoes, persistTabelaTransacao, showToast, sessaoEmpresa, sairDaEmpresa }) {
   const [novoNome, setNovoNome] = useState("");
   const [novaFuncao, setNovaFuncao] = useState("gestor");
   const [novasEmpresas, setNovasEmpresas] = useState([]);
@@ -6675,17 +6718,14 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
       funcao: novaFuncao,
       clientesIds: novaFuncao === "gestor" ? [] : novasEmpresas,
     };
-    await persistCadastros({ ...cadastros, compradoresVendedores: [...equipe, novo] });
+    await persistTabelaCadastro("compradoresVendedores", [...equipe, novo]);
     setNovoNome("");
     setNovasEmpresas([]);
     showToast("Adicionado à equipe");
   };
 
   const remover = async (id) => {
-    await persistCadastros({
-      ...cadastros,
-      compradoresVendedores: equipe.filter((e) => e.id !== id),
-    });
+    await persistTabelaCadastro("compradoresVendedores", equipe.filter((e) => e.id !== id));
     showToast("Removido da equipe");
   };
 
@@ -6695,10 +6735,10 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
   };
 
   const salvarEdicao = async (id) => {
-    await persistCadastros({
-      ...cadastros,
-      compradoresVendedores: equipe.map((e) => (e.id === id ? { ...e, clientesIds: empresasEmEdicao } : e)),
-    });
+    await persistTabelaCadastro(
+      "compradoresVendedores",
+      equipe.map((e) => (e.id === id ? { ...e, clientesIds: empresasEmEdicao } : e))
+    );
     setEditandoId(null);
     showToast("Empresas atualizadas");
   };
@@ -6759,8 +6799,10 @@ function GerenciarAcessoView({ cadastros, persistCadastros, transacoes, persistT
         <DiagnosticoPlanilha
           cadastros={cadastros}
           persistCadastros={persistCadastros}
+          persistTabelaCadastro={persistTabelaCadastro}
           transacoes={transacoes}
           persistTransacoes={persistTransacoes}
+          persistTabelaTransacao={persistTabelaTransacao}
           sessaoEmpresa={sessaoEmpresa}
         />
       )}
@@ -7165,7 +7207,7 @@ function EditarProdutor({ produtor, onSalvar, onCancelar }) {
   );
 }
 
-function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores, transacoes, cadastros, persistCadastros, persistTransacoes, persistTabelaTransacao, showToast, setRecibo, sessaoEmpresa, sairDaEmpresa }) {
+function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores, transacoes, cadastros, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, showToast, setRecibo, sessaoEmpresa, sairDaEmpresa }) {
   const [view, setView] = useState("clientes");
   const [expanded, setExpanded] = useState(null);
   const [novoOpen, setNovoOpen] = useState(false);
@@ -7203,28 +7245,25 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores,
 
   const addCliente = async (dados) => {
     const novo = { id: uid(), codigo: Date.now() % 100000, ...dados };
-    const next = { ...cadastros, clientes: [...cadastros.clientes, novo] };
-    await persistCadastros(next);
+    await persistTabelaCadastro("clientes", [...cadastros.clientes, novo]);
     setNovoOpen(false);
     if (showToast) showToast("Cliente cadastrado");
   };
 
   const editarCliente = async (dadosAtualizados) => {
-    const next = {
-      ...cadastros,
-      clientes: cadastros.clientes.map((c) => (c.id === dadosAtualizados.id ? dadosAtualizados : c)),
-    };
-    await persistCadastros(next);
+    await persistTabelaCadastro(
+      "clientes",
+      cadastros.clientes.map((c) => (c.id === dadosAtualizados.id ? dadosAtualizados : c))
+    );
     setEditandoClienteId(null);
     if (showToast) showToast("Cliente atualizado");
   };
 
   const editarProdutor = async (dadosAtualizados) => {
-    const next = {
-      ...cadastros,
-      produtores: cadastros.produtores.map((p) => (p.id === dadosAtualizados.id ? dadosAtualizados : p)),
-    };
-    await persistCadastros(next);
+    await persistTabelaCadastro(
+      "produtores",
+      cadastros.produtores.map((p) => (p.id === dadosAtualizados.id ? dadosAtualizados : p))
+    );
     setEditandoProdutorId(null);
     if (showToast) showToast("Produtor atualizado");
   };
@@ -7297,8 +7336,10 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores,
         <GerenciarAcessoView
           cadastros={cadastros}
           persistCadastros={persistCadastros}
+          persistTabelaCadastro={persistTabelaCadastro}
           transacoes={transacoes}
           persistTransacoes={persistTransacoes}
+          persistTabelaTransacao={persistTabelaTransacao}
           showToast={showToast}
           sessaoEmpresa={sessaoEmpresa}
           sairDaEmpresa={sairDaEmpresa}
