@@ -5540,15 +5540,12 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   const minhasCompras = transacoes.compras.filter(
     (c) => minhasEmpresas.includes(c.clienteDestino) && c.data === dataSelecionada
   );
-  // Mesmo padrão da Folha de Pedido/Extrato: produtor em ordem alfabética,
-  // e dentro de cada produtor, os produtos também em ordem alfabética —
-  // mesmo que aquele produtor só tenha 1 ou 2 itens, ele continua com o
+  // O produtor mantém a ordem em que apareceu na compra (não precisa ser
+  // alfabético) — quem importa achar rápido é o PRODUTO, por isso só ele
+  // é ordenado alfabeticamente dentro de cada bloco de produtor (mais
+  // abaixo). Mesmo que um produtor só tenha 1 ou 2 itens, continua com o
   // próprio bloco separado (não junta com "outros").
-  const produtoresUnicos = [...new Set(minhasCompras.map((c) => c.produtorId))].sort((a, b) => {
-    const nomeA = cadastros.produtores.find((p) => p.id === a)?.nome || "";
-    const nomeB = cadastros.produtores.find((p) => p.id === b)?.nome || "";
-    return nomeA.localeCompare(nomeB, "pt-BR");
-  });
+  const produtoresUnicos = [...new Set(minhasCompras.map((c) => c.produtorId))];
   const totalQtd = minhasCompras.reduce((s, c) => s + caixasEquivalentes(c, cadastros.produtos), 0);
   const totalValor = minhasCompras.reduce((s, c) => s + Number(c.valorFinal || c.valorTotal), 0);
 
