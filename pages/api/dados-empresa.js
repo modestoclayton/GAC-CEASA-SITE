@@ -62,6 +62,7 @@ const TABELAS_TRANSACOES = {
   diasFinalizados: "dias_finalizados",
   comissoesFechadas: "comissoes_fechadas",
   pedidosAumento: "pedidos_aumento",
+  pedidosDistribuidor: "pedidos_distribuidor",
 };
 
 // ------------------------------------------------------------------------
@@ -233,6 +234,24 @@ function paraLinha(chaveJS, empresaId, r) {
       criado_em: r.criadoEm || null,
     };
   }
+  // Pedido feito pelo Distribuidor ANTES da compra (o que ele quer que
+  // compre pra ele naquele dia) — diferente do pedidosAumento, que é pedir
+  // mais depois que a compra do dia já rolou. Não guarda "status": se foi
+  // atendido ou não é calculado sozinho comparando com as compras do dia
+  // (mesma empresa + mesmo produto), não é um campo fixo no banco.
+  if (chaveJS === "pedidosDistribuidor") {
+    return {
+      id: r.id,
+      empresa_id: empresaId,
+      cliente_id: r.clienteId || null,
+      distribuidor_nome: r.distribuidorNome || "",
+      produto: r.produto || "",
+      quantidade: r.quantidade || 0,
+      observacao: r.observacao || "",
+      data: r.data || null,
+      criado_em: r.criadoEm || null,
+    };
+  }
   return null;
 }
 
@@ -387,6 +406,18 @@ function paraObjeto(chaveJS, linha) {
       observacao: linha.observacao,
       data: linha.data,
       status: linha.status,
+      criadoEm: linha.criado_em,
+    };
+  }
+  if (chaveJS === "pedidosDistribuidor") {
+    return {
+      id: linha.id,
+      clienteId: linha.cliente_id,
+      distribuidorNome: linha.distribuidor_nome,
+      produto: linha.produto,
+      quantidade: Number(linha.quantidade) || 0,
+      observacao: linha.observacao,
+      data: linha.data,
       criadoEm: linha.criado_em,
     };
   }
