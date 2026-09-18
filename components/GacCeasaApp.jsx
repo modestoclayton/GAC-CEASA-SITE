@@ -3937,7 +3937,10 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
       {clienteSelecionado && (
         <Card style={{ marginTop: 16 }}>
           <div className="mb-3 font-bold" style={{ color: C.green700 }}>Total: {totalQtd.toFixed(1).replace(/\.0$/, "")} CX</div>
-          {comprasDoCliente.map((c) => {
+          {comprasDoCliente
+            .slice()
+            .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"))
+            .map((c) => {
             const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
             const unidade = unidadeDoProduto(c.produto, cadastros.produtos);
             const cxEquiv = caixasEquivalentes(c, cadastros.produtos);
