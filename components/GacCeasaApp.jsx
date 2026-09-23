@@ -1683,17 +1683,20 @@ export default function GacCeasaApp() {
     [sessaoEmpresa, renovarTokenSessao]
   );
 
-  // ---- carrega da planilha (via API do servidor) + perfil do navegador ----
-  useEffect(() => {
-    if (!sessaoEmpresa) return;
-    (async () => {
-      let cad = SEED_CADASTROS;
-      let tx = SEED_TRANSACOES;
-
+  // Busca cadastros+transações no servidor e atualiza o estado local.
+  // "silencioso=true" é usado pelas atualizações automáticas em segundo
+  // plano (polling, volta de foco, volta de conexão): nesse modo, uma falha
+  // passageira (ex.: sem internet por 2 segundos) não pinta o banner de erro
+  // na tela — só a carga inicial (silencioso=false) mostra diagnóstico,
+  // porque aí sim a pessoa fica sem conseguir usar o app.
+  const carregarDados = useCallback(
+    async (silencioso) => {
+      if (!sessaoEmpresa) return;
       try {
         if (!sessaoEmpresa.accessToken) {
-          setErroCarregamento("DIAGNÓSTICO: sessaoEmpresa existe mas accessToken está vazio/undefined.");
-          setLoading(false);
+          if (!silencioso) {
+            setErroCarregamento("DIAGNÓSTICO: sessaoEmpresa existe mas accessToken está vazio/undefined.");
+          }
           return;
         }
         const res = await fetchDadosEmpresa({});
@@ -1702,29 +1705,46 @@ export default function GacCeasaApp() {
         try {
           json = JSON.parse(textoBruto);
         } catch (erroParse) {
-          setErroCarregamento(
-            `DIAGNÓSTICO: Status HTTP ${res.status}. Resposta não é JSON válido. Primeiros 300 caracteres da resposta: ${textoBruto.slice(0, 300)}`
-          );
-          setLoading(false);
+          if (!silencioso) {
+            setErroCarregamento(
+              `DIAGNÓSTICO: Status HTTP ${res.status}. Resposta não é JSON válido. Primeiros 300 caracteres da resposta: ${textoBruto.slice(0, 300)}`
+            );
+          }
           return;
         }
         if (json.ok) {
-          cad = { ...SEED_CADASTROS, ...json.cadastros, nomeEmpresa: sessaoEmpresa.empresa?.nomeEmpresa || "" };
-          tx = { ...SEED_TRANSACOES, ...json.transacoes };
+          const cad = { ...SEED_CADASTROS, ...json.cadastros, nomeEmpresa: sessaoEmpresa.empresa?.nomeEmpresa || "" };
+          const tx = { ...SEED_TRANSACOES, ...json.transacoes };
+          setCadastros(cad);
+          setTransacoes(tx);
+          if (silencioso) setErroCarregamento(null); // uma atualização automática que deu certo já limpa um erro antigo
         } else if (json.testeExpirado) {
           setErroCarregamento(json.erro);
           sairDaEmpresa();
-          return;
         } else if (res.status === 401) {
           // sessão inválida/expirada — volta pra tela de login
           sairDaEmpresa();
-          return;
-        } else {
+        } else if (!silencioso) {
           setErroCarregamento(`DIAGNÓSTICO: Status HTTP ${res.status}. Erro: ${json.erro || "Erro desconhecido ao carregar dados."}`);
         }
       } catch (e) {
-        setErroCarregamento(`DIAGNÓSTICO (erro de JS antes de chegar no servidor): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
+        if (!silencioso) {
+          setErroCarregamento(`DIAGNÓSTICO (erro de JS antes de chegar no servidor): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
+        }
       }
+    },
+    // sairDaEmpresa não entra nas deps de propósito: é uma função simples
+    // (só limpa sessão) redeclarada a cada render, e colocá-la aqui faria
+    // carregarDados (e o polling que depende dela) reiniciar a cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessaoEmpresa, fetchDadosEmpresa]
+  );
+
+  // ---- carga inicial (via API do servidor) + perfil do navegador ----
+  useEffect(() => {
+    if (!sessaoEmpresa) return;
+    (async () => {
+      await carregarDados(false);
 
       // perfil: privado por navegador/aparelho (quem sou eu aqui)
       let perfilSalvo = null;
@@ -1735,8 +1755,6 @@ export default function GacCeasaApp() {
         /* sem perfil salvo ainda */
       }
 
-      setCadastros(cad);
-      setTransacoes(tx);
       setPerfil(perfilSalvo);
       setLoading(false);
     })();
@@ -1745,6 +1763,37 @@ export default function GacCeasaApp() {
     // automática de token e recarregaria tudo de novo sem necessidade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessaoEmpresa?.empresa?.codigoAcesso]);
+
+  // ---- atualização automática: sem isso, o que é feito num aparelho só ----
+  // aparece nos outros depois de recarregar a página manualmente. Aqui o app
+  // busca os dados de novo sozinho: de tempos em tempos (polling), e também
+  // na hora em que a pessoa volta pra essa aba/app (ela pode ter ficado
+  // minimizada horas) ou quando o aparelho recupera a conexão com a internet.
+  // Não precisa ficar recarregando a página — só os dados são atualizados.
+  useEffect(() => {
+    if (!sessaoEmpresa) return;
+    let emAndamento = false;
+    const atualizar = () => {
+      if (emAndamento) return;
+      emAndamento = true;
+      carregarDados(true).finally(() => {
+        emAndamento = false;
+      });
+    };
+    const intervalo = setInterval(atualizar, 20000); // a cada 20s enquanto o app estiver aberto
+    const aoVoltarFoco = () => {
+      if (document.visibilityState === "visible") atualizar();
+    };
+    document.addEventListener("visibilitychange", aoVoltarFoco);
+    window.addEventListener("focus", atualizar);
+    window.addEventListener("online", atualizar);
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", aoVoltarFoco);
+      window.removeEventListener("focus", atualizar);
+      window.removeEventListener("online", atualizar);
+    };
+  }, [sessaoEmpresa?.empresa?.codigoAcesso, carregarDados]);
 
   const persistCadastros = useCallback(
     async (next) => {
