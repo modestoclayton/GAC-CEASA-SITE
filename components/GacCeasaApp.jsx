@@ -3829,6 +3829,15 @@ function montarDocumentoVales(listaGrupos, dataSelecionada, cadastros) {
         body { background: #fff; }
       }
     </style>
+    <script>
+      // O atributo HTML "disabled" no <style> não é respeitado por todos os
+      // navegadores no carregamento inicial da página (o Chrome ignora e
+      // aplica a folha térmica mesmo assim) — por isso desabilita de novo
+      // aqui, via JS, garantindo que "Folha Grande" seja realmente o modo
+      // que aparece por padrão ao abrir a aba, até alguém clicar num botão.
+      document.getElementById('estilo-termica80').disabled = true;
+      document.getElementById('estilo-termica58').disabled = true;
+    </script>
     </head><body>
     <div class="barra-topo">
       <button class="botao-imprimir" onclick="imprimirModo('grande')">🖨️ Imprimir (Folha Grande)</button>
@@ -4066,6 +4075,15 @@ function montarDocumentoRecibosEntrega(vendasDoDia, dataSelecionada, cadastros) 
         body { background: #fff; }
       }
     </style>
+    <script>
+      // O atributo HTML "disabled" no <style> não é respeitado por todos os
+      // navegadores no carregamento inicial da página (o Chrome ignora e
+      // aplica a folha térmica mesmo assim) — por isso desabilita de novo
+      // aqui, via JS, garantindo que "Folha Grande" seja realmente o modo
+      // que aparece por padrão ao abrir a aba, até alguém clicar num botão.
+      document.getElementById('estilo-termica80').disabled = true;
+      document.getElementById('estilo-termica58').disabled = true;
+    </script>
     </head><body>
     <div class="barra-topo">
       <button class="botao-imprimir" onclick="imprimirModo('grande')">🖨️ Imprimir (Folha Grande)</button>
