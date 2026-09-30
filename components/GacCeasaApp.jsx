@@ -3929,6 +3929,10 @@ function montarCorpoReciboEntrega(venda, dataSelecionada, cadastros, quebraPagin
       ? `<div style="font-size:13px;margin-top:4px;color:#D9861C;">📦 ${entrega.obsCaixas}</div>`
       : "";
 
+  // Um recibo só, sem versão separada pra térmica — o mesmo conteúdo é
+  // reaproveitado nos três formatos de impressão (só o tamanho da página
+  // muda), pra sair igual na térmica e na folha grande, do mesmo jeito que
+  // já saía certinho na térmica quando impresso individualmente pela tela.
   const corpoRecibo = `
     <div class="recibo-conteudo" style="color:#1C1B18;${quebraPagina ? "page-break-after:always;" : ""}">
       <div style="border-bottom:2px solid #1F4A30;padding-bottom:10px;margin-bottom:10px;">
@@ -3970,57 +3974,7 @@ function montarCorpoReciboEntrega(venda, dataSelecionada, cadastros, quebraPagin
       </div>
     </div>`;
 
-  const boxCaixasTermico =
-    entrega.caixasEmprestadas && entrega.obsCaixas
-      ? `<div style="font-size:11px;margin-top:2px;">📦 ${entrega.obsCaixas}</div>`
-      : "";
-
-  const corpoReciboTermico = `
-    <div class="recibo-termica" style="color:#000;font-size:12px;line-height:1.4;${quebraPagina ? "page-break-after:always;" : ""}">
-      <div style="text-align:center;margin-bottom:6px;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
-        <div style="font-size:16px;font-weight:bold;">RECIBO DE ENTREGA</div>
-        <div style="font-size:10px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
-      </div>
-
-      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
-
-      <div style="margin-bottom:4px;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Cliente</div>
-        <div style="font-size:13px;font-weight:bold;">${cliente?.nome || "—"}</div>
-        ${cliente?.cidade ? `<div style="font-size:11px;">${cliente.cidade}</div>` : ""}
-      </div>
-
-      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
-
-      <div style="margin-bottom:4px;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Produto</div>
-        <div style="font-size:13px;font-weight:bold;">${venda.produto}</div>
-        <div style="font-size:12px;">${venda.quantidade} ${unidade}</div>
-      </div>
-
-      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
-
-      <div style="margin-bottom:4px;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Dados de Entrega</div>
-        <div style="font-size:11px;">Placa: ${entrega.placa || "—"}</div>
-        <div style="font-size:11px;">Local: ${entrega.localEntrega || "—"}</div>
-        <div style="font-size:11px;">Carregador: ${entrega.carregador || "—"}</div>
-        <div style="font-size:11px;">Caixas Emprestadas: ${entrega.caixasEmprestadas ? "Sim" : "Não"}</div>
-        ${boxCaixasTermico}
-      </div>
-
-      <div style="border-top:1px dashed #000;margin:8px 0 4px;"></div>
-      <div style="font-size:10px;margin-bottom:16px;">Confiro que recebi a mercadoria acima, na quantidade indicada.</div>
-      <div style="font-size:10px;text-align:center;">_____________________<br/>Assinatura de quem recebeu</div>
-
-      <div style="border-top:1px dashed #000;margin:8px 0 4px;"></div>
-      <div style="font-size:9px;text-align:center;">
-        Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
-      </div>
-    </div>`;
-
-  return { corpoRecibo, corpoReciboTermico };
+  return { corpoRecibo };
 }
 
 // Monta UM ÚNICO documento imprimível com o recibo de entrega (sem
@@ -4028,17 +3982,17 @@ function montarCorpoReciboEntrega(venda, dataSelecionada, cadastros, quebraPagin
 // própria página (quebra de página entre elas), mas tudo abre numa aba só,
 // já pronta pra imprimir ou salvar como PDF de uma vez. É só o que
 // acompanha a carga; o pedido de venda com os valores continua sendo
-// impresso manualmente, venda por venda, quando precisar.
+// impresso manualmente, venda por venda, quando precisar. O recibo é o
+// mesmo nos três formatos — só o tamanho da página muda — pra sair igual
+// na térmica e na folha grande.
 function montarDocumentoRecibosEntrega(vendasDoDia, dataSelecionada, cadastros) {
   const titulo = `Recibos de Entrega — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}`;
 
   let corposRecibo = "";
-  let corposTermico = "";
   vendasDoDia.forEach((venda, idx) => {
     const quebraPagina = idx < vendasDoDia.length - 1;
-    const { corpoRecibo, corpoReciboTermico } = montarCorpoReciboEntrega(venda, dataSelecionada, cadastros, quebraPagina);
+    const { corpoRecibo } = montarCorpoReciboEntrega(venda, dataSelecionada, cadastros, quebraPagina);
     corposRecibo += corpoRecibo;
-    corposTermico += corpoReciboTermico;
   });
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
@@ -4046,7 +4000,6 @@ function montarDocumentoRecibosEntrega(vendasDoDia, dataSelecionada, cadastros) 
       body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
       .barra-topo { position: sticky; top: 0; background: #fff; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: right; }
       .botao-imprimir { background: #1F4A30; color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 14px; cursor: pointer; }
-      .recibo-termica { display: none; }
     </style>
     <style id="estilo-grande">
       @page { size: A4; margin: 15mm; }
@@ -4059,8 +4012,7 @@ function montarDocumentoRecibosEntrega(vendasDoDia, dataSelecionada, cadastros) 
     </style>
     <style id="estilo-termica80" disabled>
       @page { size: 80mm auto; margin: 3mm 2mm; }
-      .recibo-conteudo { display: none !important; }
-      .recibo-termica { display: block !important; width: 100%; font-family: Arial, sans-serif; }
+      .recibo-conteudo { max-width: 100%; width: 100%; margin: 0; padding: 0; }
       @media print {
         .barra-topo { display: none !important; }
         body { background: #fff; }
@@ -4068,8 +4020,7 @@ function montarDocumentoRecibosEntrega(vendasDoDia, dataSelecionada, cadastros) 
     </style>
     <style id="estilo-termica58" disabled>
       @page { size: 58mm auto; margin: 2mm 1mm; }
-      .recibo-conteudo { display: none !important; }
-      .recibo-termica { display: block !important; width: 100%; font-family: Arial, sans-serif; font-size: 11px; }
+      .recibo-conteudo { max-width: 100%; width: 100%; margin: 0; padding: 0; }
       @media print {
         .barra-topo { display: none !important; }
         body { background: #fff; }
@@ -4091,7 +4042,6 @@ function montarDocumentoRecibosEntrega(vendasDoDia, dataSelecionada, cadastros) 
       <button class="botao-imprimir" onclick="imprimirModo('termica58')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 58mm</button>
     </div>
     ${corposRecibo}
-    ${corposTermico}
     <script>
       function imprimirModo(modo) {
         document.getElementById('estilo-grande').disabled = (modo !== 'grande');
