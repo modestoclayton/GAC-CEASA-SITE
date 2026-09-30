@@ -4828,11 +4828,33 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadas
       status,
       entrega: null,
     };
-    await persistTransacoes({ ...transacoes, vendas: [nova, ...transacoes.vendas] });
+    // Se a venda já nasce marcada como "Pago", lança também um recebimento
+    // correspondente — sem isso, a aba Contas (que só olha os recebimentos
+    // de verdade, não esse rótulo) continuava mostrando a venda como pendente.
+    const recebimentoAutomatico =
+      status === "Pago"
+        ? [
+            {
+              id: uid(),
+              data: nova.data,
+              clienteId,
+              valor: valorFinal,
+              tipo: "pagamento",
+              formaPagamento: null,
+              obs: `Recebimento automático — venda de ${produto}`,
+              vendaId: novaId,
+            },
+          ]
+        : [];
+    await persistTransacoes({
+      ...transacoes,
+      vendas: [nova, ...transacoes.vendas],
+      recebimentos: [...recebimentoAutomatico, ...transacoes.recebimentos],
+    });
     setQuantidade("");
     setQuantidadeCaixas("");
     setSalvando(false);
-    showToast("Venda registrada");
+    showToast(status === "Pago" ? "Venda registrada e já lançada como paga em Contas" : "Venda registrada");
     setEntregaVendaId(novaId);
   };
 
@@ -4863,7 +4885,8 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadas
     if (!confirmado) return;
 
     const nextVendas = transacoes.vendas.filter((v) => v.id !== venda.id);
-    await persistTransacoes({ ...transacoes, vendas: nextVendas });
+    const nextRecebimentos = transacoes.recebimentos.filter((r) => r.vendaId !== venda.id);
+    await persistTransacoes({ ...transacoes, vendas: nextVendas, recebimentos: nextRecebimentos });
     showToast("Venda excluída");
   };
 
