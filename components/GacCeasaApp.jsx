@@ -3307,33 +3307,35 @@ function gerarPDFRelatorioMensalCompras(compras, anoMes, cadastros) {
   });
 
   if (clientesOrdenados.length === 0) {
-    const htmlVazio = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório Mensal de Compras</title><style>body{font-family:Arial;margin:20px}</style></head><body><h1>📅 Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</h1><p>Nenhuma compra registrada nesse mês.</p></body></html>`;
-    baixarHtml(htmlVazio, `Relatorio-Mensal-Compras-${anoMes}.html`);
+    const htmlVazio = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório Mensal de Compras</title><style>body{font-family:Arial;margin:0}${BARRA_IMPRESSAO_CSS}</style></head><body>${BARRA_IMPRESSAO_HTML}<div style="padding:20px"><h1>📅 Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</h1><p>Nenhuma compra registrada nesse mês.</p></div></body></html>`;
+    abrirImpressao(htmlVazio, `Relatorio-Mensal-Compras-${anoMes}.html`);
     return;
   }
 
-  // Um PDF/arquivo SEPARADO por cliente — não junta todo mundo num único documento.
+  // Uma página por cliente, com quebra de página entre elas, mas tudo dentro
+  // de UM ÚNICO documento — assim abre numa aba só e imprime/salva como PDF
+  // de uma vez, sem depender de várias janelas separadas.
+  let paginas = "";
   clientesOrdenados.forEach((clienteId, idx) => {
     const cliente = cadastros.clientes.find((c) => c.id === clienteId);
     const dias = porCliente[clienteId];
     const diasOrdenados = Object.keys(dias).sort();
     let totalCliente = 0;
+    const quebra = idx < clientesOrdenados.length - 1 ? "page-break-after:always;" : "";
 
-    let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório Mensal — ${cliente?.nome || clienteId}</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse;margin-bottom:6px}th{background:#1E4A30;color:white;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:10px;margin:18px 0 8px 0;font-weight:bold;font-size:16px}.total-cliente{font-weight:bold;text-align:right;padding:8px;background:#F4F2EA}</style></head><body><h1>📅 Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</h1><p>Fechado no último dia do mês, pra acerto de comissão.</p>`;
-    html += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Data</th><th style="text-align:right">Caixas</th></tr>`;
+    let pagina = `<div style="padding:20px;${quebra}"><h1>📅 Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</h1><p>Fechado no último dia do mês, pra acerto de comissão.</p>`;
+    pagina += `<div class="cliente-title">👤 ${cliente?.nome || clienteId}</div><table><tr><th>Data</th><th style="text-align:right">Caixas</th></tr>`;
     diasOrdenados.forEach((dia) => {
       const cx = dias[dia];
       totalCliente += cx;
-      html += `<tr><td>${fmtDate(dia)}</td><td style="text-align:right">${cx.toFixed(1).replace(/\.0$/, "")} CX</td></tr>`;
+      pagina += `<tr><td>${fmtDate(dia)}</td><td style="text-align:right">${cx.toFixed(1).replace(/\.0$/, "")} CX</td></tr>`;
     });
-    html += `</table><div class="total-cliente">Total do mês — ${cliente?.nome || clienteId}: ${totalCliente.toFixed(1).replace(/\.0$/, "")} CX</div>`;
-    html += `</body></html>`;
-
-    const nomeArquivo = `Relatorio-Mensal-${slugify(cliente?.nome || clienteId)}-${anoMes}.html`;
-    // Pequeno atraso entre cada download pra evitar que o navegador bloqueie
-    // downloads múltiplos disparados muito rápido um atrás do outro.
-    setTimeout(() => baixarHtml(html, nomeArquivo), idx * 350);
+    pagina += `</table><div class="total-cliente">Total do mês — ${cliente?.nome || clienteId}: ${totalCliente.toFixed(1).replace(/\.0$/, "")} CX</div></div>`;
+    paginas += pagina;
   });
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório Mensal de Compras — ${nomeDoMes(anoMes)}</title><style>body{font-family:Arial;margin:0}table{width:100%;border-collapse:collapse;margin-bottom:6px}th{background:#1E4A30;color:white;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:10px;margin:18px 0 8px 0;font-weight:bold;font-size:16px}.total-cliente{font-weight:bold;text-align:right;padding:8px;background:#F4F2EA}${BARRA_IMPRESSAO_CSS}</style></head><body>${BARRA_IMPRESSAO_HTML}${paginas}</body></html>`;
+  abrirImpressao(html, `Relatorio-Mensal-Compras-${anoMes}.html`);
 }
 
 function RelatorioMensalComprasTab({ cadastros, transacoes }) {
@@ -3511,7 +3513,7 @@ function gerarPDFFolhaPedido(compras, dataSelecionada, cadastros) {
     porCliente[c.clienteDestino].push(c);
   });
 
-  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Pedido</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}.total-geral{font-weight:bold;text-align:right;padding:14px;font-size:16px;border-top:3px solid #1E4A30;margin-top:20px}</style></head><body><h1>📋 FOLHA DE PEDIDO</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Pedido</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}.total-geral{font-weight:bold;text-align:right;padding:14px;font-size:16px;border-top:3px solid #1E4A30;margin-top:20px}${BARRA_IMPRESSAO_CSS}</style></head><body>${BARRA_IMPRESSAO_HTML}<h1>📋 FOLHA DE PEDIDO</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
 
   let totalGeral = 0;
   let totalGeralCx = 0;
@@ -3540,13 +3542,7 @@ function gerarPDFFolhaPedido(compras, dataSelecionada, cadastros) {
   }
 
   html += `<p style="margin-top:40px;border-top:2px solid #1E4A30;padding-top:20px">☐ Conferido | ☐ Divergência</p></body></html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Folha-Pedido-${dataSelecionada}.html`;
-  link.click();
-  window.URL.revokeObjectURL(url);
+  abrirImpressao(html, `Folha-Pedido-${dataSelecionada}.html`);
 }
 
 /* GERADOR DE PDF - FOLHA CARGA */
@@ -3557,7 +3553,7 @@ function gerarPDFFolhaCarga(compras, dataSelecionada, cadastros) {
     porCliente[c.clienteDestino].push(c);
   });
 
-  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Carga</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}</style></head><body><h1>📦 FOLHA DE CARGA</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Folha de Carga</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:10px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}${BARRA_IMPRESSAO_CSS}</style></head><body>${BARRA_IMPRESSAO_HTML}<h1>📦 FOLHA DE CARGA</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
 
   Object.entries(porCliente).forEach(([clienteId, itens]) => {
     const cliente = cadastros.clientes.find(c => c.id === clienteId);
@@ -3575,17 +3571,11 @@ function gerarPDFFolhaCarga(compras, dataSelecionada, cadastros) {
   });
 
   html += `<p style="margin-top:40px;border-top:2px solid #1E4A30;padding-top:20px">☐ Conferido | ☐ Divergência</p></body></html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Folha-Carga-${dataSelecionada}.html`;
-  link.click();
-  window.URL.revokeObjectURL(url);
+  abrirImpressao(html, `Folha-Carga-${dataSelecionada}.html`);
 }
 
 /* GERADOR DE PDF - VALES */
-function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
+function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
   const primeiro = itensGrupo[0];
   const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
   const cliente = cadastros.clientes.find((c) => c.id === primeiro.clienteDestino);
@@ -3635,7 +3625,7 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
   </div>`;
 
   const corpoVale = `
-    <div class="vale-conteudo" style="color:#1C1B18;">
+    <div class="vale-conteudo" style="color:#1C1B18;${quebraPagina ? "page-break-after:always;" : ""}">
       <div style="border-bottom:2px solid #1F4A30;padding-bottom:10px;margin-bottom:10px;">
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
         <div style="font-size:19px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
@@ -3722,7 +3712,7 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
       : "";
 
   const corpoValeTermico = `
-    <div class="vale-termica" style="color:#000;font-size:12px;line-height:1.4;">
+    <div class="vale-termica" style="color:#000;font-size:12px;line-height:1.4;${quebraPagina ? "page-break-after:always;" : ""}">
       <div style="text-align:center;margin-bottom:6px;">
         <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
         <div style="font-size:16px;font-weight:bold;">VALE DE COMPRA</div>
@@ -3782,7 +3772,30 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
       </div>
     </div>`;
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vale de Compra - ${produtor?.nome || ""}</title>
+  return { corpoVale, corpoValeTermico };
+}
+
+// Monta UM ÚNICO documento imprimível com todos os vales do grupo — cada
+// fornecedor continua em sua própria página (quebra de página entre eles),
+// mas agora abre numa aba só e imprime/salva como PDF de uma vez.
+function montarDocumentoVales(listaGrupos, dataSelecionada, cadastros) {
+  const primeiro = listaGrupos[0][0];
+  const produtorPrimeiro = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
+  const titulo =
+    listaGrupos.length > 1
+      ? `Vales de Compra — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}`
+      : `Vale de Compra - ${produtorPrimeiro?.nome || ""}`;
+
+  let corposVale = "";
+  let corposTermico = "";
+  listaGrupos.forEach((itensGrupo, idx) => {
+    const quebraPagina = idx < listaGrupos.length - 1;
+    const { corpoVale, corpoValeTermico } = montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina);
+    corposVale += corpoVale;
+    corposTermico += corpoValeTermico;
+  });
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
     <style id="estilo-base">
       body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
       .barra-topo { position: sticky; top: 0; background: #fff; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: right; }
@@ -3798,8 +3811,8 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
         .vale-conteudo { margin: 0; }
       }
     </style>
-    <style id="estilo-termica" disabled>
-      @page { size: auto; margin: 3mm 2mm; }
+    <style id="estilo-termica80" disabled>
+      @page { size: 80mm auto; margin: 3mm 2mm; }
       .vale-conteudo { display: none !important; }
       .vale-termica { display: block !important; width: 100%; font-family: Arial, sans-serif; }
       @media print {
@@ -3807,17 +3820,28 @@ function montarHtmlVale(itensGrupo, dataSelecionada, cadastros) {
         body { background: #fff; }
       }
     </style>
+    <style id="estilo-termica58" disabled>
+      @page { size: 58mm auto; margin: 2mm 1mm; }
+      .vale-conteudo { display: none !important; }
+      .vale-termica { display: block !important; width: 100%; font-family: Arial, sans-serif; font-size: 11px; }
+      @media print {
+        .barra-topo { display: none !important; }
+        body { background: #fff; }
+      }
+    </style>
     </head><body>
     <div class="barra-topo">
-      <button class="botao-imprimir" onclick="imprimirModo('grande')">ð¨ï¸ Imprimir (Folha Grande)</button>
-      <button class="botao-imprimir" onclick="imprimirModo('termica')" style="margin-left:8px;background:#6E6650;">ð¨ï¸ Imprimir (TÃ©rmica Pequena)</button>
+      <button class="botao-imprimir" onclick="imprimirModo('grande')">🖨️ Imprimir (Folha Grande)</button>
+      <button class="botao-imprimir" onclick="imprimirModo('termica80')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 80mm</button>
+      <button class="botao-imprimir" onclick="imprimirModo('termica58')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 58mm</button>
     </div>
-    ${corpoVale}
-    ${corpoValeTermico}
+    ${corposVale}
+    ${corposTermico}
     <script>
       function imprimirModo(modo) {
         document.getElementById('estilo-grande').disabled = (modo !== 'grande');
-        document.getElementById('estilo-termica').disabled = (modo !== 'termica');
+        document.getElementById('estilo-termica80').disabled = (modo !== 'termica80');
+        document.getElementById('estilo-termica58').disabled = (modo !== 'termica58');
         window.print();
       }
     </script>
@@ -3834,6 +3858,25 @@ function baixarHtml(html, nomeArquivo) {
   window.URL.revokeObjectURL(url);
 }
 
+// Barra fixa com o botão de impressão, reaproveitada em todos os relatórios
+// que abrem numa aba nova pra imprimir/salvar como PDF.
+const BARRA_IMPRESSAO_CSS = `.barra-imp{position:sticky;top:0;background:#fff;padding:10px 16px;box-shadow:0 2px 8px rgba(0,0,0,0.15);text-align:right;}@media print{.barra-imp{display:none!important}}`;
+const BARRA_IMPRESSAO_HTML = `<div class="barra-imp"><button onclick="window.print()" style="background:#1F4A30;color:#fff;border:none;padding:10px 20px;border-radius:10px;font-weight:bold;font-size:14px;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button></div>`;
+
+// Abre o relatório numa aba nova, já pronta pra imprimir ou salvar como PDF
+// pelo próprio navegador — em vez de baixar um arquivo .html separado.
+// Se o navegador bloquear a aba (bloqueador de pop-up), cai pro download
+// como plano B, pra nunca falhar silenciosamente sem entregar nada.
+function abrirImpressao(html, nomeArquivoFallback) {
+  const blob = new Blob([html], { type: "text/html" });
+  const url = window.URL.createObjectURL(blob);
+  const janela = window.open(url, "_blank");
+  if (!janela) {
+    baixarHtml(html, nomeArquivoFallback || "documento.html");
+  }
+  setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+}
+
 function slugify(texto) {
   return (texto || "")
     .normalize("NFD")
@@ -3845,7 +3888,8 @@ function slugify(texto) {
 
 function gerarPDFVales(compras, dataSelecionada, cadastros) {
   // Agrupa exatamente como o recibo manual: um vale = um Fornecedor + um Cliente Destino + um Dia.
-  // Cada grupo vira um ARQUIVO SEPARADO — não junta vários vales num único PDF.
+  // Cada fornecedor continua em sua própria página (quebra de página), mas
+  // tudo abre numa aba só, já pronta pra imprimir ou salvar como PDF.
   const grupos = {};
   compras.forEach((c) => {
     const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
@@ -3854,18 +3898,12 @@ function gerarPDFVales(compras, dataSelecionada, cadastros) {
   });
 
   const listaGrupos = Object.values(grupos);
+  if (listaGrupos.length === 0) return;
 
-  listaGrupos.forEach((itensGrupo, idx) => {
-    const primeiro = itensGrupo[0];
-    const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
-    const cliente = cadastros.clientes.find((c) => c.id === primeiro.clienteDestino);
-    const html = montarHtmlVale(itensGrupo, dataSelecionada, cadastros);
-    const nomeArquivo = `Vale-${slugify(produtor?.nome)}-${slugify(cliente?.nome || primeiro.clienteDestino)}-${dataSelecionada}.html`;
-
-    // Pequeno atraso entre cada download pra evitar que o navegador bloqueie
-    // downloads múltiplos disparados muito rápido um atrás do outro.
-    setTimeout(() => baixarHtml(html, nomeArquivo), idx * 350);
-  });
+  const primeiro = listaGrupos[0][0];
+  const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
+  const html = montarDocumentoVales(listaGrupos, dataSelecionada, cadastros);
+  abrirImpressao(html, `Vale-${slugify(produtor?.nome)}-${dataSelecionada}.html`);
 }
 
 /* GERADOR DE PDF - RELATÓRIO DE VENDAS DO DIA */
@@ -3876,7 +3914,7 @@ function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros) {
     porCliente[v.clienteId].push(v);
   });
 
-  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório de Vendas</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:14px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}.total-geral{font-weight:bold;text-align:right;padding:14px;font-size:18px;border-top:3px solid #1E4A30;margin-top:20px}.resumo{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:20px}</style></head><body><h1>🧾 RELATÓRIO DE VENDAS DO DIA</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório de Vendas</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th{background:#1E4A30;color:white;padding:10px}td{padding:8px;border-bottom:1px solid #ddd}.cliente-title{background:#276642;color:white;padding:8px;margin:14px 0 10px 0;font-weight:bold}.total{font-weight:bold;text-align:right;padding:10px}.total-geral{font-weight:bold;text-align:right;padding:14px;font-size:18px;border-top:3px solid #1E4A30;margin-top:20px}.resumo{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:20px}${BARRA_IMPRESSAO_CSS}</style></head><body>${BARRA_IMPRESSAO_HTML}<h1>🧾 RELATÓRIO DE VENDAS DO DIA</h1><p>Data: ${new Date(dataSelecionada+'T00:00:00').toLocaleDateString('pt-BR')}</p>`;
 
   const totalQtdGeral = vendas.reduce(
     (s, v) => s + caixasEquivalentes(v, cadastros.produtos),
@@ -3907,13 +3945,7 @@ function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros) {
 
   html += `<div class="total-geral">Total Geral do Dia: R$ ${totalValorGeral.toFixed(2)}</div>`;
   html += `</body></html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Relatorio-Vendas-${dataSelecionada}.html`;
-  link.click();
-  window.URL.revokeObjectURL(url);
+  abrirImpressao(html, `Relatorio-Vendas-${dataSelecionada}.html`);
 }
 
 /* ====================================================================== */
@@ -7889,8 +7921,10 @@ function imprimirFechamentoComissao(c, periodo, cadastros) {
     )
     .join("");
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Comissão - ${produtor?.nome || ""}</title>
-  <style>body{font-family:Arial;margin:24px;color:#1a1a1a}h1{font-size:18px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#1E4A30;color:#fff;padding:8px;text-align:left}td{padding:8px;border-bottom:1px solid #ddd}.total{font-weight:bold;text-align:right;padding:14px;font-size:16px;border-top:3px solid #1E4A30;margin-top:10px}.info{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:12px}</style>
+  <style>body{font-family:Arial;margin:0;color:#1a1a1a}h1{font-size:18px}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#1E4A30;color:#fff;padding:8px;text-align:left}td{padding:8px;border-bottom:1px solid #ddd}.total{font-weight:bold;text-align:right;padding:14px;font-size:16px;border-top:3px solid #1E4A30;margin-top:10px}.info{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:12px}${BARRA_IMPRESSAO_CSS}</style>
   </head><body>
+  ${BARRA_IMPRESSAO_HTML}
+  <div style="padding:24px">
   <h1>💰 VALE DE COMISSÃO — ${periodo === "mensal" ? "Mensal" : "Semanal"}</h1>
   <div class="info">
     <div><b>Produtor:</b> ${produtor?.nome || ""}</div>
@@ -7900,8 +7934,9 @@ function imprimirFechamentoComissao(c, periodo, cadastros) {
   <table><thead><tr><th>Produto</th><th style="text-align:right">Caixas</th><th style="text-align:right">Valor Vendido</th></tr></thead>
   <tbody>${linhasProduto}</tbody></table>
   <div class="total">Total vendido: ${fmtMoney(c.totalValor)} — Comissão a pagar: ${fmtMoney(c.comissao)}</div>
+  </div>
   </body></html>`;
-  baixarHtml(html, `Comissao-${slugify(produtor?.nome)}-${todayISO()}.html`);
+  abrirImpressao(html, `Comissao-${slugify(produtor?.nome)}-${todayISO()}.html`);
 }
 
 function ComissoesView({ comissoesProdutores, transacoes, cadastros, persistTabelaTransacao, showToast }) {
