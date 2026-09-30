@@ -3906,6 +3906,314 @@ function gerarPDFVales(compras, dataSelecionada, cadastros) {
   abrirImpressao(html, `Vale-${slugify(produtor?.nome)}-${dataSelecionada}.html`);
 }
 
+// Mesma lógica do Vale de Compra, mas do lado da Venda: monta o "Pedido de
+// Venda" (o valinho que acompanha a entrega) de um cliente + dia, incluindo
+// os dados de entrega quando já preenchidos.
+function montarCorpoPedidoVenda(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
+  const primeiro = itensGrupo[0];
+  const cliente = cadastros.clientes.find((c) => c.id === primeiro.clienteId);
+  const itensOrdenados = [...itensGrupo].sort((a, b) => a.produto.localeCompare(b.produto, "pt-BR"));
+
+  const subtotal = itensGrupo.reduce((s, i) => s + Number(i.valorTotal), 0);
+  const desconto = cliente?.temDescontoFundoRural ? subtotal * 0.0163 : 0;
+  const total = subtotal - desconto;
+  const totalCx = itensGrupo.reduce((s, i) => s + caixasEquivalentes(i, cadastros.produtos), 0);
+  const entregaInfo = itensGrupo.find((i) => i.entrega)?.entrega || null;
+
+  const linhasTabela = itensOrdenados
+    .map(
+      (i) => {
+        const unidade = unidadeDoProduto(i.produto, cadastros.produtos);
+        const mostrarCaixas = unidade !== "CX" && Number(i.quantidadeCaixas) > 0;
+        const qtdExibida = mostrarCaixas
+          ? `${i.quantidade} ${unidade} (${i.quantidadeCaixas} CX)`
+          : `${i.quantidade} ${unidade}`;
+        return `
+    <tr>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;">${i.produto}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${qtdExibida}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">R$ ${(i.precoUnit || 0).toFixed(2)}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</td>
+    </tr>`;
+      }
+    )
+    .join("");
+
+  const boxPagamento =
+    cliente && cliente.pagamento
+      ? `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Forma de Pagamento</div>
+          <div style="font-size:15px;font-weight:bold;color:#1F4A30;">${cliente.pagamento}</div>
+          ${
+            cliente.pagamento !== "BOLETO" && cliente.chavePix
+              ? `<div style="font-size:14px;margin-top:4px;color:#1F4A30;"><b>Chave Pix:</b> ${cliente.chavePix}</div>`
+              : ""
+          }
+        </div>`
+      : "";
+
+  const boxEntrega = entregaInfo
+    ? `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
+    <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Dados de Entrega</div>
+    <div style="font-size:13px;">Placa: ${entregaInfo.placa || "—"}</div>
+    <div style="font-size:13px;">Local: ${entregaInfo.localEntrega || "—"}</div>
+    <div style="font-size:13px;">Carregador: ${entregaInfo.carregador || "—"}</div>
+    <div style="font-size:13px;">Caixas Emprestadas: ${entregaInfo.caixasEmprestadas ? "Sim" : "Não"}${
+        entregaInfo.caixasEmprestadas && entregaInfo.obsCaixas ? ` — ${entregaInfo.obsCaixas}` : ""
+      }</div>
+  </div>`
+    : "";
+
+  const corpoPedido = `
+    <div class="pedido-conteudo" style="color:#1C1B18;${quebraPagina ? "page-break-after:always;" : ""}">
+      <div style="border-bottom:2px solid #1F4A30;padding-bottom:10px;margin-bottom:10px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
+        <div style="font-size:19px;font-weight:bold;color:#1F4A30;">Pedido de Venda</div>
+        <div style="font-size:10px;color:#6E6650;margin-top:2px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
+      </div>
+
+      <div style="margin-bottom:10px;">
+        <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Cliente</div>
+        <div style="font-size:14px;font-weight:bold;">${cliente?.nome || "—"}</div>
+        ${cliente?.cidade ? `<div style="font-size:11px;color:#6E6650;">${cliente.cidade}</div>` : ""}
+        ${cliente?.telefone ? `<div style="font-size:11px;color:#6E6650;">Tel: ${cliente.telefone}</div>` : ""}
+      </div>
+
+      ${boxPagamento}
+      ${boxEntrega}
+
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px;">
+        <thead>
+          <tr style="border-bottom:2px solid #1F4A30;">
+            <th style="text-align:left;padding:5px 5px 5px 0;">Produto</th>
+            <th style="text-align:right;padding:5px;">Qtd.</th>
+            <th style="text-align:right;padding:5px;">Vlr Unit.</th>
+            <th style="text-align:right;padding:5px 0 5px 5px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>${linhasTabela}</tbody>
+      </table>
+
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px;align-items:flex-end;">
+        <div style="text-align:left;">
+          <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Total em Caixas</div>
+          <div style="font-size:15px;font-weight:bold;color:#1F4A30;">${totalCx.toFixed(1).replace(/\.0$/, "")} CX</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Subtotal</div>
+          <div style="font-size:12px;font-family:monospace;">R$ ${subtotal.toFixed(2)}</div>
+          ${
+            desconto > 0
+              ? `<div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#D9861C;margin-top:5px;">Desconto (-1.63%)</div>
+                 <div style="font-size:12px;font-family:monospace;color:#D9861C;">-R$ ${desconto.toFixed(2)}</div>`
+              : ""
+          }
+          <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;margin-top:6px;padding-top:5px;border-top:1px solid #D8CBA0;">Total do Pedido</div>
+          <div style="font-size:17px;font-weight:bold;color:#1F4A30;">R$ ${total.toFixed(2)}</div>
+        </div>
+      </div>
+
+      <div style="font-size:9px;text-align:center;margin-top:14px;padding-top:8px;border-top:1px solid #D8CBA0;color:#6E6650;">
+        Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
+      </div>
+    </div>`;
+
+  const itensTermicos = itensOrdenados
+    .map((i) => {
+      const unidade = unidadeDoProduto(i.produto, cadastros.produtos);
+      const mostrarCaixas = unidade !== "CX" && Number(i.quantidadeCaixas) > 0;
+      const qtdExibida = mostrarCaixas
+        ? `${i.quantidade} ${unidade} (${i.quantidadeCaixas} CX)`
+        : `${i.quantidade} ${unidade}`;
+      return `
+        <div style="margin-bottom:6px;">
+          <div style="font-weight:bold;">${i.produto}</div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;">
+            <span>${qtdExibida}</span>
+            <span>R$ ${(i.precoUnit || 0).toFixed(2)}</span>
+            <span style="font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</span>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  const boxPagamentoTermico =
+    cliente && cliente.pagamento
+      ? `<div style="border-top:1px dashed #000;margin:6px 0;"></div>
+         <div style="margin-bottom:4px;">
+           <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Forma de Pagamento</div>
+           <div style="font-size:13px;font-weight:bold;">${cliente.pagamento}</div>
+           ${
+             cliente.pagamento !== "BOLETO" && cliente.chavePix
+               ? `<div style="font-size:11px;margin-top:2px;"><b>Chave Pix:</b> ${cliente.chavePix}</div>`
+               : ""
+           }
+         </div>`
+      : "";
+
+  const boxEntregaTermico = entregaInfo
+    ? `<div style="border-top:1px dashed #000;margin:6px 0;"></div>
+       <div style="margin-bottom:4px;">
+         <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Dados de Entrega</div>
+         <div style="font-size:11px;">Placa: ${entregaInfo.placa || "—"}</div>
+         <div style="font-size:11px;">Local: ${entregaInfo.localEntrega || "—"}</div>
+         <div style="font-size:11px;">Carregador: ${entregaInfo.carregador || "—"}</div>
+         <div style="font-size:11px;">Caixas Emprestadas: ${entregaInfo.caixasEmprestadas ? "Sim" : "Não"}${
+           entregaInfo.caixasEmprestadas && entregaInfo.obsCaixas ? ` — ${entregaInfo.obsCaixas}` : ""
+         }</div>
+       </div>`
+    : "";
+
+  const corpoPedidoTermico = `
+    <div class="pedido-termica" style="color:#000;font-size:12px;line-height:1.4;${quebraPagina ? "page-break-after:always;" : ""}">
+      <div style="text-align:center;margin-bottom:6px;">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
+        <div style="font-size:16px;font-weight:bold;">PEDIDO DE VENDA</div>
+        <div style="font-size:10px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
+      </div>
+
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+
+      <div style="margin-bottom:4px;">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Cliente</div>
+        <div style="font-size:13px;font-weight:bold;">${cliente?.nome || "—"}</div>
+        ${cliente?.cidade ? `<div style="font-size:11px;">${cliente.cidade}</div>` : ""}
+        ${cliente?.telefone ? `<div style="font-size:11px;">Tel: ${cliente.telefone}</div>` : ""}
+      </div>
+
+      ${boxPagamentoTermico}
+      ${boxEntregaTermico}
+
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+
+      <div>${itensTermicos}</div>
+
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+        <span>Total em Caixas</span>
+        <span style="font-weight:bold;">${totalCx.toFixed(1).replace(/\.0$/, "")} CX</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;">
+        <span>Subtotal</span>
+        <span>R$ ${subtotal.toFixed(2)}</span>
+      </div>
+      ${
+        desconto > 0
+          ? `<div style="display:flex;justify-content:space-between;font-size:12px;">
+               <span>Desconto (-1.63%)</span>
+               <span>-R$ ${desconto.toFixed(2)}</span>
+             </div>`
+          : ""
+      }
+      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
+      <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:bold;">
+        <span>TOTAL DO PEDIDO</span>
+        <span>R$ ${total.toFixed(2)}</span>
+      </div>
+
+      <div style="border-top:1px dashed #000;margin:8px 0 4px;"></div>
+      <div style="font-size:9px;text-align:center;">
+        Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
+      </div>
+    </div>`;
+
+  return { corpoPedido, corpoPedidoTermico };
+}
+
+// Monta UM ÚNICO documento imprimível com os pedidos de venda de todos os
+// clientes entregues no dia — cada cliente continua em sua própria página
+// (quebra de página entre eles), mas tudo abre numa aba só, já pronta pra
+// imprimir ou salvar como PDF de uma vez (inclui os dados de entrega quando
+// já preenchidos, já que esse é o "valinho" que acompanha a carga).
+function montarDocumentoPedidosVenda(listaGrupos, dataSelecionada, cadastros) {
+  const primeiro = listaGrupos[0][0];
+  const clientePrimeiro = cadastros.clientes.find((c) => c.id === primeiro.clienteId);
+  const titulo =
+    listaGrupos.length > 1
+      ? `Pedidos de Venda — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}`
+      : `Pedido de Venda - ${clientePrimeiro?.nome || ""}`;
+
+  let corposPedido = "";
+  let corposTermico = "";
+  listaGrupos.forEach((itensGrupo, idx) => {
+    const quebraPagina = idx < listaGrupos.length - 1;
+    const { corpoPedido, corpoPedidoTermico } = montarCorpoPedidoVenda(itensGrupo, dataSelecionada, cadastros, quebraPagina);
+    corposPedido += corpoPedido;
+    corposTermico += corpoPedidoTermico;
+  });
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
+    <style id="estilo-base">
+      body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
+      .barra-topo { position: sticky; top: 0; background: #fff; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: right; }
+      .botao-imprimir { background: #1F4A30; color: #fff; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 14px; cursor: pointer; }
+      .pedido-termica { display: none; }
+    </style>
+    <style id="estilo-grande">
+      @page { size: A4 landscape; margin: 8mm; }
+      .pedido-conteudo { width: 140mm; margin: 0 auto; padding: 8mm 8mm 10mm; }
+      @media print {
+        .barra-topo { display: none !important; }
+        body { background: #fff; }
+        .pedido-conteudo { margin: 0; }
+      }
+    </style>
+    <style id="estilo-termica80" disabled>
+      @page { size: 80mm auto; margin: 3mm 2mm; }
+      .pedido-conteudo { display: none !important; }
+      .pedido-termica { display: block !important; width: 100%; font-family: Arial, sans-serif; }
+      @media print {
+        .barra-topo { display: none !important; }
+        body { background: #fff; }
+      }
+    </style>
+    <style id="estilo-termica58" disabled>
+      @page { size: 58mm auto; margin: 2mm 1mm; }
+      .pedido-conteudo { display: none !important; }
+      .pedido-termica { display: block !important; width: 100%; font-family: Arial, sans-serif; font-size: 11px; }
+      @media print {
+        .barra-topo { display: none !important; }
+        body { background: #fff; }
+      }
+    </style>
+    </head><body>
+    <div class="barra-topo">
+      <button class="botao-imprimir" onclick="imprimirModo('grande')">🖨️ Imprimir (Folha Grande)</button>
+      <button class="botao-imprimir" onclick="imprimirModo('termica80')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 80mm</button>
+      <button class="botao-imprimir" onclick="imprimirModo('termica58')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 58mm</button>
+    </div>
+    ${corposPedido}
+    ${corposTermico}
+    <script>
+      function imprimirModo(modo) {
+        document.getElementById('estilo-grande').disabled = (modo !== 'grande');
+        document.getElementById('estilo-termica80').disabled = (modo !== 'termica80');
+        document.getElementById('estilo-termica58').disabled = (modo !== 'termica58');
+        window.print();
+      }
+    </script>
+    </body></html>`;
+}
+
+// Agrupa por Cliente + Dia — igual ao recibo manual de uma venda — e imprime
+// o pedido/valinho de entrega de TODOS os clientes atendidos no dia de uma
+// vez só, numa aba só.
+function gerarPDFPedidosVenda(vendas, dataSelecionada, cadastros) {
+  const grupos = {};
+  vendas.forEach((v) => {
+    const chave = `${v.clienteId}__${v.data}`;
+    if (!grupos[chave]) grupos[chave] = [];
+    grupos[chave].push(v);
+  });
+
+  const listaGrupos = Object.values(grupos);
+  if (listaGrupos.length === 0) return;
+
+  const html = montarDocumentoPedidosVenda(listaGrupos, dataSelecionada, cadastros);
+  abrirImpressao(html, `Pedidos-Entrega-${dataSelecionada}.html`);
+}
+
 /* GERADOR DE PDF - RELATÓRIO DE VENDAS DO DIA */
 function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros) {
   const porCliente = {};
@@ -5119,6 +5427,15 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadas
             );
           })}
         </div>
+      )}
+      {transacoes.vendas.filter((v) => v.data === dataFiltro).length > 0 && (
+        <button
+          onClick={() => gerarPDFPedidosVenda(transacoes.vendas.filter((v) => v.data === dataFiltro), dataFiltro, cadastros)}
+          className="w-full mt-3 px-4 py-3 rounded-xl font-bold text-sm text-white"
+          style={{ background: C.green700 }}
+        >
+          🖨️ Imprimir Entregas do Dia
+        </button>
       )}
           </>
         )}
