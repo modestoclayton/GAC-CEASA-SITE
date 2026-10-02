@@ -4010,44 +4010,72 @@ function montarDocumentoRecibosEntrega(vendasDoDia, dataSelecionada, cadastros) 
         .recibo-conteudo { margin: 0; }
       }
     </style>
-    <style id="estilo-termica80" disabled>
-      @page { size: 80mm auto; margin: 3mm 2mm; }
-      .recibo-conteudo { max-width: 100%; width: 100%; margin: 0; padding: 0; }
-      @media print {
-        .barra-topo { display: none !important; }
-        body { background: #fff; }
-      }
-    </style>
-    <style id="estilo-termica58" disabled>
-      @page { size: 58mm auto; margin: 2mm 1mm; }
-      .recibo-conteudo { max-width: 100%; width: 100%; margin: 0; padding: 0; }
-      @media print {
-        .barra-topo { display: none !important; }
-        body { background: #fff; }
-      }
-    </style>
-    <script>
-      // O atributo HTML "disabled" no <style> não é respeitado por todos os
-      // navegadores no carregamento inicial da página (o Chrome ignora e
-      // aplica a folha térmica mesmo assim) — por isso desabilita de novo
-      // aqui, via JS, garantindo que "Folha Grande" seja realmente o modo
-      // que aparece por padrão ao abrir a aba, até alguém clicar num botão.
-      document.getElementById('estilo-termica80').disabled = true;
-      document.getElementById('estilo-termica58').disabled = true;
-    </script>
     </head><body>
     <div class="barra-topo">
       <button class="botao-imprimir" onclick="imprimirModo('grande')">🖨️ Imprimir (Folha Grande)</button>
-      <button class="botao-imprimir" onclick="imprimirModo('termica80')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 80mm</button>
-      <button class="botao-imprimir" onclick="imprimirModo('termica58')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 58mm</button>
+      <button class="botao-imprimir" onclick="imprimirTermicaSeparada('termica80')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 80mm</button>
+      <button class="botao-imprimir" onclick="imprimirTermicaSeparada('termica58')" style="margin-left:8px;background:#6E6650;">🖨️ Térmica 58mm</button>
     </div>
     ${corposRecibo}
     <script>
       function imprimirModo(modo) {
         document.getElementById('estilo-grande').disabled = (modo !== 'grande');
-        document.getElementById('estilo-termica80').disabled = (modo !== 'termica80');
-        document.getElementById('estilo-termica58').disabled = (modo !== 'termica58');
         window.print();
+      }
+
+      // A impressora térmica trata o lote inteiro como um rolo contínuo e só
+      // corta uma vez, no final de todo o trabalho — por isso, com todos os
+      // recibos numa página só, não saía corte entre cada um. Pra cortar
+      // entre cada recibo, manda cada um como um trabalho de impressão
+      // separado: a maioria das impressoras térmicas corta ao final de cada
+      // trabalho (desde que o corte automático esteja ligado nas
+      // configurações dela no computador/driver).
+      function imprimirTermicaSeparada(modo) {
+        const pageCss =
+          modo === 'termica80'
+            ? '@page { size: 80mm auto; margin: 3mm 2mm; } body{margin:0;background:#fff;} .recibo-conteudo{max-width:100%;width:100%;margin:0;padding:0;}'
+            : '@page { size: 58mm auto; margin: 2mm 1mm; } body{margin:0;background:#fff;} .recibo-conteudo{max-width:100%;width:100%;margin:0;padding:0;}';
+        const recibos = Array.from(document.querySelectorAll('.recibo-conteudo'));
+        let idx = 0;
+
+        function imprimirProximo() {
+          if (idx >= recibos.length) return;
+          const iframe = document.createElement('iframe');
+          iframe.style.position = 'fixed';
+          iframe.style.right = '0';
+          iframe.style.bottom = '0';
+          iframe.style.width = '0';
+          iframe.style.height = '0';
+          iframe.style.border = '0';
+          document.body.appendChild(iframe);
+          const doc = iframe.contentDocument;
+          doc.open();
+          doc.write(
+            '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
+              pageCss +
+              '</style></head><body>' +
+              recibos[idx].outerHTML +
+              '</body></html>'
+          );
+          doc.close();
+
+          const avancar = () => {
+            iframe.contentWindow.removeEventListener('afterprint', avancar);
+            setTimeout(() => {
+              document.body.removeChild(iframe);
+              idx++;
+              imprimirProximo();
+            }, 400);
+          };
+
+          iframe.onload = () => {
+            iframe.contentWindow.addEventListener('afterprint', avancar);
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          };
+        }
+
+        imprimirProximo();
       }
     </script>
     </body></html>`;
