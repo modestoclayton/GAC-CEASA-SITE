@@ -3629,7 +3629,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
 
   const boxCliente = `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
     <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Para Quem (Cliente Destino)</div>
-    <div style="font-size:18px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "â"}</div>
+    <div style="font-size:18px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "—"}</div>
     ${cliente?.cidade ? `<div style="font-size:14px;color:#6E6650;">${cliente.cidade}</div>` : ""}
   </div>`;
 
@@ -3643,7 +3643,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
 
       <div style="margin-bottom:10px;">
         <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
-        <div style="font-size:14px;font-weight:bold;">${produtor?.nome || "â"}</div>
+        <div style="font-size:14px;font-weight:bold;">${produtor?.nome || "—"}</div>
         ${produtor?.cidade ? `<div style="font-size:11px;color:#6E6650;">${produtor.cidade}</div>` : ""}
         ${produtor?.telefone ? `<div style="font-size:11px;color:#6E6650;">Tel: ${produtor.telefone}</div>` : ""}
       </div>
@@ -3683,7 +3683,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
       </div>
 
       <div style="font-size:9px;text-align:center;margin-top:14px;padding-top:8px;border-top:1px solid #D8CBA0;color:#6E6650;">
-        Documento gerado pelo GAC CEASA Manager â ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
+        Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
       </div>
     </div>`;
 
@@ -3732,7 +3732,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
 
       <div style="margin-bottom:4px;">
         <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Fornecedor</div>
-        <div style="font-size:13px;font-weight:bold;">${produtor?.nome || "â"}</div>
+        <div style="font-size:13px;font-weight:bold;">${produtor?.nome || "—"}</div>
         ${produtor?.cidade ? `<div style="font-size:11px;">${produtor.cidade}</div>` : ""}
         ${produtor?.telefone ? `<div style="font-size:11px;">Tel: ${produtor.telefone}</div>` : ""}
       </div>
@@ -3743,7 +3743,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
 
       <div style="margin-bottom:4px;">
         <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Para Quem (Cliente Destino)</div>
-        <div style="font-size:14px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "â"}</div>
+        <div style="font-size:14px;font-weight:bold;">${cliente?.nome || primeiro.clienteDestino || "—"}</div>
         ${cliente?.cidade ? `<div style="font-size:11px;">${cliente.cidade}</div>` : ""}
       </div>
 
@@ -3777,7 +3777,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
 
       <div style="border-top:1px dashed #000;margin:8px 0 4px;"></div>
       <div style="font-size:9px;text-align:center;">
-        Documento gerado pelo GAC CEASA Manager â ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
+        Documento gerado pelo GAC CEASA Manager — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}
       </div>
     </div>`;
 
@@ -3924,28 +3924,77 @@ function gerarPDFVales(compras, dataSelecionada, cadastros) {
   abrirImpressao(html, `Vale-${slugify(produtor?.nome)}-${dataSelecionada}.html`);
 }
 
+// Mede (em mm) a altura que o HTML de um vale ocupa quando renderizado na
+// largura de uma coluna da folha (136mm) — usando um iframe isolado, com a
+// mesma largura/padding da folha impressa, só pra medição (não aparece na
+// tela). Usado pra decidir se dois vales cabem juntos na mesma folha: um
+// vale com texto maior (chave Pix longa, desconto, muitos produtos) tem
+// altura real diferente de um vale pequeno, e medir é mais confiável do
+// que só contar itens.
+function medirAlturaValeMm(corpoVale) {
+  if (typeof document === "undefined") return 0;
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.left = "-9999px";
+  iframe.style.top = "0";
+  iframe.style.width = "136mm";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument;
+  doc.open();
+  doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
+    .vale-conteudo { width: 136mm; box-sizing: border-box; padding: 8mm 8mm 10mm; }
+  </style></head><body>${corpoVale}</body></html>`);
+  doc.close();
+  const alturaPx = doc.body.scrollHeight;
+  document.body.removeChild(iframe);
+  return alturaPx / (96 / 25.4); // 96px = 1 polegada = 25.4mm
+}
+
 // Monta um documento com TODOS os vales do dia, agrupados por empresa
 // (cliente destino): dentro de cada empresa, os vales (um por fornecedor)
 // saem em pares, dois por folha A4 paisagem lado a lado — nunca misturando
 // vales de empresas diferentes na mesma folha, mesmo que sobre espaço (por
 // isso a última folha de cada empresa pode sair com um vale só).
+// Só pareia dois vales na mesma folha quando os DOIS cabem dentro da altura
+// útil da página (A4 paisagem com margem de 6mm = ~198mm): um vale grande
+// demais (muitos produtos, chave Pix longa, desconto) que não coubesse do
+// lado de um vale pequeno fazia a folha vazar pra uma segunda página quase
+// em branco — o vale grande continuava lá, e a coluna do vale pequeno,
+// que já tinha terminado na primeira, ficava vazia do lado dele. Quando um
+// vale não cabe com o próximo, ele sai sozinho na própria folha.
 function montarDocumentoValesPorEmpresa(gruposPorEmpresa, dataSelecionada, cadastros) {
   const titulo = `Vales de Compra — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}`;
+  const ALTURA_MAX_MM = 190; // altura útil real é ~198mm; deixa margem de segurança
+
+  const corposPorEmpresa = gruposPorEmpresa.map(({ grupos }) => ({
+    itens: grupos.map((itensGrupo) => {
+      const corpoVale = montarCorpoVale(itensGrupo, dataSelecionada, cadastros, false).corpoVale;
+      return { corpoVale, alturaMm: medirAlturaValeMm(corpoVale) };
+    }),
+  }));
 
   const folhas = [];
-  gruposPorEmpresa.forEach(({ grupos }) => {
-    for (let i = 0; i < grupos.length; i += 2) {
-      folhas.push(grupos.slice(i, i + 2));
+  corposPorEmpresa.forEach(({ itens }) => {
+    let i = 0;
+    while (i < itens.length) {
+      const atual = itens[i];
+      const proximo = itens[i + 1];
+      if (proximo && atual.alturaMm <= ALTURA_MAX_MM && proximo.alturaMm <= ALTURA_MAX_MM) {
+        folhas.push([atual.corpoVale, proximo.corpoVale]);
+        i += 2;
+      } else {
+        folhas.push([atual.corpoVale]);
+        i += 1;
+      }
     }
   });
 
   let corpoFolhas = "";
   folhas.forEach((folha, idx) => {
     const quebra = idx < folhas.length - 1 ? "page-break-after:always;" : "";
-    const corposDaFolha = folha
-      .map((itensGrupo) => montarCorpoVale(itensGrupo, dataSelecionada, cadastros, false).corpoVale)
-      .join("");
-    corpoFolhas += `<div class="folha-vales" style="${quebra}">${corposDaFolha}</div>`;
+    corpoFolhas += `<div class="folha-vales" style="${quebra}">${folha.join("")}</div>`;
   });
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
