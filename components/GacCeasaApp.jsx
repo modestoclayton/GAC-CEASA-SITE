@@ -3438,7 +3438,8 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
       {clientesUnicos.length === 0 ? (
         <Card><p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma compra nesta data.</p></Card>
       ) : (
-        clientesUnicos.map((clienteId) => {
+        <>
+        {clientesUnicos.map((clienteId) => {
           const cliente = cadastros.clientes.find((c) => c.id === clienteId);
           const comprasCliente = comprasHoje.filter((c) => c.clienteDestino === clienteId);
           const produtoresUnicos = [...new Set(comprasCliente.map((c) => c.produtorId))];
@@ -3499,7 +3500,15 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
               </div>
             </Card>
           );
-        })
+        })}
+        <button
+          onClick={() => gerarPDFValesPorEmpresa(comprasHoje, dataSelecionada, cadastros)}
+          className="w-full px-4 py-3 rounded-lg font-bold text-sm mt-2"
+          style={{ background: C.amber500, color: C.ink }}
+        >
+          🖨️ Imprimir Todos os Vales do Dia (2 por folha, por empresa)
+        </button>
+        </>
       )}
     </div>
   );
@@ -3913,6 +3922,87 @@ function gerarPDFVales(compras, dataSelecionada, cadastros) {
   const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
   const html = montarDocumentoVales(listaGrupos, dataSelecionada, cadastros);
   abrirImpressao(html, `Vale-${slugify(produtor?.nome)}-${dataSelecionada}.html`);
+}
+
+// Monta um documento com TODOS os vales do dia, agrupados por empresa
+// (cliente destino): dentro de cada empresa, os vales (um por fornecedor)
+// saem em pares, dois por folha A4 paisagem lado a lado — nunca misturando
+// vales de empresas diferentes na mesma folha, mesmo que sobre espaço (por
+// isso a última folha de cada empresa pode sair com um vale só).
+function montarDocumentoValesPorEmpresa(gruposPorEmpresa, dataSelecionada, cadastros) {
+  const titulo = `Vales de Compra — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}`;
+
+  const folhas = [];
+  gruposPorEmpresa.forEach(({ grupos }) => {
+    for (let i = 0; i < grupos.length; i += 2) {
+      folhas.push(grupos.slice(i, i + 2));
+    }
+  });
+
+  let corpoFolhas = "";
+  folhas.forEach((folha, idx) => {
+    const quebra = idx < folhas.length - 1 ? "page-break-after:always;" : "";
+    const corposDaFolha = folha
+      .map((itensGrupo) => montarCorpoVale(itensGrupo, dataSelecionada, cadastros, false).corpoVale)
+      .join("");
+    corpoFolhas += `<div class="folha-vales" style="${quebra}">${corposDaFolha}</div>`;
+  });
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 0; background: #F4F2EA; }
+      @page { size: A4 landscape; margin: 6mm; }
+      .folha-vales { display: flex; gap: 6mm; align-items: flex-start; }
+      .vale-conteudo { width: 136mm; flex: 0 0 136mm; box-sizing: border-box; margin: 0; padding: 8mm 8mm 10mm; }
+      .folha-vales .vale-conteudo:first-child:not(:last-child) { border-right: 1px dashed #B9AF8C; }
+      @media print { body { background: #fff; } }
+      ${BARRA_IMPRESSAO_CSS}
+    </style>
+    </head><body>
+    ${BARRA_IMPRESSAO_HTML}
+    ${corpoFolhas}
+    </body></html>`;
+}
+
+// Agrupa as compras do dia em vales (fornecedor + cliente + dia, igual
+// gerarPDFVales) e depois por empresa (cliente destino), em ordem
+// alfabética — pra gerar um único documento com todos os vales do dia,
+// dois por folha, pronto pra imprimir/salvar como PDF de uma vez.
+function gerarPDFValesPorEmpresa(compras, dataSelecionada, cadastros) {
+  const comprasValidas = compras.filter((c) => c.clienteDestino !== "ESTOQUE");
+  if (comprasValidas.length === 0) return;
+
+  const gruposPorChave = {};
+  comprasValidas.forEach((c) => {
+    const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
+    if (!gruposPorChave[chave]) gruposPorChave[chave] = [];
+    gruposPorChave[chave].push(c);
+  });
+
+  const porEmpresa = {};
+  Object.values(gruposPorChave).forEach((itensGrupo) => {
+    const clienteId = itensGrupo[0].clienteDestino;
+    if (!porEmpresa[clienteId]) porEmpresa[clienteId] = [];
+    porEmpresa[clienteId].push(itensGrupo);
+  });
+
+  const empresasOrdenadas = Object.keys(porEmpresa).sort((a, b) => {
+    const nomeA = cadastros.clientes.find((c) => c.id === a)?.nome || a;
+    const nomeB = cadastros.clientes.find((c) => c.id === b)?.nome || b;
+    return nomeA.localeCompare(nomeB, "pt-BR");
+  });
+
+  const gruposPorEmpresa = empresasOrdenadas.map((clienteId) => ({
+    clienteId,
+    grupos: [...porEmpresa[clienteId]].sort((g1, g2) => {
+      const p1 = cadastros.produtores.find((p) => p.id === g1[0].produtorId)?.nome || "";
+      const p2 = cadastros.produtores.find((p) => p.id === g2[0].produtorId)?.nome || "";
+      return p1.localeCompare(p2, "pt-BR");
+    }),
+  }));
+
+  const html = montarDocumentoValesPorEmpresa(gruposPorEmpresa, dataSelecionada, cadastros);
+  abrirImpressao(html, `Vales-${dataSelecionada}.html`);
 }
 
 // Monta o corpo de UM recibo de entrega (sem preços/valores) — mesmo
