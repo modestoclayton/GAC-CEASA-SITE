@@ -3424,7 +3424,14 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
 
   // Cada compra vira automaticamente uma requisição: agrupada por cliente destino
   // e, dentro de cada cliente, um vale por fornecedor.
-  const comprasHoje = transacoes.compras.filter((c) => c.data === dataSelecionada && c.clienteDestino !== "ESTOQUE");
+  // Só gera requisição/vale para produtor que NÃO recebe por boleto — quem
+  // recebe por boleto não precisa de vale de compra (mesma regra já usada
+  // em ConferenciaTab.finalizarConferencia antes de chamar gerarPDFVales).
+  const comprasHoje = transacoes.compras.filter((c) => {
+    if (c.data !== dataSelecionada || c.clienteDestino === "ESTOQUE") return false;
+    const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+    return !produtor?.pagamento || produtor.pagamento !== "BOLETO";
+  });
   const clientesUnicos = [...new Set(comprasHoje.map((c) => c.clienteDestino))];
 
   return (
