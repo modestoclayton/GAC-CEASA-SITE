@@ -3457,6 +3457,13 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
                   {totalClienteQtd.toFixed(1).replace(/\.0$/, "")} CX · {fmtMoney(totalClienteValor)}
                 </div>
               </div>
+              <button
+                onClick={() => gerarPDFValesPorEmpresa(comprasCliente, dataSelecionada, cadastros)}
+                className="text-xs font-bold mb-1"
+                style={{ color: C.amber500 }}
+              >
+                🖨️ Imprimir Vales desta Empresa (só {cliente?.nome || clienteId})
+              </button>
               <div className="flex flex-col gap-2 mt-2">
                 {produtoresUnicos.map((produtorId) => {
                   const produtor = cadastros.produtores.find((p) => p.id === produtorId);
@@ -3506,8 +3513,13 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
           className="w-full px-4 py-3 rounded-lg font-bold text-sm mt-2"
           style={{ background: C.amber500, color: C.ink }}
         >
-          🖨️ Imprimir Todos os Vales do Dia (2 por folha, por empresa)
+          🖨️ Imprimir Vales do Dia (um arquivo por empresa)
         </button>
+        <div className="text-xs mt-2" style={{ color: C.inkSoft }}>
+          Abre um documento separado pra cada empresa (2 vales por folha dentro de cada um) — nunca junta
+          vale de empresas diferentes no mesmo arquivo. Se o navegador bloquear alguma aba (vários popups de
+          uma vez), ela baixa como arquivo em vez de abrir — é só abrir o arquivo baixado normalmente.
+        </div>
         </>
       )}
     </div>
@@ -3965,7 +3977,15 @@ function medirAlturaValeMm(corpoVale) {
 // que já tinha terminado na primeira, ficava vazia do lado dele. Quando um
 // vale não cabe com o próximo, ele sai sozinho na própria folha.
 function montarDocumentoValesPorEmpresa(gruposPorEmpresa, dataSelecionada, cadastros) {
-  const titulo = `Vales de Compra — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}`;
+  const dataFmt = new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR");
+  // Quando o documento é de uma única empresa (caso normal, já que cada
+  // empresa agora abre no seu próprio documento), coloca o nome dela no
+  // título — ajuda a identificar a aba/arquivo certo na hora de enviar.
+  const nomeEmpresaUnica =
+    gruposPorEmpresa.length === 1
+      ? cadastros.clientes.find((c) => c.id === gruposPorEmpresa[0].clienteId)?.nome
+      : null;
+  const titulo = nomeEmpresaUnica ? `Vales de Compra — ${nomeEmpresaUnica} — ${dataFmt}` : `Vales de Compra — ${dataFmt}`;
   const ALTURA_MAX_MM = 190; // altura útil real é ~198mm; deixa margem de segurança
 
   const corposPorEmpresa = gruposPorEmpresa.map(({ grupos }) => ({
@@ -4013,10 +4033,16 @@ function montarDocumentoValesPorEmpresa(gruposPorEmpresa, dataSelecionada, cadas
     </body></html>`;
 }
 
-// Agrupa as compras do dia em vales (fornecedor + cliente + dia, igual
+// Agrupa as compras em vales (fornecedor + cliente + dia, igual
 // gerarPDFVales) e depois por empresa (cliente destino), em ordem
-// alfabética — pra gerar um único documento com todos os vales do dia,
-// dois por folha, pronto pra imprimir/salvar como PDF de uma vez.
+// alfabética — e abre UM DOCUMENTO SEPARADO PARA CADA EMPRESA (cada um na
+// sua própria aba/arquivo, com o nome da empresa já no título e no nome do
+// arquivo), em vez de um único documento com todo mundo junto. É assim que
+// dá pra mandar o vale de uma empresa (ex.: só o do MOS) sem levar junto o
+// vale de outras empresas que também compraram no mesmo dia — cada uma
+// fica isolada, pronta pra imprimir/salvar como PDF e enviar sozinha.
+// Chamando só com as compras de UMA empresa (ex.: o botão de cada card),
+// abre exatamente um documento, só daquela empresa.
 function gerarPDFValesPorEmpresa(compras, dataSelecionada, cadastros) {
   const comprasValidas = compras.filter((c) => c.clienteDestino !== "ESTOQUE");
   if (comprasValidas.length === 0) return;
@@ -4041,17 +4067,16 @@ function gerarPDFValesPorEmpresa(compras, dataSelecionada, cadastros) {
     return nomeA.localeCompare(nomeB, "pt-BR");
   });
 
-  const gruposPorEmpresa = empresasOrdenadas.map((clienteId) => ({
-    clienteId,
-    grupos: [...porEmpresa[clienteId]].sort((g1, g2) => {
+  empresasOrdenadas.forEach((clienteId) => {
+    const grupos = [...porEmpresa[clienteId]].sort((g1, g2) => {
       const p1 = cadastros.produtores.find((p) => p.id === g1[0].produtorId)?.nome || "";
       const p2 = cadastros.produtores.find((p) => p.id === g2[0].produtorId)?.nome || "";
       return p1.localeCompare(p2, "pt-BR");
-    }),
-  }));
-
-  const html = montarDocumentoValesPorEmpresa(gruposPorEmpresa, dataSelecionada, cadastros);
-  abrirImpressao(html, `Vales-${dataSelecionada}.html`);
+    });
+    const nomeEmpresa = cadastros.clientes.find((c) => c.id === clienteId)?.nome || clienteId;
+    const html = montarDocumentoValesPorEmpresa([{ clienteId, grupos }], dataSelecionada, cadastros);
+    abrirImpressao(html, `Vales-${slugify(nomeEmpresa)}-${dataSelecionada}.html`);
+  });
 }
 
 // Monta o corpo de UM recibo de entrega (sem preços/valores) — mesmo
