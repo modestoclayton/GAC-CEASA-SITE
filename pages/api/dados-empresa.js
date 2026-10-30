@@ -141,6 +141,8 @@ function paraLinha(chaveJS, empresaId, r) {
       entrega_confirmada: !!r.entregaConfirmada,
       quantidade_recebida: r.quantidadeRecebida ?? null,
       divergencia: r.divergencia ?? null,
+      cancelada: !!r.cancelada,
+      cancelada_em: r.canceladaEm || null,
     };
   }
   if (chaveJS === "vendas") {
@@ -164,6 +166,8 @@ function paraLinha(chaveJS, empresaId, r) {
       caixas_emprestadas: !!entrega.caixasEmprestadas,
       obs_caixas: entrega.obsCaixas || null,
       entrega_confirmada: !!entrega.confirmada,
+      cancelada: !!r.cancelada,
+      cancelada_em: r.canceladaEm || null,
     };
   }
   if (chaveJS === "recebimentos") {
@@ -319,6 +323,8 @@ function paraObjeto(chaveJS, linha) {
       entregaConfirmada: !!linha.entrega_confirmada,
       quantidadeRecebida: linha.quantidade_recebida,
       divergencia: linha.divergencia,
+      cancelada: !!linha.cancelada,
+      canceladaEm: linha.cancelada_em || null,
     };
   }
   if (chaveJS === "vendas") {
@@ -345,6 +351,8 @@ function paraObjeto(chaveJS, linha) {
             confirmada: !!linha.entrega_confirmada,
           }
         : null,
+      cancelada: !!linha.cancelada,
+      canceladaEm: linha.cancelada_em || null,
     };
   }
   if (chaveJS === "recebimentos") {

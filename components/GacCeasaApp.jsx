@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   LayoutGrid,
   PlusCircle,
@@ -1578,6 +1578,31 @@ function EmpresaLoginView({ onEntrar }) {
   );
 }
 
+/* Cancelamento de compra/venda                                           */
+/* Pedido cancelado NÃO é apagado: fica guardado com cancelada = true e   */
+/* continua aparecendo nas listas "Minhas Compras"/"Minhas Vendas" com o  */
+/* selo CANCELADA. Fora essas listas, o resto do app (estoque, contas,     */
+/* requisição, conferência, folhas, relatórios, impressões, dashboard)     */
+/* recebe só os pedidos ativos — como se o cancelado não existisse.        */
+const naoCancelada = (r) => !(r && r.cancelada);
+function somenteAtivas(tx) {
+  return {
+    ...tx,
+    compras: (tx.compras || []).filter(naoCancelada),
+    vendas: (tx.vendas || []).filter(naoCancelada),
+  };
+}
+// O resto do app trabalha com a lista já sem os cancelados. Quando ele
+// salva essa lista, os cancelados precisam voltar junto — senão o servidor
+// (que apaga do banco o que não veio na lista) excluiria eles de verdade.
+function reincluirCanceladas(chaveJS, lista, todas) {
+  if (chaveJS !== "compras" && chaveJS !== "vendas") return lista;
+  const novaLista = lista || [];
+  const ids = new Set(novaLista.map((r) => r.id));
+  const canceladas = (todas[chaveJS] || []).filter((r) => r.cancelada && !ids.has(r.id));
+  return canceladas.length ? [...novaLista, ...canceladas] : novaLista;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Main App                                                                */
 /* ---------------------------------------------------------------------- */
@@ -1585,7 +1610,13 @@ export default function GacCeasaApp() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("dashboard");
   const [cadastros, setCadastros] = useState(SEED_CADASTROS);
-  const [transacoes, setTransacoes] = useState(SEED_TRANSACOES);
+  // transacoesTodas = tudo, inclusive compras/vendas canceladas (só as listas
+  // de Minhas Compras/Minhas Vendas usam). transacoes = só os pedidos ativos,
+  // que é o que todo o resto do app enxerga.
+  const [transacoesTodas, setTransacoes] = useState(SEED_TRANSACOES);
+  const transacoesTodasRef = useRef(transacoesTodas);
+  transacoesTodasRef.current = transacoesTodas;
+  const transacoes = useMemo(() => somenteAtivas(transacoesTodas), [transacoesTodas]);
   const [toast, setToast] = useState(null);
   const [recibo, setRecibo] = useState(null); // { tipo: 'venda'|'compra', item } | null
   const [perfil, setPerfil] = useState(null); // { nome, funcao } | null
@@ -1864,7 +1895,12 @@ export default function GacCeasaApp() {
   );
 
   const persistTransacoes = useCallback(
-    async (next) => {
+    async (nextRecebido) => {
+      const todas = transacoesTodasRef.current;
+      const next = { ...nextRecebido };
+      if (next.compras) next.compras = reincluirCanceladas("compras", next.compras, todas);
+      if (next.vendas) next.vendas = reincluirCanceladas("vendas", next.vendas, todas);
+      transacoesTodasRef.current = next;
       setTransacoes(next);
       try {
         const res = await fetchDadosEmpresa({
@@ -1899,7 +1935,9 @@ export default function GacCeasaApp() {
   // com meses de histórico), o que estava causando timeout ("Gateway
   // Timeout" na limpeza de "vendas") mesmo em ações que não tocam em vendas.
   const persistTabelaTransacao = useCallback(
-    async (chaveJS, arrayAtualizado) => {
+    async (chaveJS, arrayRecebido) => {
+      const arrayAtualizado = reincluirCanceladas(chaveJS, arrayRecebido, transacoesTodasRef.current);
+      transacoesTodasRef.current = { ...transacoesTodasRef.current, [chaveJS]: arrayAtualizado };
       setTransacoes((atual) => ({ ...atual, [chaveJS]: arrayAtualizado }));
       try {
         const res = await fetchDadosEmpresa({
@@ -2345,6 +2383,7 @@ export default function GacCeasaApp() {
           <RegistrarTab
             cadastros={cadastros}
             transacoes={transacoes}
+            transacoesTodas={transacoesTodas}
             persistCadastros={persistCadastros}
             persistTabelaCadastro={persistTabelaCadastro}
             persistTransacoes={persistTransacoes}
@@ -2755,7 +2794,7 @@ function BlocoGrandeMovimento({ label, sub, icon: Icon, corA, corB, onClick }) {
   );
 }
 
-function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, showToast, setRecibo }) {
+function RegistrarTab({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, showToast, setRecibo }) {
   const [tipo, setTipo] = useState(null); // null = menu inicial
 
   if (!tipo) {
@@ -2828,6 +2867,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTabelaCa
         <FormCompra
           cadastros={cadastros}
           transacoes={transacoes}
+          transacoesTodas={transacoesTodas}
           persistCadastros={persistCadastros}
           persistTabelaCadastro={persistTabelaCadastro}
           persistTransacoes={persistTransacoes}
@@ -2839,6 +2879,7 @@ function RegistrarTab({ cadastros, transacoes, persistCadastros, persistTabelaCa
         <FormVenda
           cadastros={cadastros}
           transacoes={transacoes}
+          transacoesTodas={transacoesTodas}
           persistCadastros={persistCadastros}
           persistTabelaCadastro={persistTabelaCadastro}
           persistTransacoes={persistTransacoes}
@@ -4548,7 +4589,25 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
   );
 }
 
-function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCadastro, persistTransacoes, showToast, setRecibo }) {
+function SeloCancelado({ em }) {
+  let quando = "";
+  if (em) {
+    const d = new Date(em);
+    if (!isNaN(d)) {
+      quando = ` · ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+    }
+  }
+  return (
+    <span
+      className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+      style={{ background: C.rust, color: "white", letterSpacing: 0.5, textDecoration: "none" }}
+    >
+      CANCELADA{quando}
+    </span>
+  );
+}
+
+function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, showToast, setRecibo }) {
   const [produtorId, setProdutorId] = useState(cadastros.produtores[0]?.id || "");
   const [clienteDestino, setClienteDestino] = useState(cadastros.clientes[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
@@ -4700,20 +4759,26 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCada
     showToast("✅ Compra atualizada!");
   };
 
-  const excluirCompra = async (compra) => {
-    // Excluir aqui remove a compra de tudo que lê dessa mesma lista:
+  // Lista completa (inclusive canceladas) — só "Minhas Compras" mostra as canceladas.
+  const comprasTodas = (transacoesTodas || transacoes).compras || [];
+
+  const cancelarCompra = async (compra) => {
+    // Cancelar NÃO apaga a compra: ela continua aparecendo aqui em "Minhas
+    // Compras" marcada como CANCELADA, mas sai de tudo que soma/imprime:
     // Requisição, Conferência, Folha de Pedido/Carga, Estoque e Conta Corrente do fornecedor.
     const unidadeCompra = unidadeDoProduto(compra.produto, cadastros.produtos);
     const jaFinalizado = (transacoes.diasFinalizados || []).includes(compra.data);
     const aviso = compra.entregaConfirmada
-      ? `Essa compra já foi conferida${jaFinalizado ? " e o dia já foi finalizado" : ""}. Confirma excluir mesmo assim?\n\n${compra.produto} · ${compra.quantidade} ${unidadeCompra}`
-      : `Excluir esta compra?\n\n${compra.produto} · ${compra.quantidade} ${unidadeCompra}`;
+      ? `Essa compra já foi conferida${jaFinalizado ? " e o dia já foi finalizado" : ""}. Confirma cancelar mesmo assim?\n\n${compra.produto} · ${compra.quantidade} ${unidadeCompra}\n\nEla continua na lista, marcada como CANCELADA.`
+      : `Cancelar esta compra?\n\n${compra.produto} · ${compra.quantidade} ${unidadeCompra}\n\nEla continua na lista, marcada como CANCELADA.`;
     const confirmado = window.confirm(aviso);
     if (!confirmado) return;
 
-    const nextCompras = transacoes.compras.filter((c) => c.id !== compra.id);
+    const nextCompras = comprasTodas.map((c) =>
+      c.id === compra.id ? { ...c, cancelada: true, canceladaEm: new Date().toISOString() } : c
+    );
     await persistTransacoes({ ...transacoes, compras: nextCompras });
-    showToast("Compra excluída");
+    showToast("Compra cancelada");
   };
 
   return (
@@ -4971,7 +5036,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCada
         </div>
       </Field>
 
-      {transacoes.compras.filter((c) => c.data === dataFiltro).length === 0 ? (
+      {comprasTodas.filter((c) => c.data === dataFiltro).length === 0 ? (
         <Card>
           <p className="text-sm" style={{ color: C.inkSoft }}>
             {dataFiltro === todayISO() ? "Nenhuma compra registrada hoje." : `Nenhuma compra registrada em ${fmtDate(dataFiltro)}.`}
@@ -4979,7 +5044,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCada
         </Card>
       ) : (
         (() => {
-          const comprasHojeTodas = transacoes.compras.filter((c) => c.data === dataFiltro);
+          const comprasHojeTodas = comprasTodas.filter((c) => c.data === dataFiltro);
           // Agrupa por destino (ESTOQUE fica sempre em primeiro, depois clientes em ordem alfabética)
           const gruposDestino = [...new Set(comprasHojeTodas.map((c) => c.clienteDestino))].sort((a, b) => {
             if (a === "ESTOQUE") return -1;
@@ -5016,7 +5081,11 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCada
                     >
                       <span>{isEstoqueGrupo ? "📦 COMPRA PARA ESTOQUE" : `👤 ${cliente?.nome || "—"}`}</span>
                       <span className="flex items-center gap-1.5 text-xs font-bold" style={{ opacity: 0.9 }}>
-                        {comprasDoGrupo.length} {comprasDoGrupo.length === 1 ? "item" : "itens"}
+                        {(() => {
+                          const ativas = comprasDoGrupo.filter(naoCancelada).length;
+                          const canceladas = comprasDoGrupo.length - ativas;
+                          return `${ativas} ${ativas === 1 ? "item" : "itens"}${canceladas ? ` · ${canceladas} cancelada${canceladas > 1 ? "s" : ""}` : ""}`;
+                        })()}
                         <ChevronRight
                           size={16}
                           style={{ transform: aberto ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
@@ -5069,15 +5138,19 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCada
                                       borderBottom: idx < comprasDoFornecedor.length - 1 ? `1px solid ${C.line}` : "none",
                                     }}
                                   >
-                                    <div className="flex-1">
-                                      <div className="font-bold text-sm">{c.produto}</div>
-                                      <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft }}>
+                                    <div className="flex-1" style={c.cancelada ? { opacity: 0.6 } : undefined}>
+                                      <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
+                                        <span style={c.cancelada ? { textDecoration: "line-through" } : undefined}>{c.produto}</span>
+                                        {c.cancelada && <SeloCancelado em={c.canceladaEm} />}
+                                      </div>
+                                      <div className="text-xs" style={{ fontFamily: monoFont, color: C.inkSoft, textDecoration: c.cancelada ? "line-through" : "none" }}>
                                         {(() => {
                                           const unidadeItem = unidadeDoProduto(c.produto, cadastros.produtos);
                                           const mostrarCx = unidadeItem !== "CX" && Number(c.quantidadeCaixas) > 0;
                                           return `${c.quantidade} ${unidadeItem}${mostrarCx ? ` (${c.quantidadeCaixas} CX)` : ""}`;
                                         })()} · {fmtMoney(c.valorFinal || c.valorTotal)}
                                       </div>
+                                      {!c.cancelada && (
                                       <div className="flex gap-3 mt-1">
                                         <button
                                           onClick={() => { setEditandoId(c.id); setEditQtd(String(c.quantidade)); setEditValor(String(c.valorUnit)); }}
@@ -5087,13 +5160,14 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCada
                                           ✏️ Editar
                                         </button>
                                         <button
-                                          onClick={() => excluirCompra(c)}
+                                          onClick={() => cancelarCompra(c)}
                                           className="text-xs font-bold"
                                           style={{ color: C.rust }}
                                         >
-                                          🗑️ Excluir
+                                          🚫 Cancelar compra
                                         </button>
                                       </div>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -5122,7 +5196,7 @@ function FormCompra({ cadastros, transacoes, persistCadastros, persistTabelaCada
   );
 }
 
-function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadastro, persistTransacoes, showToast, setRecibo }) {
+function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, showToast, setRecibo }) {
   const [view, setView] = useState("registrar");
   const [clienteId, setClienteId] = useState(cadastros.clientes[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
@@ -5228,20 +5302,29 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadas
     showToast("✅ Venda atualizada!");
   };
 
-  const excluirVenda = async (venda) => {
-    // Excluir aqui remove a venda de tudo que lê dessa mesma lista:
-    // Entregas, Conta Corrente do cliente e Dashboard.
+  // Lista completa (inclusive canceladas) — só "Minhas Vendas" mostra as canceladas.
+  const vendasTodas = (transacoesTodas || transacoes).vendas || [];
+
+  const cancelarVenda = async (venda) => {
+    // Cancelar NÃO apaga a venda: ela continua aparecendo aqui em "Minhas
+    // Vendas" marcada como CANCELADA, mas sai de tudo que soma/imprime:
+    // Entregas, Estoque, Conta Corrente do cliente, Relatório e Dashboard.
     const unidadeVenda = unidadeDoProduto(venda.produto, cadastros.produtos);
     const aviso = venda.entrega
-      ? `Essa venda já tem dados de entrega preenchidos. Confirma excluir mesmo assim?\n\n${venda.produto} · ${venda.quantidade} ${unidadeVenda}`
-      : `Excluir esta venda?\n\n${venda.produto} · ${venda.quantidade} ${unidadeVenda}`;
+      ? `Essa venda já tem dados de entrega preenchidos. Confirma cancelar mesmo assim?\n\n${venda.produto} · ${venda.quantidade} ${unidadeVenda}\n\nEla continua na lista, marcada como CANCELADA.`
+      : `Cancelar esta venda?\n\n${venda.produto} · ${venda.quantidade} ${unidadeVenda}\n\nEla continua na lista, marcada como CANCELADA.`;
     const confirmado = window.confirm(aviso);
     if (!confirmado) return;
 
-    const nextVendas = transacoes.vendas.filter((v) => v.id !== venda.id);
+    const nextVendas = vendasTodas.map((v) =>
+      v.id === venda.id ? { ...v, cancelada: true, canceladaEm: new Date().toISOString() } : v
+    );
+    // O recebimento que o próprio app lançou sozinho quando a venda nasceu
+    // como "Pago" sai junto — senão o cliente ficaria com um crédito de uma
+    // venda que não existe mais. Recebimentos lançados à mão não são tocados.
     const nextRecebimentos = transacoes.recebimentos.filter((r) => r.vendaId !== venda.id);
     await persistTransacoes({ ...transacoes, vendas: nextVendas, recebimentos: nextRecebimentos });
-    showToast("Venda excluída");
+    showToast("Venda cancelada");
   };
 
   if (entregaVendaId) {
@@ -5417,7 +5500,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadas
         </div>
       </Field>
 
-      {transacoes.vendas.filter((v) => v.data === dataFiltro).length === 0 ? (
+      {vendasTodas.filter((v) => v.data === dataFiltro).length === 0 ? (
         <Card>
           <p className="text-sm" style={{ color: C.inkSoft }}>
             {dataFiltro === todayISO() ? "Nenhuma venda registrada hoje." : `Nenhuma venda registrada em ${fmtDate(dataFiltro)}.`}
@@ -5425,7 +5508,7 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadas
         </Card>
       ) : (
         <div className="flex flex-col gap-2">
-          {transacoes.vendas.filter((v) => v.data === dataFiltro).map((v) => {
+          {vendasTodas.filter((v) => v.data === dataFiltro).map((v) => {
             const cliente = cadastros.clientes.find((c) => c.id === v.clienteId);
             if (editandoId === v.id) {
               return (
@@ -5445,11 +5528,14 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadas
               );
             }
             return (
-              <Card key={v.id} style={{ background: C.cardAlt }}>
+              <Card key={v.id} style={{ background: C.cardAlt, opacity: v.cancelada ? 0.6 : 1 }}>
                 <div className="flex justify-between mb-2">
                   <div className="flex-1">
-                    <div className="font-bold text-sm">{cliente?.nome || "—"}</div>
-                    <div className="text-xs" style={{ color: C.inkSoft }}>
+                    <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
+                      <span style={v.cancelada ? { textDecoration: "line-through" } : undefined}>{cliente?.nome || "—"}</span>
+                      {v.cancelada && <SeloCancelado em={v.canceladaEm} />}
+                    </div>
+                    <div className="text-xs" style={{ color: C.inkSoft, textDecoration: v.cancelada ? "line-through" : "none" }}>
                       {v.produto} • {(() => {
                         const unidadeV = unidadeDoProduto(v.produto, cadastros.produtos);
                         const mostrarCxV = unidadeV !== "CX" && Number(v.quantidadeCaixas) > 0;
@@ -5458,17 +5544,19 @@ function FormVenda({ cadastros, transacoes, persistCadastros, persistTabelaCadas
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(v.valorFinal ?? v.valorTotal)}</div>
-                    <div className="text-xs" style={{ color: C.inkSoft }}>{v.status}</div>
+                    <div className="font-bold" style={{ fontFamily: monoFont, textDecoration: v.cancelada ? "line-through" : "none" }}>{fmtMoney(v.valorFinal ?? v.valorTotal)}</div>
+                    <div className="text-xs" style={{ color: C.inkSoft }}>{v.cancelada ? "Cancelada" : v.status}</div>
                   </div>
                 </div>
+                {!v.cancelada && (
                 <div className="flex gap-2">
                   <button onClick={() => { setEditandoId(v.id); setEditQtd(String(v.quantidade)); setEditPreco(String(v.precoUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
                   {setRecibo && (
                     <button onClick={() => setRecibo({ tipo: "venda", item: v, quemVe: "vendedor" })} className="text-xs font-bold" style={{ color: C.amber500 }}>🖨️ Vale</button>
                   )}
-                  <button onClick={() => excluirVenda(v)} className="text-xs font-bold" style={{ color: C.rust }}>🗑️ Excluir</button>
+                  <button onClick={() => cancelarVenda(v)} className="text-xs font-bold" style={{ color: C.rust }}>🚫 Cancelar venda</button>
                 </div>
+                )}
               </Card>
             );
           })}
