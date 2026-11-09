@@ -256,6 +256,133 @@ function calcularAtribuicoesVendas(transacoes, cadastros) {
   return atribuicoes;
 }
 
+// Custo de cada venda (quanto custou a mercadoria que saiu nela), pra saber
+// o lucro. Mesma regra do estoque: o que entrou primeiro sai primeiro
+// (PEPS/FIFO) por produto, usando as compras "Para Estoque" com o preço
+// pago em cada uma. Uma venda só consome compras feitas até o dia dela.
+//  - Lote de produtor de COMISSÃO entra sem valor: o custo dele é a % de
+//    comissão em cima do valor vendido.
+//  - Se faltar compra no estoque pra cobrir a venda, usa o último preço pago
+//    nesse produto (em qualquer compra, até o dia da venda); se nunca houve
+//    compra, usa o "Custo méd." do cadastro do produto. Se nem isso tiver,
+//    a parte que sobrou fica "sem custo" e o relatório avisa.
+// Retorna { [vendaId]: { custo, qtdSemCusto } }.
+function calcularCustoVendas(transacoes, cadastros) {
+  const produtos = cadastros.produtos || [];
+  const produtores = cadastros.produtores || [];
+  const porData = (a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0);
+
+  const lotesPorProduto = {};
+  const comprasPorProduto = {};
+  for (const c of transacoes.compras || []) {
+    const qtd = Number(c.quantidade) || 0;
+    if (qtd <= 0) continue;
+    const produtor = produtores.find((p) => p.id === c.produtorId);
+    const ehComissao = produtor?.pagamento === "COMISSAO";
+    const valor = Number(c.valorFinal ?? c.valorTotal) || 0;
+    const custoUnit = valor / qtd;
+    if (!comprasPorProduto[c.produto]) comprasPorProduto[c.produto] = [];
+    if (!ehComissao) comprasPorProduto[c.produto].push({ data: c.data, custoUnit });
+    if (c.clienteDestino !== "ESTOQUE") continue;
+    if (!lotesPorProduto[c.produto]) lotesPorProduto[c.produto] = [];
+    lotesPorProduto[c.produto].push({
+      data: c.data,
+      restante: qtd,
+      custoUnit,
+      comissaoPct: ehComissao ? Number(produtor.comissaoPercentual) || 0 : null,
+    });
+  }
+
+  const ultimoPreco = (produto, ate) => {
+    const lista = (comprasPorProduto[produto] || []).filter((c) => c.data <= ate).sort(porData);
+    if (lista.length) return lista[lista.length - 1].custoUnit;
+    const cad = Number(produtos.find((p) => p.nome === produto)?.custoMedio) || 0;
+    return cad > 0 ? cad : null;
+  };
+
+  const vendasPorProduto = {};
+  for (const v of transacoes.vendas || []) {
+    if (!vendasPorProduto[v.produto]) vendasPorProduto[v.produto] = [];
+    vendasPorProduto[v.produto].push(v);
+  }
+
+  const resultado = {};
+  for (const produto of Object.keys(vendasPorProduto)) {
+    const lotes = (lotesPorProduto[produto] || []).sort(porData);
+    const vendas = [...vendasPorProduto[produto]].sort(porData);
+    let cursor = 0;
+    for (const v of vendas) {
+      const qtdVenda = Number(v.quantidade) || 0;
+      const valorVenda = Number(v.valorFinal ?? v.valorTotal) || 0;
+      let restante = qtdVenda;
+      let custo = 0;
+      while (restante > 0.0001 && cursor < lotes.length && lotes[cursor].data <= v.data) {
+        const lote = lotes[cursor];
+        const usado = Math.min(lote.restante, restante);
+        custo += lote.comissaoPct !== null
+          ? (qtdVenda > 0 ? (usado / qtdVenda) * valorVenda * (lote.comissaoPct / 100) : 0)
+          : usado * lote.custoUnit;
+        lote.restante -= usado;
+        restante -= usado;
+        if (lote.restante <= 0.0001) cursor++;
+      }
+      let qtdSemCusto = 0;
+      if (restante > 0.0001) {
+        const preco = ultimoPreco(produto, v.data);
+        if (preco !== null) custo += restante * preco;
+        else qtdSemCusto = restante;
+      }
+      resultado[v.id] = { custo, qtdSemCusto };
+    }
+  }
+  return resultado;
+}
+
+// Lucro de um dia: vendas do dia × custo da mercadoria que saiu nelas.
+function calcularLucroDoDia(transacoes, cadastros, data, custos) {
+  const custoPorVenda = custos || calcularCustoVendas(transacoes, cadastros);
+  const vendas = (transacoes.vendas || []).filter((v) => v.data === data);
+  const linhas = vendas.map((v) => {
+    const valor = Number(v.valorFinal ?? v.valorTotal) || 0;
+    const info = custoPorVenda[v.id] || { custo: 0, qtdSemCusto: Number(v.quantidade) || 0 };
+    return { venda: v, valor, custo: info.custo, lucro: valor - info.custo, semCusto: info.qtdSemCusto > 0.0001 };
+  });
+  const soma = (arr, k) => arr.reduce((s, l) => s + l[k], 0);
+  const agrupar = (chave) => {
+    const g = {};
+    for (const l of linhas) {
+      const k = chave(l.venda);
+      if (!g[k]) g[k] = { chave: k, qtd: 0, caixas: 0, valor: 0, custo: 0, lucro: 0, semCusto: false };
+      g[k].qtd += Number(l.venda.quantidade) || 0;
+      g[k].caixas += caixasEquivalentes(l.venda, cadastros.produtos);
+      g[k].valor += l.valor;
+      g[k].custo += l.custo;
+      g[k].lucro += l.lucro;
+      g[k].semCusto = g[k].semCusto || l.semCusto;
+    }
+    return Object.values(g);
+  };
+  const totalVendido = soma(linhas, "valor");
+  const totalCusto = soma(linhas, "custo");
+  const lucro = totalVendido - totalCusto;
+  const comprasDoDia = (transacoes.compras || [])
+    .filter((c) => c.data === data)
+    .reduce((s, c) => s + (Number(c.valorFinal ?? c.valorTotal) || 0), 0);
+  return {
+    linhas,
+    porProduto: agrupar((v) => v.produto).sort((a, b) => b.lucro - a.lucro),
+    porCliente: agrupar((v) => v.clienteId),
+    totalVendido,
+    totalCusto,
+    lucro,
+    margem: totalVendido > 0 ? (lucro / totalVendido) * 100 : 0,
+    comprasDoDia,
+    temSemCusto: linhas.some((l) => l.semCusto),
+  };
+}
+
+const fmtPct = (n) => `${(Number(n) || 0).toFixed(1).replace(".", ",")}%`;
+
 // Pra cada produtor de comissão: soma de caixas e valor vendido atribuído a
 // ele desde o último fechamento (ou desde sempre, se nunca fechou), e a
 // comissão calculada em cima disso. É essa soma "corrente" que aparece na
@@ -2102,20 +2229,16 @@ export default function GacCeasaApp() {
     const comprasHoje = transacoes.compras
       .filter((c) => c.data === t)
       .reduce((s, c) => s + Number(c.valorTotal), 0);
-    const lucroHoje = transacoes.vendas
-      .filter((v) => v.data === t)
-      .reduce((s, v) => {
-        const prod = cadastros.produtos.find((p) => p.nome === v.produto);
-        const custo = prod ? prod.custoMedio : 0;
-        return s + (Number(v.precoUnit) - custo) * Number(v.quantidade);
-      }, 0);
+    // Lucro = vendas de hoje menos o custo da mercadoria que saiu nelas
+    // (mesma conta do Relatório de Vendas do dia).
+    const lucroHoje = calcularLucroDoDia(transacoes, cadastros, t).lucro;
     const contasReceber = contaClientes.reduce((s, c) => s + Math.max(c.saldo, 0), 0);
     const estoqueBaixo = estoquePorProduto.filter((e) => e.saldo < e.estoqueMinimo).length;
     const perdaHoje = (transacoes.perdas || [])
       .filter((pd) => pd.data === t)
       .reduce((s, pd) => s + Number(pd.valorPerdido), 0);
     return { faturamentoHoje, comprasHoje, lucroHoje, contasReceber, estoqueBaixo, perdaHoje };
-  }, [transacoes, cadastros.produtos, contaClientes, estoquePorProduto]);
+  }, [transacoes, cadastros.produtos, cadastros.produtores, contaClientes, estoquePorProduto]);
 
   /* ---------------- checa sessão de empresa antes de qualquer coisa ---------------- */
   if (carregandoSessao) {
@@ -4302,7 +4425,7 @@ function gerarPDFRecibosEntrega(vendas, dataSelecionada, cadastros) {
   abrirImpressao(html, `Recibos-Entrega-${dataSelecionada}.html`);
 }
 /* GERADOR DE PDF - RELATÓRIO DE VENDAS DO DIA */
-function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros) {
+function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros, lucroDia) {
   const porCliente = {};
   vendas.forEach(v => {
     if (!porCliente[v.clienteId]) porCliente[v.clienteId] = [];
@@ -4323,6 +4446,26 @@ function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros) {
     <b>Total de vendas:</b> ${vendas.length} · <b>Total de itens:</b> ${totalQtdGeral.toFixed(1).replace(/\.0$/, '')} CX<br>
     <b>Pago:</b> R$ ${totalPago.toFixed(2)} · <b>Pendente:</b> R$ ${totalPendente.toFixed(2)}
   </div>`;
+
+  if (lucroDia) {
+    const corL = lucroDia.lucro >= 0 ? '#1E7A45' : '#C0392B';
+    html += `<div class="resumo" style="background:#E8F4EC"><b>💰 LUCRO DO DIA · COMPRA × VENDA</b><br>
+      Vendido: <b>R$ ${lucroDia.totalVendido.toFixed(2)}</b> · Custo da compra: <b>R$ ${lucroDia.totalCusto.toFixed(2)}</b> ·
+      Lucro: <b style="color:${corL}">R$ ${lucroDia.lucro.toFixed(2)}</b> (${fmtPct(lucroDia.margem)} de margem)
+    </div>
+    <table><tr><th>Produto</th><th>Qtd</th><th>Venda méd.</th><th>Compra méd.</th><th>Vendido</th><th>Custo</th><th>Lucro</th><th>Margem</th></tr>`;
+    lucroDia.porProduto.forEach((g) => {
+      const un = unidadeDoProduto(g.chave, cadastros.produtos);
+      const vm = g.qtd > 0 ? g.valor / g.qtd : 0;
+      const cm = g.qtd > 0 ? g.custo / g.qtd : 0;
+      const mg = g.valor > 0 ? (g.lucro / g.valor) * 100 : 0;
+      html += `<tr><td>${g.chave}${g.semCusto ? ' ⚠️' : ''}</td><td>${Number(g.qtd.toFixed(2))} ${un}</td><td>R$ ${vm.toFixed(2)}</td><td>R$ ${cm.toFixed(2)}</td><td>R$ ${g.valor.toFixed(2)}</td><td>R$ ${g.custo.toFixed(2)}</td><td style="color:${g.lucro >= 0 ? '#1E7A45' : '#C0392B'}"><b>R$ ${g.lucro.toFixed(2)}</b></td><td>${fmtPct(mg)}</td></tr>`;
+    });
+    html += `</table>`;
+    if (lucroDia.temSemCusto) {
+      html += `<p style="font-size:12px">⚠️ Produto sem compra registrada nem custo médio no cadastro: parte da venda entrou sem custo.</p>`;
+    }
+  }
 
   Object.entries(porCliente).forEach(([clienteId, itens]) => {
     const cliente = cadastros.clientes.find(c => c.id === clienteId);
@@ -4524,6 +4667,18 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
   const totalPago = vendasDoDia.filter((v) => v.status === "Pago").reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
   const totalPendente = totalValor - totalPago;
 
+  // Compra × venda: custo da mercadoria que saiu em cada venda (PEPS/FIFO do
+  // estoque) e o lucro do dia em cima disso.
+  const custos = useMemo(
+    () => calcularCustoVendas(transacoes, cadastros),
+    [transacoes.compras, transacoes.vendas, cadastros.produtos, cadastros.produtores] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const lucroDia = useMemo(
+    () => calcularLucroDoDia(transacoes, cadastros, dataSelecionada, custos),
+    [custos, dataSelecionada] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const corLucro = (n) => (n >= 0 ? "#6FCF97" : C.rust);
+
   return (
     <div>
       <Field label="Data">
@@ -4549,18 +4704,75 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
             </Card>
           </div>
 
+          {/* ---------- Compra × Venda · Lucro do dia ---------- */}
+          <Card style={{ marginBottom: 16 }}>
+            <div className="text-xs uppercase tracking-widest font-bold mb-3" style={{ color: C.inkSoft }}>
+              💰 Lucro do dia · compra × venda
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <div className="text-[11px]" style={{ color: C.inkSoft }}>Vendido</div>
+                <div className="text-sm font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(lucroDia.totalVendido)}</div>
+              </div>
+              <div>
+                <div className="text-[11px]" style={{ color: C.inkSoft }}>Custo da compra</div>
+                <div className="text-sm font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(lucroDia.totalCusto)}</div>
+              </div>
+              <div>
+                <div className="text-[11px]" style={{ color: C.inkSoft }}>Lucro</div>
+                <div className="text-sm font-bold" style={{ fontFamily: monoFont, color: corLucro(lucroDia.lucro) }}>{fmtMoney(lucroDia.lucro)}</div>
+                <div className="text-[11px] font-bold" style={{ color: corLucro(lucroDia.lucro) }}>{fmtPct(lucroDia.margem)} de margem</div>
+              </div>
+            </div>
+
+            <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: C.inkSoft }}>Por produto</div>
+            <div className="flex flex-col">
+              {lucroDia.porProduto.map((g) => {
+                const unidade = unidadeDoProduto(g.chave, cadastros.produtos);
+                const precoMedioVenda = g.qtd > 0 ? g.valor / g.qtd : 0;
+                const custoMedio = g.qtd > 0 ? g.custo / g.qtd : 0;
+                const margem = g.valor > 0 ? (g.lucro / g.valor) * 100 : 0;
+                return (
+                  <div key={g.chave} className="py-1.5" style={{ borderBottom: `1px solid ${C.line}` }}>
+                    <div className="flex justify-between text-xs font-bold">
+                      <span>{g.chave}{g.semCusto ? " ⚠️" : ""}</span>
+                      <span style={{ fontFamily: monoFont, color: corLucro(g.lucro) }}>{fmtMoney(g.lucro)} · {fmtPct(margem)}</span>
+                    </div>
+                    <div className="text-[11px]" style={{ color: C.inkSoft, fontFamily: monoFont }}>
+                      {Number(g.qtd.toFixed(2))} {unidade} · venda {fmtMoney(precoMedioVenda)} · compra {fmtMoney(custoMedio)} /{unidade}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="text-[11px] mt-3" style={{ color: C.inkSoft }}>
+              Custo = preço pago na compra da mercadoria que saiu em cada venda (o que entrou primeiro no estoque sai primeiro). Produtor de comissão entra com a % dele sobre a venda.
+              {" "}Compras lançadas neste dia (todas): {fmtMoney(lucroDia.comprasDoDia)}.
+            </div>
+            {lucroDia.temSemCusto && (
+              <div className="text-[11px] mt-2 p-2 rounded" style={{ background: C.amberSoft, color: C.ink }}>
+                ⚠️ Produto marcado não tem nenhuma compra registrada nem "Custo méd." no cadastro, então parte da venda entrou sem custo e o lucro dele está maior do que o real. Preencha o Custo méd. em Cadastros → Produtos.
+              </div>
+            )}
+          </Card>
+
           {clientesUnicos.map((clienteId) => {
             const cliente = cadastros.clientes.find((c) => c.id === clienteId);
             const vendasCliente = vendasDoDia
               .filter((v) => v.clienteId === clienteId)
               .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"));
             const totalCliente = vendasCliente.reduce((s, v) => s + Number(v.valorFinal || v.valorTotal), 0);
+            const lucroCliente = lucroDia.porCliente.find((g) => g.chave === clienteId)?.lucro || 0;
 
             return (
               <Card key={clienteId} style={{ marginBottom: 12 }}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-bold text-sm" style={{ color: C.blue600 }}>👤 {cliente?.nome || "—"}</div>
-                  <div className="text-xs font-bold" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(totalCliente)}</div>
+                  <div className="text-right">
+                    <div className="text-xs font-bold" style={{ fontFamily: monoFont, color: C.inkSoft }}>{fmtMoney(totalCliente)}</div>
+                    <div className="text-[11px] font-bold" style={{ fontFamily: monoFont, color: corLucro(lucroCliente) }}>lucro {fmtMoney(lucroCliente)}</div>
+                  </div>
                 </div>
                 {vendasCliente.map((v) => {
                   const unidadeV = unidadeDoProduto(v.produto, cadastros.produtos);
@@ -4577,7 +4789,7 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
           })}
 
           <button
-            onClick={() => gerarPDFRelatorioVendas(vendasDoDia, dataSelecionada, cadastros)}
+            onClick={() => gerarPDFRelatorioVendas(vendasDoDia, dataSelecionada, cadastros, lucroDia)}
             className="w-full px-4 py-3 rounded-lg font-bold text-sm mt-2"
             style={{ background: C.amber500, color: C.ink }}
           >
