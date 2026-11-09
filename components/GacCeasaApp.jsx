@@ -605,7 +605,7 @@ function SectionTitle({ children, icon: Icon }) {
 // contagem. Toca pra abrir e ver os itens. Mesmo padrão já usado em
 // "Entregues" (EntregasTab), agora reaproveitado em Alertas, Estoque e
 // Conta Corrente pra essas listas não ficarem tomando a tela toda de cara.
-function ListaCascata({ titulo, icon: Icon, count, aberto, onToggle, children, vazio }) {
+function ListaCascata({ titulo, icon: Icon, count, total, aberto, onToggle, children, vazio }) {
   return (
     <div className="mb-2">
       <button
@@ -629,7 +629,7 @@ function ListaCascata({ titulo, icon: Icon, count, aberto, onToggle, children, v
       </button>
       {aberto && (
         <div className="flex flex-col gap-2 mt-1">
-          {count === 0 ? (
+          {(total ?? count) === 0 ? (
             <Card>
               <p className="text-sm" style={{ color: C.inkSoft }}>{vazio}</p>
             </Card>
@@ -2784,6 +2784,10 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const [pedidosAbertos, setPedidosAbertos] = useState(true);
   const [pedidosDistribuidorAbertos, setPedidosDistribuidorAbertos] = useState(true);
   const [pedidoLancandoId, setPedidoLancandoId] = useState(null);
+  // Aba de cada empresa dentro de "Pedidos do Distribuidor". Sem escolha
+  // ainda, abre sozinha a empresa que tem coisa pra comprar e deixa fechada
+  // a que já está toda comprada.
+  const [empresasPedidoAbertas, setEmpresasPedidoAbertas] = useState({});
 
   // Calcula totais de CX para o dia selecionado
   const comprasDodia = transacoes.compras.filter((c) => c.data === dataSelecionada);
@@ -2823,6 +2827,19 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
     .filter((p) => p.data === dataSelecionada)
     .map((p) => ({ ...p, ...situacaoPedidoDistribuidor(p, transacoes.compras) }))
     .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"));
+
+  // Separa por empresa (cada uma vira uma aba): empresa com coisa em aberto
+  // primeiro, depois em ordem alfabética.
+  const pedidosPorEmpresa = Object.values(
+    pedidosDistribuidorDoDia.reduce((acc, p) => {
+      const k = p.clienteId || "—";
+      if (!acc[k]) acc[k] = { clienteId: k, nome: nomeClienteDoPedido(p.clienteId), pedidos: [], distribuidores: [], emAberto: 0 };
+      acc[k].pedidos.push(p);
+      if (p.situacao !== "atendido") acc[k].emAberto += 1;
+      if (p.distribuidorNome && !acc[k].distribuidores.includes(p.distribuidorNome)) acc[k].distribuidores.push(p.distribuidorNome);
+      return acc;
+    }, {})
+  ).sort((a, b) => (b.emAberto > 0) - (a.emAberto > 0) || a.nome.localeCompare(b.nome, "pt-BR"));
 
   return (
     <div>
@@ -2939,58 +2956,91 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
         titulo="Pedidos do Distribuidor"
         icon={ClipboardCheck}
         count={pedidosDistribuidorDoDia.filter((p) => p.situacao !== "atendido").length}
+        total={pedidosDistribuidorDoDia.length}
         aberto={pedidosDistribuidorAbertos}
         onToggle={() => setPedidosDistribuidorAbertos((v) => !v)}
         vazio="Nenhum pedido de Distribuidor pra esta data."
       >
-        {pedidosDistribuidorDoDia.map((p) => (
-          <Card key={p.id}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-bold text-sm">
-                  {p.produto} · pediu {p.quantidade}
-                  {p.situacao === "parcial" && ` · comprou ${Number(p.compradoQtd.toFixed(3))} · faltam ${Number(p.faltaQtd.toFixed(3))}`}
-                </div>
-                <div className="text-xs" style={{ color: C.inkSoft }}>
-                  {nomeClienteDoPedido(p.clienteId)} · {p.distribuidorNome}
-                </div>
-                {p.observacao && (
-                  <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>"{p.observacao}"</div>
-                )}
-                {p.comprasDoPedido.length > 0 && (
-                  <div className="text-[11px] mt-1" style={{ color: C.inkSoft, fontFamily: monoFont }}>
-                    {p.comprasDoPedido.map((c) => {
-                      const prod = cadastros.produtores.find((x) => x.id === c.produtorId);
-                      return `${prod?.nome || "—"} ${Number(c.quantidade)} × ${fmtMoney(c.valorUnit)}`;
-                    }).join(" · ")}
+        {pedidosPorEmpresa.map((grupo) => {
+          const aberta = empresasPedidoAbertas[grupo.clienteId] ?? grupo.emAberto > 0;
+          return (
+            <div key={grupo.clienteId} className="rounded-lg" style={{ border: `1px solid ${C.line}`, background: C.cardAlt }}>
+              <button
+                onClick={() => setEmpresasPedidoAbertas((m) => ({ ...m, [grupo.clienteId]: !aberta }))}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2.5"
+              >
+                <div className="text-left">
+                  <div className="font-bold text-sm" style={{ color: C.blue600 }}>🏢 {grupo.nome}</div>
+                  <div className="text-[11px]" style={{ color: C.inkSoft }}>
+                    {grupo.pedidos.length} {grupo.pedidos.length === 1 ? "item" : "itens"}
+                    {grupo.distribuidores.length > 0 && ` · ${grupo.distribuidores.join(", ")}`}
                   </div>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <Badge tone={p.situacao === "atendido" ? "ok" : p.situacao === "parcial" ? "warn" : "danger"}>
-                  {p.situacao === "atendido" ? "comprado" : p.situacao === "parcial" ? "parcial" : "falta comprar"}
-                </Badge>
-                {p.situacao !== "atendido" && pedidoLancandoId !== p.id && (
-                  <button onClick={() => setPedidoLancandoId(p.id)} className="text-xs font-bold" style={{ color: C.amber500 }}>
-                    🛒 Lançar compra
-                  </button>
-                )}
-              </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge tone={grupo.emAberto === 0 ? "ok" : "danger"}>
+                    {grupo.emAberto === 0 ? "tudo comprado" : `${grupo.emAberto} em aberto`}
+                  </Badge>
+                  <ChevronRight
+                    size={18}
+                    style={{ color: C.inkSoft, transform: aberta ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
+                  />
+                </div>
+              </button>
+              {aberta && (
+                <div className="flex flex-col gap-2 px-2 pb-2">
+                  {grupo.pedidos.map((p) => (
+                <Card key={p.id}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-sm">
+                        {p.produto} · pediu {p.quantidade}
+                        {p.situacao === "parcial" && ` · comprou ${Number(p.compradoQtd.toFixed(3))} · faltam ${Number(p.faltaQtd.toFixed(3))}`}
+                      </div>
+                      <div className="text-xs" style={{ color: C.inkSoft }}>
+                        {p.distribuidorNome}
+                      </div>
+                      {p.observacao && (
+                        <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>"{p.observacao}"</div>
+                      )}
+                      {p.comprasDoPedido.length > 0 && (
+                        <div className="text-[11px] mt-1" style={{ color: C.inkSoft, fontFamily: monoFont }}>
+                          {p.comprasDoPedido.map((c) => {
+                            const prod = cadastros.produtores.find((x) => x.id === c.produtorId);
+                            return `${prod?.nome || "—"} ${Number(c.quantidade)} × ${fmtMoney(c.valorUnit)}`;
+                          }).join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge tone={p.situacao === "atendido" ? "ok" : p.situacao === "parcial" ? "warn" : "danger"}>
+                        {p.situacao === "atendido" ? "comprado" : p.situacao === "parcial" ? "parcial" : "falta comprar"}
+                      </Badge>
+                      {p.situacao !== "atendido" && pedidoLancandoId !== p.id && (
+                        <button onClick={() => setPedidoLancandoId(p.id)} className="text-xs font-bold" style={{ color: C.amber500 }}>
+                          🛒 Lançar compra
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {pedidoLancandoId === p.id && p.situacao !== "atendido" && (
+                    <LancarCompraDoPedido
+                      key={`${p.id}-${p.faltaQtd}`}
+                      pedido={p}
+                      faltaQtd={p.faltaQtd}
+                      cadastros={cadastros}
+                      transacoes={transacoes}
+                      persistTabelaTransacao={persistTabelaTransacao}
+                      showToast={showToast}
+                      onFechar={() => setPedidoLancandoId(null)}
+                    />
+                  )}
+                </Card>
+                  ))}
+                </div>
+              )}
             </div>
-            {pedidoLancandoId === p.id && p.situacao !== "atendido" && (
-              <LancarCompraDoPedido
-                key={`${p.id}-${p.faltaQtd}`}
-                pedido={p}
-                faltaQtd={p.faltaQtd}
-                cadastros={cadastros}
-                transacoes={transacoes}
-                persistTabelaTransacao={persistTabelaTransacao}
-                showToast={showToast}
-                onFechar={() => setPedidoLancandoId(null)}
-              />
-            )}
-          </Card>
-        ))}
+          );
+        })}
       </ListaCascata>
 
       {(clientesAcima.length > 0 || produtoresPendentes.length > 0) && (
