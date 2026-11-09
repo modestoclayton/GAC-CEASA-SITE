@@ -2685,13 +2685,20 @@ function LancarCompraDoPedido({ pedido, faltaQtd, cadastros, transacoes, persist
     .filter((p) => p.pagamento !== "COMISSAO") // comissão entra só no estoque
     .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
   const [produtorId, setProdutorId] = useState("");
+  // Produto já vem o do pedido, mas dá pra trocar — ex.: o Distribuidor pediu
+  // "MAMÃO FORMOSA 18KG" (caixa) e o que é comprado de verdade é o
+  // "MAMÃO FORMOSA KG" (quilo, com quantidade de caixas pra carga).
+  const [produtoNome, setProdutoNome] = useState(pedido.produto);
   const [valorUnit, setValorUnit] = useState("");
   const [quantidade, setQuantidade] = useState(String(Number(faltaQtd.toFixed(3))));
   const [quantidadeCaixas, setQuantidadeCaixas] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const unidade = unidadeDoProduto(pedido.produto, cadastros.produtos);
+  const unidade = unidadeDoProduto(produtoNome, cadastros.produtos);
+  const unidadePedido = unidadeDoProduto(pedido.produto, cadastros.produtos);
+  const trocouUnidade = unidade !== unidadePedido;
   const precisaCaixas = unidade !== "CX";
+  const produtosOrdenados = [...(cadastros.produtos || [])].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
   const qtd = Number(quantidade) || 0;
   const total = qtd * (Number(valorUnit) || 0);
   const produtor = produtores.find((p) => p.id === produtorId);
@@ -2702,9 +2709,9 @@ function LancarCompraDoPedido({ pedido, faltaQtd, cadastros, transacoes, persist
     if (!produtorId) return showToast && showToast("Escolha o produtor");
     if (!(Number(valorUnit) > 0)) return showToast && showToast("Digite o valor");
     if (!(qtd > 0)) return showToast && showToast("Digite a quantidade");
-    if (qtd > faltaQtd + 0.0001 && !window.confirm(`Faltavam ${Number(faltaQtd.toFixed(3))} ${unidade} e você está comprando ${qtd}. Lançar mesmo assim?`)) return;
+    if (!trocouUnidade && qtd > faltaQtd + 0.0001 && !window.confirm(`Faltavam ${Number(faltaQtd.toFixed(3))} ${unidade} e você está comprando ${qtd}. Lançar mesmo assim?`)) return;
     if (precisaCaixas) {
-      const aviso = avisoConversaoCaixa(pedido.produto, quantidadeCaixas, cadastros.produtos);
+      const aviso = avisoConversaoCaixa(produtoNome, quantidadeCaixas, cadastros.produtos);
       if (aviso) return showToast && showToast(aviso);
     }
     setSalvando(true);
@@ -2718,7 +2725,7 @@ function LancarCompraDoPedido({ pedido, faltaQtd, cadastros, transacoes, persist
       produtorId,
       clienteDestino: pedido.clienteId,
       paraEstoque: false,
-      produto: pedido.produto,
+      produto: produtoNome,
       cargueiro: conferente?.nome || "",
       quantidade: qtd,
       quantidadeCaixas: precisaCaixas ? Number(quantidadeCaixas) || 0 : 0,
@@ -2739,6 +2746,19 @@ function LancarCompraDoPedido({ pedido, faltaQtd, cadastros, transacoes, persist
 
   return (
     <div className="mt-3 pt-3 flex flex-col gap-2" style={{ borderTop: `1px solid ${C.line}` }}>
+      <Field label="Produto">
+        <Select value={produtoNome} onChange={(e) => setProdutoNome(e.target.value)}>
+          {produtosOrdenados.map((p) => (
+            <option key={p.id} value={p.nome}>{p.nome} · {p.unidade || "CX"}</option>
+          ))}
+        </Select>
+      </Field>
+      {trocouUnidade && (
+        <div className="text-[11px] p-2 rounded" style={{ background: C.amberSoft, color: C.ink }}>
+          O pedido veio em {unidadePedido} e este produto é por {unidade}. Confira a quantidade em {unidade}
+          {precisaCaixas ? " e preencha as caixas pra carga." : "."}
+        </div>
+      )}
       <Field label="Produtor">
         <Select value={produtorId} onChange={(e) => setProdutorId(e.target.value)}>
           <option value="">Escolha o produtor…</option>
@@ -2993,7 +3013,7 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="font-bold text-sm">
-                        {p.produto} · pediu {p.quantidade}
+                        {p.produto} · pediu {p.quantidade} {unidadeDoProduto(p.produto, cadastros.produtos)}
                         {p.situacao === "parcial" && ` · comprou ${Number(p.compradoQtd.toFixed(3))} · faltam ${Number(p.faltaQtd.toFixed(3))}`}
                       </div>
                       <div className="text-xs" style={{ color: C.inkSoft }}>
@@ -3006,7 +3026,10 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
                         <div className="text-[11px] mt-1" style={{ color: C.inkSoft, fontFamily: monoFont }}>
                           {p.comprasDoPedido.map((c) => {
                             const prod = cadastros.produtores.find((x) => x.id === c.produtorId);
-                            return `${prod?.nome || "—"} ${Number(c.quantidade)} × ${fmtMoney(c.valorUnit)}`;
+                            const un = unidadeDoProduto(c.produto, cadastros.produtos);
+                            const cx = un !== "CX" && Number(c.quantidadeCaixas) > 0 ? ` (${c.quantidadeCaixas} CX)` : "";
+                            const outroProduto = c.produto !== p.produto ? ` ${c.produto}` : "";
+                            return `${prod?.nome || "—"}${outroProduto} ${Number(c.quantidade)} ${un}${cx} × ${fmtMoney(c.valorUnit)}`;
                           }).join(" · ")}
                         </div>
                       )}
@@ -6773,14 +6796,14 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
           </Field>
           <Field label="Produto">
             <Select value={produtoNovoPedido} onChange={(e) => setProdutoNovoPedido(e.target.value)}>
-              {cadastros.produtos.map((p) => (
+              {[...cadastros.produtos].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR")).map((p) => (
                 <option key={p.id} value={p.nome}>
-                  {p.nome}
+                  {p.nome} · {p.unidade === "KG" ? "por quilo" : p.unidade === "UN" ? "por unidade" : "por caixa"}
                 </option>
               ))}
             </Select>
           </Field>
-          <Field label="Quantidade desejada">
+          <Field label={`Quantidade desejada (${(() => { const u = unidadeDoProduto(produtoNovoPedido, cadastros.produtos); return u === "KG" ? "quilos" : u === "UN" ? "unidades" : "caixas"; })()})`}>
             <TextInput
               type="number"
               inputMode="decimal"
@@ -6814,7 +6837,7 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
               <div className="flex justify-between items-start">
                 <div>
                   <div className="font-bold text-sm">
-                    {p.produto} · pediu {p.quantidade}
+                    {p.produto} · pediu {p.quantidade} {unidadeDoProduto(p.produto, cadastros.produtos)}
                     {p.situacao === "parcial" && ` · comprou ${Number(p.compradoQtd.toFixed(3))} · faltam ${Number(p.faltaQtd.toFixed(3))}`}
                   </div>
                   {p.observacao && (
