@@ -143,6 +143,7 @@ function paraLinha(chaveJS, empresaId, r) {
       divergencia: r.divergencia ?? null,
       cancelada: !!r.cancelada,
       cancelada_em: r.canceladaEm || null,
+      pedido_id: r.pedidoId || null,
     };
   }
   if (chaveJS === "vendas") {
@@ -325,6 +326,7 @@ function paraObjeto(chaveJS, linha) {
       divergencia: linha.divergencia,
       cancelada: !!linha.cancelada,
       canceladaEm: linha.cancelada_em || null,
+      pedidoId: linha.pedido_id || null,
     };
   }
   if (chaveJS === "vendas") {

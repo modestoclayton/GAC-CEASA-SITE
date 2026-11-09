@@ -2657,12 +2657,133 @@ function NavButton({ active, icon: Icon, label, onClick }) {
 /* ---------------------------------------------------------------------- */
 /* Dashboard Tab                                                          */
 /* ---------------------------------------------------------------------- */
+// Quanto já foi comprado de um pedido do Distribuidor. Compra lançada pelo
+// botão "Lançar compra" do próprio pedido fica ligada a ele (pedidoId) e é
+// só ela que conta. Pedido antigo, sem nenhuma compra ligada, continua
+// batendo pelo jeito de antes: compras do dia pra mesma empresa com o mesmo
+// nome de produto (que não estejam ligadas a outro pedido).
+function situacaoPedidoDistribuidor(p, compras) {
+  const norm = (x) => (x || "").trim().toLowerCase();
+  const ligadas = (compras || []).filter((c) => c.pedidoId === p.id);
+  const contadas = ligadas.length
+    ? ligadas
+    : (compras || []).filter(
+        (c) => !c.pedidoId && c.clienteDestino === p.clienteId && c.data === p.data && norm(c.produto) === norm(p.produto)
+      );
+  const compradoQtd = contadas.reduce((s, c) => s + (Number(c.quantidade) || 0), 0);
+  const pedida = Number(p.quantidade) || 0;
+  const faltaQtd = Math.max(0, pedida - compradoQtd);
+  const situacao = compradoQtd <= 0 ? "pendente" : compradoQtd < pedida ? "parcial" : "atendido";
+  return { compradoQtd, faltaQtd, situacao, comprasDoPedido: contadas };
+}
+
+// Mini-formulário dentro do pedido: escolhe o produtor e o valor, e a compra
+// é lançada sozinha pra empresa do Distribuidor, com o produto e a data do
+// pedido. A quantidade já vem com o que falta — muda só se comprou menos.
+function LancarCompraDoPedido({ pedido, faltaQtd, cadastros, transacoes, persistTabelaTransacao, showToast, onFechar }) {
+  const produtores = (cadastros.produtores || [])
+    .filter((p) => p.pagamento !== "COMISSAO") // comissão entra só no estoque
+    .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+  const [produtorId, setProdutorId] = useState("");
+  const [valorUnit, setValorUnit] = useState("");
+  const [quantidade, setQuantidade] = useState(String(Number(faltaQtd.toFixed(3))));
+  const [quantidadeCaixas, setQuantidadeCaixas] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const unidade = unidadeDoProduto(pedido.produto, cadastros.produtos);
+  const precisaCaixas = unidade !== "CX";
+  const qtd = Number(quantidade) || 0;
+  const total = qtd * (Number(valorUnit) || 0);
+  const produtor = produtores.find((p) => p.id === produtorId);
+  const desconto = produtor?.temDescontoFundoRural ? total * 0.0163 : 0;
+
+  const salvar = async () => {
+    if (salvando) return;
+    if (!produtorId) return showToast && showToast("Escolha o produtor");
+    if (!(Number(valorUnit) > 0)) return showToast && showToast("Digite o valor");
+    if (!(qtd > 0)) return showToast && showToast("Digite a quantidade");
+    if (qtd > faltaQtd + 0.0001 && !window.confirm(`Faltavam ${Number(faltaQtd.toFixed(3))} ${unidade} e você está comprando ${qtd}. Lançar mesmo assim?`)) return;
+    if (precisaCaixas) {
+      const aviso = avisoConversaoCaixa(pedido.produto, quantidadeCaixas, cadastros.produtos);
+      if (aviso) return showToast && showToast(aviso);
+    }
+    setSalvando(true);
+    // Conferente fixo da empresa (Contas → Gerenciar Acesso), igual no formulário de compra.
+    const conferente = normalizarEquipe(cadastros.compradoresVendedores).find(
+      (e) => e.funcao === "conferente" && (e.clientesIds || []).includes(pedido.clienteId)
+    );
+    const nova = {
+      id: uid(),
+      data: pedido.data || todayISO(),
+      produtorId,
+      clienteDestino: pedido.clienteId,
+      paraEstoque: false,
+      produto: pedido.produto,
+      cargueiro: conferente?.nome || "",
+      quantidade: qtd,
+      quantidadeCaixas: precisaCaixas ? Number(quantidadeCaixas) || 0 : 0,
+      valorUnit: Number(valorUnit),
+      valorTotal: total,
+      desconto,
+      valorFinal: total - desconto,
+      entregaConfirmada: false,
+      quantidadeRecebida: null,
+      divergencia: null,
+      pedidoId: pedido.id,
+    };
+    await persistTabelaTransacao("compras", [nova, ...(transacoes.compras || [])]);
+    setSalvando(false);
+    showToast && showToast(qtd + 0.0001 < faltaQtd ? `Compra lançada · faltam ${Number((faltaQtd - qtd).toFixed(3))} ${unidade}` : "Compra lançada · pedido completo");
+    onFechar();
+  };
+
+  return (
+    <div className="mt-3 pt-3 flex flex-col gap-2" style={{ borderTop: `1px solid ${C.line}` }}>
+      <Field label="Produtor">
+        <Select value={produtorId} onChange={(e) => setProdutorId(e.target.value)}>
+          <option value="">Escolha o produtor…</option>
+          {produtores.map((p) => (
+            <option key={p.id} value={p.id}>{p.nome}</option>
+          ))}
+        </Select>
+      </Field>
+      <div className={`grid ${precisaCaixas ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
+        <Field label={`Valor por ${unidade}`}>
+          <TextInput type="number" inputMode="decimal" placeholder="0,00" value={valorUnit} onChange={(e) => setValorUnit(e.target.value)} />
+        </Field>
+        <Field label={`Qtd (${unidade})`}>
+          <TextInput type="number" inputMode="decimal" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+        </Field>
+        {precisaCaixas && (
+          <Field label="Caixas">
+            <TextInput type="number" inputMode="numeric" value={quantidadeCaixas} onChange={(e) => setQuantidadeCaixas(e.target.value)} />
+          </Field>
+        )}
+      </div>
+      {total > 0 && (
+        <div className="text-xs" style={{ color: C.inkSoft, fontFamily: monoFont }}>
+          Total {fmtMoney(total - desconto)}{desconto > 0 ? ` (com desconto fundo rural de ${fmtMoney(desconto)})` : ""}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <PrimaryButton onClick={salvar} disabled={salvando} icon={Check} tone="green">
+            {salvando ? "Lançando…" : "Lançar compra"}
+          </PrimaryButton>
+        </div>
+        <button onClick={onFechar} className="px-3 text-xs font-bold" style={{ color: C.inkSoft }}>Fechar</button>
+      </div>
+    </div>
+  );
+}
+
 function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdutores, transacoes, cadastros, persistTabelaTransacao, showToast }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [alertasAbertos, setAlertasAbertos] = useState(true);
   const [acoesFinAbertas, setAcoesFinAbertas] = useState(false);
   const [pedidosAbertos, setPedidosAbertos] = useState(true);
   const [pedidosDistribuidorAbertos, setPedidosDistribuidorAbertos] = useState(true);
+  const [pedidoLancandoId, setPedidoLancandoId] = useState(null);
 
   // Calcula totais de CX para o dia selecionado
   const comprasDodia = transacoes.compras.filter((c) => c.data === dataSelecionada);
@@ -2700,13 +2821,7 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const norm = (s) => (s || "").trim().toLowerCase();
   const pedidosDistribuidorDoDia = (transacoes.pedidosDistribuidor || [])
     .filter((p) => p.data === dataSelecionada)
-    .map((p) => {
-      const compradoQtd = comprasDodia
-        .filter((c) => c.clienteDestino === p.clienteId && norm(c.produto) === norm(p.produto))
-        .reduce((s, c) => s + (Number(c.quantidade) || 0), 0);
-      const situacao = compradoQtd <= 0 ? "pendente" : compradoQtd < Number(p.quantidade) ? "parcial" : "atendido";
-      return { ...p, compradoQtd, situacao };
-    })
+    .map((p) => ({ ...p, ...situacaoPedidoDistribuidor(p, transacoes.compras) }))
     .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"));
 
   return (
@@ -2829,22 +2944,51 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
         vazio="Nenhum pedido de Distribuidor pra esta data."
       >
         {pedidosDistribuidorDoDia.map((p) => (
-          <Card key={p.id} className="flex items-center justify-between gap-3">
-            <div>
-              <div className="font-bold text-sm">
-                {p.produto} · pediu {p.quantidade}
-                {p.situacao === "parcial" && ` (comprou ${p.compradoQtd})`}
+          <Card key={p.id}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-bold text-sm">
+                  {p.produto} · pediu {p.quantidade}
+                  {p.situacao === "parcial" && ` · comprou ${Number(p.compradoQtd.toFixed(3))} · faltam ${Number(p.faltaQtd.toFixed(3))}`}
+                </div>
+                <div className="text-xs" style={{ color: C.inkSoft }}>
+                  {nomeClienteDoPedido(p.clienteId)} · {p.distribuidorNome}
+                </div>
+                {p.observacao && (
+                  <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>"{p.observacao}"</div>
+                )}
+                {p.comprasDoPedido.length > 0 && (
+                  <div className="text-[11px] mt-1" style={{ color: C.inkSoft, fontFamily: monoFont }}>
+                    {p.comprasDoPedido.map((c) => {
+                      const prod = cadastros.produtores.find((x) => x.id === c.produtorId);
+                      return `${prod?.nome || "—"} ${Number(c.quantidade)} × ${fmtMoney(c.valorUnit)}`;
+                    }).join(" · ")}
+                  </div>
+                )}
               </div>
-              <div className="text-xs" style={{ color: C.inkSoft }}>
-                {nomeClienteDoPedido(p.clienteId)} · {p.distribuidorNome}
+              <div className="flex flex-col items-end gap-1">
+                <Badge tone={p.situacao === "atendido" ? "ok" : p.situacao === "parcial" ? "warn" : "danger"}>
+                  {p.situacao === "atendido" ? "comprado" : p.situacao === "parcial" ? "parcial" : "falta comprar"}
+                </Badge>
+                {p.situacao !== "atendido" && pedidoLancandoId !== p.id && (
+                  <button onClick={() => setPedidoLancandoId(p.id)} className="text-xs font-bold" style={{ color: C.amber500 }}>
+                    🛒 Lançar compra
+                  </button>
+                )}
               </div>
-              {p.observacao && (
-                <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>"{p.observacao}"</div>
-              )}
             </div>
-            <Badge tone={p.situacao === "atendido" ? "ok" : p.situacao === "parcial" ? "warn" : "danger"}>
-              {p.situacao === "atendido" ? "comprado" : p.situacao === "parcial" ? "parcial" : "falta comprar"}
-            </Badge>
+            {pedidoLancandoId === p.id && p.situacao !== "atendido" && (
+              <LancarCompraDoPedido
+                key={`${p.id}-${p.faltaQtd}`}
+                pedido={p}
+                faltaQtd={p.faltaQtd}
+                cadastros={cadastros}
+                transacoes={transacoes}
+                persistTabelaTransacao={persistTabelaTransacao}
+                showToast={showToast}
+                onFechar={() => setPedidoLancandoId(null)}
+              />
+            )}
           </Card>
         ))}
       </ListaCascata>
@@ -4847,7 +4991,10 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
   const [cargueiro, setCargueiro] = useState("");
   const [quantidadeCaixas, setQuantidadeCaixas] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
-  const [isEstoque, setIsEstoque] = useState(false);
+  // Já abre marcado: quem usa o app compra pro estoque e depois vende.
+  // Compra direta pra uma empresa (ex.: aumento de pedido) é exceção — aí
+  // desmarca e escolhe a empresa.
+  const [isEstoque, setIsEstoque] = useState(true);
   const [view, setView] = useState("registrar");
   const [editandoId, setEditandoId] = useState(null);
   const [editQtd, setEditQtd] = useState("");
@@ -4967,7 +5114,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
     setQuantidadeCaixas("");
     setValorUnit("");
     setCargueiro("");
-    setIsEstoque(false);
+    setIsEstoque(true);
     setUltimaCompra(nova);
     setSalvando(false);
     showToast("Compra registrada");
@@ -6410,13 +6557,7 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   // produto (sem diferenciar maiúscula/minúscula).
   const meusPedidosDistribuidor = (transacoes.pedidosDistribuidor || [])
     .filter((p) => minhasEmpresas.includes(p.clienteId))
-    .map((p) => {
-      const compradoQtd = transacoes.compras
-        .filter((c) => c.clienteDestino === p.clienteId && c.data === p.data && norm(c.produto) === norm(p.produto))
-        .reduce((s, c) => s + (Number(c.quantidade) || 0), 0);
-      const situacao = compradoQtd <= 0 ? "pendente" : compradoQtd < Number(p.quantidade) ? "parcial" : "atendido";
-      return { ...p, compradoQtd, situacao };
-    })
+    .map((p) => ({ ...p, ...situacaoPedidoDistribuidor(p, transacoes.compras) }))
     .sort(
       (a, b) =>
         (b.data || "").localeCompare(a.data || "") ||
@@ -6624,7 +6765,7 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
                 <div>
                   <div className="font-bold text-sm">
                     {p.produto} · pediu {p.quantidade}
-                    {p.situacao === "parcial" && ` (comprou ${p.compradoQtd})`}
+                    {p.situacao === "parcial" && ` · comprou ${Number(p.compradoQtd.toFixed(3))} · faltam ${Number(p.faltaQtd.toFixed(3))}`}
                   </div>
                   {p.observacao && (
                     <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>
