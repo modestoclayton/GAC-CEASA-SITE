@@ -266,7 +266,8 @@ function calcularAtribuicoesVendas(transacoes, cadastros) {
 //    nesse produto (em qualquer compra, até o dia da venda); se nunca houve
 //    compra, usa o "Custo méd." do cadastro do produto. Se nem isso tiver,
 //    a parte que sobrou fica "sem custo" e o relatório avisa.
-// Retorna { [vendaId]: { custo, qtdSemCusto } }.
+// Retorna { [vendaId]: { custo, qtdSemCusto, datasCompra } } — datasCompra são
+// os dias das compras de onde saiu a mercadoria (normalmente dias anteriores).
 function calcularCustoVendas(transacoes, cadastros) {
   const produtos = cadastros.produtos || [];
   const produtores = cadastros.produtores || [];
@@ -295,9 +296,9 @@ function calcularCustoVendas(transacoes, cadastros) {
 
   const ultimoPreco = (produto, ate) => {
     const lista = (comprasPorProduto[produto] || []).filter((c) => c.data <= ate).sort(porData);
-    if (lista.length) return lista[lista.length - 1].custoUnit;
+    if (lista.length) return { custoUnit: lista[lista.length - 1].custoUnit, data: lista[lista.length - 1].data };
     const cad = Number(produtos.find((p) => p.nome === produto)?.custoMedio) || 0;
-    return cad > 0 ? cad : null;
+    return cad > 0 ? { custoUnit: cad, data: null } : null;
   };
 
   const vendasPorProduto = {};
@@ -316,9 +317,11 @@ function calcularCustoVendas(transacoes, cadastros) {
       const valorVenda = Number(v.valorFinal ?? v.valorTotal) || 0;
       let restante = qtdVenda;
       let custo = 0;
+      const datasCompra = new Set();
       while (restante > 0.0001 && cursor < lotes.length && lotes[cursor].data <= v.data) {
         const lote = lotes[cursor];
         const usado = Math.min(lote.restante, restante);
+        datasCompra.add(lote.data);
         custo += lote.comissaoPct !== null
           ? (qtdVenda > 0 ? (usado / qtdVenda) * valorVenda * (lote.comissaoPct / 100) : 0)
           : usado * lote.custoUnit;
@@ -329,10 +332,12 @@ function calcularCustoVendas(transacoes, cadastros) {
       let qtdSemCusto = 0;
       if (restante > 0.0001) {
         const preco = ultimoPreco(produto, v.data);
-        if (preco !== null) custo += restante * preco;
-        else qtdSemCusto = restante;
+        if (preco !== null) {
+          custo += restante * preco.custoUnit;
+          if (preco.data) datasCompra.add(preco.data);
+        } else qtdSemCusto = restante;
       }
-      resultado[v.id] = { custo, qtdSemCusto };
+      resultado[v.id] = { custo, qtdSemCusto, datasCompra: [...datasCompra] };
     }
   }
   return resultado;
@@ -344,21 +349,22 @@ function calcularLucroDoDia(transacoes, cadastros, data, custos) {
   const vendas = (transacoes.vendas || []).filter((v) => v.data === data);
   const linhas = vendas.map((v) => {
     const valor = Number(v.valorFinal ?? v.valorTotal) || 0;
-    const info = custoPorVenda[v.id] || { custo: 0, qtdSemCusto: Number(v.quantidade) || 0 };
-    return { venda: v, valor, custo: info.custo, lucro: valor - info.custo, semCusto: info.qtdSemCusto > 0.0001 };
+    const info = custoPorVenda[v.id] || { custo: 0, qtdSemCusto: Number(v.quantidade) || 0, datasCompra: [] };
+    return { venda: v, valor, custo: info.custo, lucro: valor - info.custo, semCusto: info.qtdSemCusto > 0.0001, datasCompra: info.datasCompra || [] };
   });
   const soma = (arr, k) => arr.reduce((s, l) => s + l[k], 0);
   const agrupar = (chave) => {
     const g = {};
     for (const l of linhas) {
       const k = chave(l.venda);
-      if (!g[k]) g[k] = { chave: k, qtd: 0, caixas: 0, valor: 0, custo: 0, lucro: 0, semCusto: false };
+      if (!g[k]) g[k] = { chave: k, qtd: 0, caixas: 0, valor: 0, custo: 0, lucro: 0, semCusto: false, datasCompra: [] };
       g[k].qtd += Number(l.venda.quantidade) || 0;
       g[k].caixas += caixasEquivalentes(l.venda, cadastros.produtos);
       g[k].valor += l.valor;
       g[k].custo += l.custo;
       g[k].lucro += l.lucro;
       g[k].semCusto = g[k].semCusto || l.semCusto;
+      g[k].datasCompra = [...new Set([...g[k].datasCompra, ...l.datasCompra])].sort();
     }
     return Object.values(g);
   };
@@ -379,6 +385,15 @@ function calcularLucroDoDia(transacoes, cadastros, data, custos) {
     comprasDoDia,
     temSemCusto: linhas.some((l) => l.semCusto),
   };
+}
+
+// "compra de 05/11" ou "compras de 04/11 e 05/11" — de onde veio o custo.
+function textoDatasCompra(datas, dataVenda) {
+  if (!datas || !datas.length) return "";
+  const f = (d) => (d === dataVenda ? "hoje" : `${d.slice(8, 10)}/${d.slice(5, 7)}`);
+  const nomes = datas.map(f);
+  const lista = nomes.length === 1 ? nomes[0] : `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
+  return `${nomes.length === 1 ? "compra de" : "compras de"} ${lista}`;
 }
 
 const fmtPct = (n) => `${(Number(n) || 0).toFixed(1).replace(".", ",")}%`;
@@ -4453,13 +4468,13 @@ function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros, lucroDia) {
       Vendido: <b>R$ ${lucroDia.totalVendido.toFixed(2)}</b> · Custo da compra: <b>R$ ${lucroDia.totalCusto.toFixed(2)}</b> ·
       Lucro: <b style="color:${corL}">R$ ${lucroDia.lucro.toFixed(2)}</b> (${fmtPct(lucroDia.margem)} de margem)
     </div>
-    <table><tr><th>Produto</th><th>Qtd</th><th>Venda méd.</th><th>Compra méd.</th><th>Vendido</th><th>Custo</th><th>Lucro</th><th>Margem</th></tr>`;
+    <table><tr><th>Produto</th><th>Qtd</th><th>Venda méd.</th><th>Compra méd.</th><th>Vendido</th><th>Custo</th><th>Lucro</th><th>Margem</th><th>Custo vem de</th></tr>`;
     lucroDia.porProduto.forEach((g) => {
       const un = unidadeDoProduto(g.chave, cadastros.produtos);
       const vm = g.qtd > 0 ? g.valor / g.qtd : 0;
       const cm = g.qtd > 0 ? g.custo / g.qtd : 0;
       const mg = g.valor > 0 ? (g.lucro / g.valor) * 100 : 0;
-      html += `<tr><td>${g.chave}${g.semCusto ? ' ⚠️' : ''}</td><td>${Number(g.qtd.toFixed(2))} ${un}</td><td>R$ ${vm.toFixed(2)}</td><td>R$ ${cm.toFixed(2)}</td><td>R$ ${g.valor.toFixed(2)}</td><td>R$ ${g.custo.toFixed(2)}</td><td style="color:${g.lucro >= 0 ? '#1E7A45' : '#C0392B'}"><b>R$ ${g.lucro.toFixed(2)}</b></td><td>${fmtPct(mg)}</td></tr>`;
+      html += `<tr><td>${g.chave}${g.semCusto ? ' ⚠️' : ''}</td><td>${Number(g.qtd.toFixed(2))} ${un}</td><td>R$ ${vm.toFixed(2)}</td><td>R$ ${cm.toFixed(2)}</td><td>R$ ${g.valor.toFixed(2)}</td><td>R$ ${g.custo.toFixed(2)}</td><td style="color:${g.lucro >= 0 ? '#1E7A45' : '#C0392B'}"><b>R$ ${g.lucro.toFixed(2)}</b></td><td>${fmtPct(mg)}</td><td>${textoDatasCompra(g.datasCompra, dataSelecionada) || '—'}</td></tr>`;
     });
     html += `</table>`;
     if (lucroDia.temSemCusto) {
@@ -4741,14 +4756,18 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
                     <div className="text-[11px]" style={{ color: C.inkSoft, fontFamily: monoFont }}>
                       {Number(g.qtd.toFixed(2))} {unidade} · venda {fmtMoney(precoMedioVenda)} · compra {fmtMoney(custoMedio)} /{unidade}
                     </div>
+                    {g.datasCompra.length > 0 && (
+                      <div className="text-[11px]" style={{ color: C.inkSoft }}>
+                        custo da {textoDatasCompra(g.datasCompra, dataSelecionada)}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
 
             <div className="text-[11px] mt-3" style={{ color: C.inkSoft }}>
-              Custo = preço pago na compra da mercadoria que saiu em cada venda (o que entrou primeiro no estoque sai primeiro). Produtor de comissão entra com a % dele sobre a venda.
-              {" "}Compras lançadas neste dia (todas): {fmtMoney(lucroDia.comprasDoDia)}.
+              Lucro do dia = o que foi vendido neste dia menos o que você pagou, nas compras anteriores, pela mercadoria que saiu. O que entrou primeiro no estoque sai primeiro. Produtor de comissão entra com a % dele sobre a venda.
             </div>
             {lucroDia.temSemCusto && (
               <div className="text-[11px] mt-2 p-2 rounded" style={{ background: C.amberSoft, color: C.ink }}>
