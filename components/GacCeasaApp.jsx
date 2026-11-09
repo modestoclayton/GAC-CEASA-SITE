@@ -6662,6 +6662,15 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   };
 
   const removerPedidoDistribuidor = async (id) => {
+    // Botão pequeno, fácil de esbarrar — pede confirmação antes de apagar.
+    const pedido = (transacoes.pedidosDistribuidor || []).find((p) => p.id === id);
+    if (!pedido) return;
+    const unidade = unidadeDoProduto(pedido.produto, cadastros.produtos);
+    const { compradoQtd } = situacaoPedidoDistribuidor(pedido, transacoes.compras);
+    const aviso = compradoQtd > 0
+      ? `Este pedido já tem ${Number(compradoQtd.toFixed(3))} ${unidade} comprado. Deseja realmente excluir o pedido?\n\n${pedido.produto} · ${pedido.quantidade} ${unidade}\n\n(A compra já lançada continua valendo.)`
+      : `Deseja realmente excluir este pedido?\n\n${pedido.produto} · ${pedido.quantidade} ${unidade}`;
+    if (!window.confirm(aviso)) return;
     const next = (transacoes.pedidosDistribuidor || []).filter((p) => p.id !== id);
     await persistTabelaTransacao("pedidosDistribuidor", next);
     showToast("Pedido removido");
@@ -6693,6 +6702,8 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   };
 
   const cancelarPedido = async (id) => {
+    const pedidoAum = (transacoes.pedidosAumento || []).find((p) => p.id === id);
+    if (!window.confirm(`Deseja realmente cancelar este pedido de aumento?${pedidoAum?.produto ? `\n\n${pedidoAum.produto}` : ""}`)) return;
     const next = (transacoes.pedidosAumento || []).filter((p) => p.id !== id);
     await persistTabelaTransacao("pedidosAumento", next);
     showToast("Pedido cancelado");
