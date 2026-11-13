@@ -5708,7 +5708,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
         </div>
       </Field>
 
-      {comprasTodas.filter((c) => c.data === dataFiltro).length === 0 ? (
+      {comprasTodas.filter((c) => c.data === dataFiltro && !c.cancelada).length === 0 && comprasTodas.filter((c) => c.data === dataFiltro && c.cancelada).length === 0 ? (
         <Card>
           <p className="text-sm" style={{ color: C.inkSoft }}>
             {dataFiltro === todayISO() ? "Nenhuma compra registrada hoje." : `Nenhuma compra registrada em ${fmtDate(dataFiltro)}.`}
@@ -5716,7 +5716,9 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
         </Card>
       ) : (
         (() => {
-          const comprasHojeTodas = comprasTodas.filter((c) => c.data === dataFiltro);
+          // Cancelados ficam de fora da lista; vão pra seção 'Canceladas' no fim.
+          const comprasHojeTodas = comprasTodas.filter((c) => c.data === dataFiltro && !c.cancelada);
+          const canceladasHoje = comprasTodas.filter((c) => c.data === dataFiltro && c.cancelada);
           // Agrupa por destino (ESTOQUE fica sempre em primeiro, depois clientes em ordem alfabética)
           const gruposDestino = [...new Set(comprasHojeTodas.map((c) => c.clienteDestino))].sort((a, b) => {
             if (a === "ESTOQUE") return -1;
@@ -5727,6 +5729,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
           });
 
           return (
+            <>
             <div className="flex flex-col gap-3">
               {gruposDestino.map((destinoId) => {
                 const isEstoqueGrupo = destinoId === "ESTOQUE";
@@ -5854,6 +5857,27 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
                 );
               })}
             </div>
+            {canceladasHoje.length > 0 && (
+              <details className="mt-3">
+                <summary className="text-xs font-bold cursor-pointer" style={{ color: C.inkSoft }}>
+                  Canceladas ({canceladasHoje.length}) — guardadas, não entram em nenhum total
+                </summary>
+                <div className="flex flex-col gap-2 mt-2">
+                  {canceladasHoje.map((c) => (
+                    <div key={c.id} className="text-xs rounded-lg p-2" style={{ background: C.cardAlt, opacity: 0.6 }}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span style={{ textDecoration: "line-through" }}>
+                          {c.clienteDestino === "ESTOQUE" ? "Estoque" : cadastros.clientes.find((cl) => cl.id === c.clienteDestino)?.nome || "—"} · {cadastros.produtores.find((p) => p.id === c.produtorId)?.nome || "—"} · {c.produto}
+                        </span>
+                        <SeloCancelado em={c.canceladaEm} />
+                      </div>
+                      <div style={{ color: C.inkSoft, fontFamily: monoFont }}>{fmtMoney(c.valorFinal || c.valorTotal)}</div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+            </>
           );
         })()
       )}
