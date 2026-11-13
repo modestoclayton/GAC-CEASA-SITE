@@ -821,11 +821,25 @@ const FUNCOES = [
 /* Recibo / Pedido — tela dedicada pra imprimir ou salvar como PDF        */
 /* (Ctrl+P no navegador → "Salvar como PDF" — funciona sem internet)      */
 /* ---------------------------------------------------------------------- */
+// Um papel de entrega = um cliente + um dia + o mesmo caminhão (placa, local,
+// carregador). Todos os produtos desse grupo saem no mesmo papel. Venda
+// cancelada fica de fora.
+function agruparEntregasPapel(vendas) {
+  const grupos = {};
+  (vendas || []).filter((v) => !v.cancelada).forEach((v) => {
+    const e = v.entrega || {};
+    const chave = [v.clienteId, v.data, e.placa || "", e.localEntrega || "", e.carregador || ""].join("|");
+    (grupos[chave] = grupos[chave] || []).push(v);
+  });
+  return Object.values(grupos);
+}
+
 // Recibo de entrega — só pra levar junto com a carga. Não mostra valor,
 // preço unitário nem total nenhum: só o essencial pra quem entrega e pra
 // quem recebe conferirem que chegou o produto certo, na quantidade certa.
-function ReciboEntregaView({ item, cadastros, onFechar }) {
+function ReciboEntregaView({ item, transacoes, cadastros, onFechar }) {
   const cliente = cadastros.clientes.find((c) => c.id === item.clienteId);
+  const grupoPapel = agruparEntregasPapel(transacoes?.vendas || []).find((g) => g.some((v) => v.id === item.id)) || [item];
   const unidade = unidadeDoProduto(item.produto, cadastros.produtos);
   const entrega = item.entrega || {};
 
@@ -866,13 +880,21 @@ function ReciboEntregaView({ item, cadastros, onFechar }) {
         </div>
 
         <div className="mb-4 p-3 rounded-lg" style={{ background: "#EDEAE0" }}>
-          <div className="text-xs uppercase font-bold" style={{ color: "#6E6650" }}>
-            Produto
+          <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
+            Produtos desta entrega
           </div>
-          <div className="text-lg font-bold">{item.produto}</div>
-          <div className="text-sm" style={{ color: "#1F4A30" }}>
-            {item.quantidade} {unidade}
-          </div>
+          {grupoPapel.map((v) => {
+            const un = unidadeDoProduto(v.produto, cadastros.produtos);
+            const cx = un !== "CX" && Number(v.quantidadeCaixas) > 0 ? ` (${v.quantidadeCaixas} CX)` : "";
+            return (
+              <div key={v.id} className="mb-1">
+                <div className="text-lg font-bold">{v.produto}</div>
+                <div className="text-sm" style={{ color: "#1F4A30" }}>
+                  {v.quantidade} {un}{cx}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="mb-4">
@@ -2332,6 +2354,7 @@ export default function GacCeasaApp() {
       return (
         <ReciboEntregaView
           item={recibo.item}
+          transacoes={transacoes}
           cadastros={cadastros}
           onFechar={() => setRecibo(null)}
         />
@@ -4524,10 +4547,21 @@ function gerarPDFValesPorEmpresa(compras, dataSelecionada, cadastros) {
 // conteúdo do ReciboEntregaView (produto, quantidade e dados de entrega,
 // sem preço unitário nem total), pra imprimir de uma vez todas as entregas
 // do dia numa aba só.
-function montarCorpoReciboEntrega(venda, dataSelecionada, cadastros, quebraPagina) {
+function montarCorpoReciboEntrega(grupo, dataSelecionada, cadastros, quebraPagina) {
+  const venda = grupo[0];
   const cliente = cadastros.clientes.find((c) => c.id === venda.clienteId);
-  const unidade = unidadeDoProduto(venda.produto, cadastros.produtos);
   const entrega = venda.entrega || {};
+  const linhasProdutos = [...grupo]
+    .sort((a, b) => a.produto.localeCompare(b.produto, "pt-BR"))
+    .map((i) => {
+      const un = unidadeDoProduto(i.produto, cadastros.produtos);
+      const cx = un !== "CX" && Number(i.quantidadeCaixas) > 0 ? ` (${i.quantidadeCaixas} CX)` : "";
+      return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:3px 0;border-bottom:1px solid #D8CBA0;">
+          <span style="font-weight:bold;">${i.produto}</span>
+          <span style="color:#1F4A30;white-space:nowrap;">${i.quantidade} ${un}${cx}</span>
+        </div>`;
+    })
+    .join("");
 
   const boxCaixas =
     entrega.caixasEmprestadas && entrega.obsCaixas
@@ -4553,9 +4587,8 @@ function montarCorpoReciboEntrega(venda, dataSelecionada, cadastros, quebraPagin
       </div>
 
       <div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
-        <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Produto</div>
-        <div style="font-size:15px;font-weight:bold;">${venda.produto}</div>
-        <div style="font-size:13px;color:#1F4A30;">${venda.quantidade} ${unidade}</div>
+        <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;margin-bottom:4px;">Produtos desta entrega</div>
+        ${linhasProdutos}
       </div>
 
       <div style="margin-bottom:16px;">
@@ -4594,9 +4627,10 @@ function montarDocumentoRecibosEntrega(vendasDoDia, dataSelecionada, cadastros) 
   const titulo = `Recibos de Entrega — ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}`;
 
   let corposRecibo = "";
-  vendasDoDia.forEach((venda, idx) => {
-    const quebraPagina = idx < vendasDoDia.length - 1;
-    const { corpoRecibo } = montarCorpoReciboEntrega(venda, dataSelecionada, cadastros, quebraPagina);
+  const grupos = agruparEntregasPapel(vendasDoDia);
+  grupos.forEach((grupo, idx) => {
+    const quebraPagina = idx < grupos.length - 1;
+    const { corpoRecibo } = montarCorpoReciboEntrega(grupo, dataSelecionada, cadastros, quebraPagina);
     corposRecibo += corpoRecibo;
   });
 
