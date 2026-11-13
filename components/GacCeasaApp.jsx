@@ -5876,9 +5876,10 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
       ...lista,
       { id: uid(), produto, quantidade: Number(quantidade), precoUnit: Number(precoUnit), quantidadeCaixas: Number(quantidadeCaixas) || 0 },
     ]);
-    // Limpa quantidade e caixas; o preço fica, pra agilizar o próximo produto.
+    // Zera a linha inteira: o próximo produto começa do zero, sem resto do anterior.
     setQuantidade("");
     setQuantidadeCaixas("");
+    setPrecoUnit("");
   };
 
   const removerItemVenda = (id) => setItensLote((lista) => lista.filter((l) => l.id !== id));
@@ -5938,6 +5939,7 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
     setItensLote([]);
     setQuantidade("");
     setQuantidadeCaixas("");
+    setPrecoUnit("");
     setSalvando(false);
     showToast(
       novas.length > 1
@@ -6176,68 +6178,115 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
         </div>
       </Field>
 
-      {vendasTodas.filter((v) => v.data === dataFiltro).length === 0 ? (
-        <Card>
-          <p className="text-sm" style={{ color: C.inkSoft }}>
-            {dataFiltro === todayISO() ? "Nenhuma venda registrada hoje." : `Nenhuma venda registrada em ${fmtDate(dataFiltro)}.`}
-          </p>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {vendasTodas.filter((v) => v.data === dataFiltro).map((v) => {
-            const cliente = cadastros.clientes.find((c) => c.id === v.clienteId);
-            if (editandoId === v.id) {
-              return (
-                <Card key={v.id} style={{ background: C.amberSoft }}>
-                  <div className="mb-3 font-bold">Editando Venda</div>
-                  <Field label="Quantidade">
-                    <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={v.quantidade} />
-                  </Field>
-                  <Field label="Preço Unit (R$)">
-                    <TextInput type="number" value={editPreco} onChange={(e) => setEditPreco(e.target.value)} placeholder={v.precoUnit} />
-                  </Field>
-                  <div className="flex gap-2">
-                    <button onClick={() => editar(v.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
-                    <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
-                  </div>
-                </Card>
-              );
-            }
+      {(() => {
+        const doDia = vendasTodas.filter((v) => v.data === dataFiltro);
+        if (doDia.length === 0) {
+          return (
+            <Card>
+              <p className="text-sm" style={{ color: C.inkSoft }}>
+                {dataFiltro === todayISO() ? "Nenhuma venda registrada hoje." : `Nenhuma venda registrada em ${fmtDate(dataFiltro)}.`}
+              </p>
+            </Card>
+          );
+        }
+        const ativasDia = doDia.filter((v) => !v.cancelada);
+        const canceladasDia = doDia.filter((v) => v.cancelada);
+        const clientesDia = [...new Set(ativasDia.map((v) => v.clienteId))];
+
+        const renderItem = (v) => {
+          if (editandoId === v.id) {
             return (
-              <Card key={v.id} style={{ background: C.cardAlt, opacity: v.cancelada ? 0.6 : 1 }}>
-                <div className="flex justify-between mb-2">
-                  <div className="flex-1">
-                    <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
-                      <span style={v.cancelada ? { textDecoration: "line-through" } : undefined}>{cliente?.nome || "—"}</span>
-                      {v.cancelada && <SeloCancelado em={v.canceladaEm} />}
-                    </div>
-                    <div className="text-xs" style={{ color: C.inkSoft, textDecoration: v.cancelada ? "line-through" : "none" }}>
-                      {v.produto} • {(() => {
-                        const unidadeV = unidadeDoProduto(v.produto, cadastros.produtos);
-                        const mostrarCxV = unidadeV !== "CX" && Number(v.quantidadeCaixas) > 0;
-                        return `${v.quantidade} ${unidadeV}${mostrarCxV ? ` (${v.quantidadeCaixas} CX)` : ""}`;
-                      })()}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold" style={{ fontFamily: monoFont, textDecoration: v.cancelada ? "line-through" : "none" }}>{fmtMoney(v.valorFinal ?? v.valorTotal)}</div>
-                    <div className="text-xs" style={{ color: C.inkSoft }}>{v.cancelada ? "Cancelada" : v.status}</div>
-                  </div>
-                </div>
-                {!v.cancelada && (
+              <Card key={v.id} style={{ background: C.amberSoft }}>
+                <div className="mb-3 font-bold">Editando Venda</div>
+                <Field label="Quantidade">
+                  <TextInput type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)} placeholder={v.quantidade} />
+                </Field>
+                <Field label="Preço Unit (R$)">
+                  <TextInput type="number" value={editPreco} onChange={(e) => setEditPreco(e.target.value)} placeholder={v.precoUnit} />
+                </Field>
                 <div className="flex gap-2">
-                  <button onClick={() => { setEditandoId(v.id); setEditQtd(String(v.quantidade)); setEditPreco(String(v.precoUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
-                  {setRecibo && ehPrimeiraVendaDoPedido(v, vendasTodas) && (
-                    <button onClick={() => setRecibo({ tipo: "venda", item: v, quemVe: "vendedor" })} className="text-xs font-bold" style={{ color: C.amber500 }}>🖨️ Pedido do cliente (todos os itens)</button>
-                  )}
-                  <button onClick={() => cancelarVenda(v)} className="text-xs font-bold" style={{ color: C.rust }}>🚫 Cancelar venda</button>
+                  <button onClick={() => editar(v.id)} className="text-xs font-bold" style={{ color: C.green700 }}>✓ Salvar</button>
+                  <button onClick={() => setEditandoId(null)} className="text-xs font-bold" style={{ color: C.inkSoft }}>✕ Cancelar</button>
                 </div>
-                )}
               </Card>
             );
-          })}
-        </div>
-      )}
+          }
+          const unidadeV = unidadeDoProduto(v.produto, cadastros.produtos);
+          const mostrarCxV = unidadeV !== "CX" && Number(v.quantidadeCaixas) > 0;
+          return (
+            <div key={v.id} className="flex justify-between gap-2 pt-2" style={{ borderTop: `1px solid ${C.line}` }}>
+              <div className="flex-1">
+                <div className="text-sm font-bold">{v.produto}</div>
+                <div className="text-xs" style={{ color: C.inkSoft }}>
+                  {v.quantidade} {unidadeV}{mostrarCxV ? ` (${v.quantidadeCaixas} CX)` : ""} · {v.status}
+                </div>
+                <div className="flex gap-3 mt-1">
+                  <button onClick={() => { setEditandoId(v.id); setEditQtd(String(v.quantidade)); setEditPreco(String(v.precoUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
+                  <button onClick={() => cancelarVenda(v)} className="text-xs font-bold" style={{ color: C.rust }}>🚫 Cancelar</button>
+                </div>
+              </div>
+              <div className="font-bold text-sm" style={{ fontFamily: monoFont }}>{fmtMoney(v.valorFinal ?? v.valorTotal)}</div>
+            </div>
+          );
+        };
+
+        return (
+          <>
+            <div className="flex flex-col gap-2">
+              {clientesDia.map((cid) => {
+                const itens = ativasDia.filter((v) => v.clienteId === cid);
+                const cliente = cadastros.clientes.find((c) => c.id === cid);
+                const totalCliente = itens.reduce((soma, v) => soma + Number(v.valorFinal ?? v.valorTotal), 0);
+                return (
+                  <Card key={cid} style={{ background: C.cardAlt }}>
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="font-bold text-sm">
+                        {cliente?.nome || "—"}{" "}
+                        <span className="text-xs font-normal" style={{ color: C.inkSoft }}>
+                          · {itens.length} {itens.length === 1 ? "produto" : "produtos"}
+                        </span>
+                      </div>
+                      <div className="font-bold text-sm" style={{ fontFamily: monoFont }}>{fmtMoney(totalCliente)}</div>
+                    </div>
+                    {setRecibo && (
+                      <button
+                        onClick={() => setRecibo({ tipo: "venda", item: itens[0], quemVe: "vendedor" })}
+                        className="text-xs font-bold mb-2"
+                        style={{ color: C.amber500 }}
+                      >
+                        🖨️ Imprimir pedido do cliente (todos os itens)
+                      </button>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      {itens.map((v) => renderItem(v))}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+            {canceladasDia.length > 0 && (
+              <details className="mt-3">
+                <summary className="text-xs font-bold cursor-pointer" style={{ color: C.inkSoft }}>
+                  Canceladas ({canceladasDia.length}) — guardadas, não entram em nenhum total
+                </summary>
+                <div className="flex flex-col gap-2 mt-2">
+                  {canceladasDia.map((v) => (
+                    <div key={v.id} className="text-xs rounded-lg p-2" style={{ background: C.cardAlt, opacity: 0.6 }}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span style={{ textDecoration: "line-through" }}>
+                          {cadastros.clientes.find((c) => c.id === v.clienteId)?.nome || "—"} · {v.produto}
+                        </span>
+                        <SeloCancelado em={v.canceladaEm} />
+                      </div>
+                      <div style={{ color: C.inkSoft, fontFamily: monoFont }}>{fmtMoney(v.valorFinal ?? v.valorTotal)}</div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </>
+        );
+      })()}
       {transacoes.vendas.filter((v) => v.data === dataFiltro).length > 0 && (
         <button
           onClick={() => gerarPDFRecibosEntrega(transacoes.vendas.filter((v) => v.data === dataFiltro), dataFiltro, cadastros)}
