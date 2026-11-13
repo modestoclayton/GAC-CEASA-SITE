@@ -5055,6 +5055,43 @@ function SeloCancelado({ em }) {
   );
 }
 
+// Lista dos produtos já adicionados ao lote (antes de registrar). Cada linha
+// tem × pra tirar da lista. Não grava nada — só mostra.
+function ItensPendentes({ cabecalho, itens, onRemover, totalTexto }) {
+  if (!itens.length) return null;
+  return (
+    <div className="mb-3 rounded-lg p-3" style={{ background: C.cardAlt, border: `1px solid ${C.line}` }}>
+      <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: C.inkSoft }}>
+        {cabecalho}
+      </div>
+      <div className="flex flex-col gap-2">
+        {itens.map((it) => (
+          <div key={it.id} className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <div className="text-sm font-bold">{it.titulo}</div>
+              <div className="text-xs" style={{ color: C.inkSoft, fontFamily: monoFont }}>{it.detalhe}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold" style={{ fontFamily: monoFont }}>{it.valor}</span>
+              <button
+                onClick={() => onRemover(it.id)}
+                className="text-sm font-bold px-1"
+                style={{ color: C.rust }}
+                aria-label="Tirar esse produto da lista"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {totalTexto && (
+        <div className="text-sm font-bold mt-2" style={{ color: C.blue600, fontFamily: monoFont }}>{totalTexto}</div>
+      )}
+    </div>
+  );
+}
+
 function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, showToast, setRecibo }) {
   const [produtorId, setProdutorId] = useState(cadastros.produtores[0]?.id || "");
   const [clienteDestino, setClienteDestino] = useState(cadastros.clientes[0]?.id || "");
@@ -5064,6 +5101,8 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
   const [cargueiro, setCargueiro] = useState("");
   const [quantidadeCaixas, setQuantidadeCaixas] = useState("");
   const [ultimaCompra, setUltimaCompra] = useState(null);
+  // Produtos já adicionados ao lote desta compra (cada um vira uma compra).
+  const [itensLote, setItensLote] = useState([]);
   // Já abre marcado: quem usa o app compra pro estoque e depois vende.
   // Compra direta pra uma empresa (ex.: aumento de pedido) é exceção — aí
   // desmarca e escolhe a empresa.
@@ -5148,49 +5187,94 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
     setCargueiro(nomeLimpo);
   };
 
+  // Lote da compra: produtor, empresa destino, conferente e Para Estoque valem
+  // pra todos os produtos da lista. Cada produto vira uma compra própria.
+  const linhaAtualCompra = { produto, quantidade, valorUnit, quantidadeCaixas };
+  const linhaCompraValida = (l) =>
+    !!l.produto &&
+    Number(l.quantidade) > 0 &&
+    (ehComissao || Number(l.valorUnit) > 0) &&
+    !avisoConversaoCaixa(l.produto, l.quantidadeCaixas, cadastros.produtos);
+  const linhaCompraTocada = (l) => !!(l.quantidade || l.valorUnit || l.quantidadeCaixas);
+  const atualCompraValida = linhaCompraValida(linhaAtualCompra);
+  const valoresDaLinhaCompra = (l) => {
+    const tot = ehComissao ? 0 : (Number(l.quantidade) || 0) * (Number(l.valorUnit) || 0);
+    const desc = ehComissao || !temDesconto ? 0 : tot * 0.0163;
+    return { total: tot, desconto: desc, valorFinal: tot - desc };
+  };
+  const detalheLinhaCompra = (l) => {
+    const un = unidadeDoProduto(l.produto, cadastros.produtos);
+    const cx = un !== "CX" && Number(l.quantidadeCaixas) > 0 ? ` (${l.quantidadeCaixas} CX)` : "";
+    const preco = ehComissao ? "" : ` × ${fmtMoney(l.valorUnit)}`;
+    return `${Number(l.quantidade)} ${un}${cx}${preco}`;
+  };
+  const nomeClienteDestino = cadastros.clientes.find((c) => c.id === clienteDestino)?.nome || "";
+  const quantidadeLancarCompra = itensLote.length + (atualCompraValida ? 1 : 0);
+
+  const adicionarItemCompra = () => {
+    if (!atualCompraValida) {
+      showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Preencha produto, quantidade e valor");
+      return;
+    }
+    setItensLote((lista) => [
+      ...lista,
+      { id: uid(), produto, quantidade: Number(quantidade), valorUnit: Number(valorUnit) || 0, quantidadeCaixas: Number(quantidadeCaixas) || 0 },
+    ]);
+    setQuantidade("");
+    setValorUnit("");
+    setQuantidadeCaixas("");
+  };
+
+  const removerItemCompra = (id) => setItensLote((lista) => lista.filter((l) => l.id !== id));
+
   const salvar = async () => {
     if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
-    if (!produtorId || !produto || !quantidade || (!ehComissao && !valorUnit)) return;
+    if (!produtorId) return;
     if (!isEstoque && !clienteDestino) {
       showToast("Escolha cliente ou marque Para Estoque");
       return;
     }
-    // Antes dava pra "pular" esse aviso confirmando um popup — na correria do
-    // pátio isso fazia a caixa ficar zerada sem querer. Agora é travado: sem
-    // preencher quantas caixas, não salva.
-    const aviso = avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos);
-    if (aviso) {
-      showToast(aviso);
+    const lista = [...itensLote];
+    if (atualCompraValida) {
+      lista.push({ id: uid(), produto, quantidade: Number(quantidade), valorUnit: Number(valorUnit) || 0, quantidadeCaixas: Number(quantidadeCaixas) || 0 });
+    } else if (linhaCompraTocada(linhaAtualCompra)) {
+      // Antes de salvar, o que está digitado no produto atual precisa estar completo.
+      showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Complete o produto atual ou apague os valores dele");
       return;
     }
+    if (lista.length === 0) return;
     setSalvando(true);
-    const nova = {
-      id: uid(),
-      data: todayISO(),
-      produtorId,
-      clienteDestino: isEstoque ? "ESTOQUE" : clienteDestino,
-      paraEstoque: isEstoque,
-      produto,
-      cargueiro,
-      quantidade: Number(quantidade),
-      quantidadeCaixas: Number(quantidadeCaixas) || 0,
-      valorUnit: ehComissao ? 0 : Number(valorUnit),
-      valorTotal: ehComissao ? 0 : total,
-      desconto: ehComissao ? 0 : desconto,
-      valorFinal: ehComissao ? 0 : valorFinal,
-      entregaConfirmada: false,
-      quantidadeRecebida: null,
-      divergencia: null,
-    };
-    await persistTransacoes({ ...transacoes, compras: [nova, ...transacoes.compras] });
+    const novas = lista.map((l) => {
+      const v = valoresDaLinhaCompra(l);
+      return {
+        id: uid(),
+        data: todayISO(),
+        produtorId,
+        clienteDestino: isEstoque ? "ESTOQUE" : clienteDestino,
+        paraEstoque: isEstoque,
+        produto: l.produto,
+        cargueiro,
+        quantidade: l.quantidade,
+        quantidadeCaixas: l.quantidadeCaixas,
+        valorUnit: ehComissao ? 0 : l.valorUnit,
+        valorTotal: v.total,
+        desconto: v.desconto,
+        valorFinal: v.valorFinal,
+        entregaConfirmada: false,
+        quantidadeRecebida: null,
+        divergencia: null,
+      };
+    });
+    await persistTransacoes({ ...transacoes, compras: [...novas, ...transacoes.compras] });
+    setItensLote([]);
     setQuantidade("");
     setQuantidadeCaixas("");
     setValorUnit("");
     setCargueiro("");
     setIsEstoque(true);
-    setUltimaCompra(nova);
+    setUltimaCompra(novas[novas.length - 1]);
     setSalvando(false);
-    showToast("Compra registrada");
+    showToast(novas.length > 1 ? `${novas.length} compras registradas` : "Compra registrada");
   };
 
   const editarCompra = async (compraId) => {
@@ -5388,6 +5472,25 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
       )}
 
       <button
+        onClick={adicionarItemCompra}
+        className="w-full mb-3 py-2 rounded-lg text-xs font-bold"
+        style={{ border: `1.5px dashed ${C.green700}`, color: C.green700, opacity: atualCompraValida ? 1 : 0.55 }}
+      >
+        ＋ Adicionar outro produto desta compra ({itensLote.length} na lista)
+      </button>
+      <ItensPendentes
+        cabecalho={`Lista desta compra · ${produtorSelecionado?.nome || "produtor"} · ${isEstoque ? "Para Estoque" : nomeClienteDestino || "sem empresa"}`}
+        itens={itensLote.map((l) => ({
+          id: l.id,
+          titulo: l.produto,
+          detalhe: detalheLinhaCompra(l),
+          valor: ehComissao ? "—" : fmtMoney(valoresDaLinhaCompra(l).valorFinal),
+        }))}
+        onRemover={removerItemCompra}
+        totalTexto={!ehComissao && itensLote.length ? `Total da lista: ${fmtMoney(itensLote.reduce((soma, l) => soma + valoresDaLinhaCompra(l).valorFinal, 0))}` : ""}
+      />
+
+      <button
         onClick={() => setMostrarMaisOpcoes((v) => !v)}
         className="w-full flex items-center justify-between px-1 py-2 mb-2"
       >
@@ -5449,17 +5552,9 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
         onClick={salvar}
         icon={ArrowDownCircle}
         tone="green"
-        disabled={
-          salvando ||
-          !produtorId ||
-          !produto ||
-          !quantidade ||
-          Number(quantidade) <= 0 ||
-          (!ehComissao && (!valorUnit || Number(valorUnit) <= 0)) ||
-          !!avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)
-        }
+        disabled={salvando || !produtorId || (itensLote.length === 0 && !atualCompraValida)}
       >
-        {salvando ? "Salvando…" : "Registrar Compra"}
+        {salvando ? "Salvando…" : quantidadeLancarCompra > 1 ? `Registrar ${quantidadeLancarCompra} compras` : "Registrar Compra"}
       </PrimaryButton>
       {ultimaCompra && setRecibo && (
         <button
@@ -5655,7 +5750,12 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
   const [precoUnit, setPrecoUnit] = useState("");
   const [quantidadeCaixas, setQuantidadeCaixas] = useState("");
   const [status, setStatus] = useState("Pendente");
-  const [entregaVendaId, setEntregaVendaId] = useState(null);
+  // Produtos já adicionados ao lote desta venda (cada um vira uma venda).
+  const [itensLote, setItensLote] = useState([]);
+  // Uma entrega (caminhão) cobre todas as vendas do mesmo lote.
+  const [entregaVendaIds, setEntregaVendaIds] = useState(null);
+  const entregaVendaId = entregaVendaIds?.[0] ?? null;
+  const setEntregaVendaId = (id) => setEntregaVendaIds(id ? [id] : null);
   const [editandoId, setEditandoId] = useState(null);
   const [editQtd, setEditQtd] = useState("");
   const [editPreco, setEditPreco] = useState("");
@@ -5683,58 +5783,105 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
     setClienteId(novo.id);
   };
 
-  const salvar = async () => {
-    if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
-    if (!clienteId || !produto || !quantidade || !precoUnit) return;
-    const aviso = avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos);
-    if (aviso) {
-      showToast(aviso);
+  // Lote da venda: o cliente vale pra todos os produtos da lista. Cada produto
+  // vira uma venda própria, com o próprio preço, desconto e recebimento.
+  const linhaAtualVenda = { produto, quantidade, precoUnit, quantidadeCaixas };
+  const linhaVendaValida = (l) =>
+    !!l.produto &&
+    Number(l.quantidade) > 0 &&
+    Number(l.precoUnit) > 0 &&
+    !avisoConversaoCaixa(l.produto, l.quantidadeCaixas, cadastros.produtos);
+  const linhaVendaTocada = (l) => !!(l.quantidade || l.precoUnit || l.quantidadeCaixas);
+  const atualVendaValida = linhaVendaValida(linhaAtualVenda);
+  const valoresDaLinhaVenda = (l) => {
+    const tot = (Number(l.quantidade) || 0) * (Number(l.precoUnit) || 0);
+    const desc = temDescontoFundoRural ? tot * 0.0163 : 0;
+    return { total: tot, desconto: desc, valorFinal: tot - desc };
+  };
+  const detalheLinhaVenda = (l) => {
+    const un = unidadeDoProduto(l.produto, cadastros.produtos);
+    const cx = un !== "CX" && Number(l.quantidadeCaixas) > 0 ? ` (${l.quantidadeCaixas} CX)` : "";
+    return `${Number(l.quantidade)} ${un}${cx} × ${fmtMoney(l.precoUnit)}`;
+  };
+  const quantidadeLancar = itensLote.length + (atualVendaValida ? 1 : 0);
+
+  const adicionarItemVenda = () => {
+    if (!atualVendaValida) {
+      showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Preencha produto, quantidade e preço");
       return;
     }
+    setItensLote((lista) => [
+      ...lista,
+      { id: uid(), produto, quantidade: Number(quantidade), precoUnit: Number(precoUnit), quantidadeCaixas: Number(quantidadeCaixas) || 0 },
+    ]);
+    // Limpa quantidade e caixas; o preço fica, pra agilizar o próximo produto.
+    setQuantidade("");
+    setQuantidadeCaixas("");
+  };
+
+  const removerItemVenda = (id) => setItensLote((lista) => lista.filter((l) => l.id !== id));
+
+  const salvar = async () => {
+    if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
+    if (!clienteId) return;
+    const lista = [...itensLote];
+    if (atualVendaValida) {
+      lista.push({ id: uid(), produto, quantidade: Number(quantidade), precoUnit: Number(precoUnit), quantidadeCaixas: Number(quantidadeCaixas) || 0 });
+    } else if (linhaVendaTocada(linhaAtualVenda)) {
+      showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Complete o produto atual ou apague os valores dele");
+      return;
+    }
+    if (lista.length === 0) return;
     setSalvando(true);
-    const novaId = uid();
-    const nova = {
-      id: novaId,
-      data: todayISO(),
-      clienteId,
-      produto,
-      quantidade: Number(quantidade),
-      quantidadeCaixas: Number(quantidadeCaixas) || 0,
-      precoUnit: Number(precoUnit),
-      valorTotal: total,
-      desconto: desconto,
-      valorFinal: valorFinal,
-      status,
-      entrega: null,
-    };
+    const novas = lista.map((l) => {
+      const v = valoresDaLinhaVenda(l);
+      return {
+        id: uid(),
+        data: todayISO(),
+        clienteId,
+        produto: l.produto,
+        quantidade: l.quantidade,
+        quantidadeCaixas: l.quantidadeCaixas,
+        precoUnit: l.precoUnit,
+        valorTotal: v.total,
+        desconto: v.desconto,
+        valorFinal: v.valorFinal,
+        status,
+        entrega: null,
+      };
+    });
     // Se a venda já nasce marcada como "Pago", lança também um recebimento
-    // correspondente — sem isso, a aba Contas (que só olha os recebimentos
-    // de verdade, não esse rótulo) continuava mostrando a venda como pendente.
-    const recebimentoAutomatico =
+    // para cada venda do lote, igual ao que já era feito para uma venda só.
+    const recebimentosAutomaticos =
       status === "Pago"
-        ? [
-            {
-              id: uid(),
-              data: nova.data,
-              clienteId,
-              valor: valorFinal,
-              tipo: "pagamento",
-              formaPagamento: null,
-              obs: `Recebimento automático — venda de ${produto}`,
-              vendaId: novaId,
-            },
-          ]
+        ? novas.map((nova) => ({
+            id: uid(),
+            data: nova.data,
+            clienteId,
+            valor: nova.valorFinal,
+            tipo: "pagamento",
+            formaPagamento: null,
+            obs: `Recebimento automático — venda de ${nova.produto}`,
+            vendaId: nova.id,
+          }))
         : [];
     await persistTransacoes({
       ...transacoes,
-      vendas: [nova, ...transacoes.vendas],
-      recebimentos: [...recebimentoAutomatico, ...transacoes.recebimentos],
+      vendas: [...novas, ...transacoes.vendas],
+      recebimentos: [...recebimentosAutomaticos, ...transacoes.recebimentos],
     });
+    setItensLote([]);
     setQuantidade("");
     setQuantidadeCaixas("");
     setSalvando(false);
-    showToast(status === "Pago" ? "Venda registrada e já lançada como paga em Contas" : "Venda registrada");
-    setEntregaVendaId(novaId);
+    showToast(
+      novas.length > 1
+        ? `${novas.length} vendas registradas`
+        : status === "Pago"
+          ? "Venda registrada e já lançada como paga em Contas"
+          : "Venda registrada"
+    );
+    setEntregaVendaIds(novas.map((n) => n.id));
   };
 
   const editar = async (vendaId) => {
@@ -5783,6 +5930,7 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
     return (
       <EntregaVendaForm
         vendaId={entregaVendaId}
+        vendaIds={entregaVendaIds}
         venda={vendaSalva}
         transacoes={transacoes}
         persistTransacoes={persistTransacoes}
@@ -5882,6 +6030,24 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
           </div>
         </Field>
       )}
+      <button
+        onClick={adicionarItemVenda}
+        className="w-full mb-3 py-2 rounded-lg text-xs font-bold"
+        style={{ border: `1.5px dashed ${C.blue600}`, color: C.blue600, opacity: atualVendaValida ? 1 : 0.55 }}
+      >
+        ＋ Adicionar outro produto para este cliente ({itensLote.length} na lista)
+      </button>
+      <ItensPendentes
+        cabecalho={`Lista desta venda · ${clienteSelecionado?.nome || "sem cliente"}`}
+        itens={itensLote.map((l) => ({
+          id: l.id,
+          titulo: l.produto,
+          detalhe: detalheLinhaVenda(l),
+          valor: fmtMoney(valoresDaLinhaVenda(l).valorFinal),
+        }))}
+        onRemover={removerItemVenda}
+        totalTexto={itensLote.length ? `Total da lista: ${fmtMoney(itensLote.reduce((soma, l) => soma + valoresDaLinhaVenda(l).valorFinal, 0))}` : ""}
+      />
       <div style={{ backgroundColor: C.cardAlt, padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
         <div className="text-sm font-bold mb-2" style={{ color: C.ink }}>
           Subtotal: <span style={{ fontFamily: monoFont }}>{fmtMoney(total)}</span>
@@ -5921,18 +6087,9 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
         onClick={salvar}
         icon={ArrowUpCircle}
         tone="blue"
-        disabled={
-          salvando ||
-          !clienteId ||
-          !produto ||
-          !quantidade ||
-          !precoUnit ||
-          Number(quantidade) <= 0 ||
-          Number(precoUnit) <= 0 ||
-          !!avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos)
-        }
+        disabled={salvando || !clienteId || (itensLote.length === 0 && !atualVendaValida)}
       >
-        {salvando ? "Salvando…" : "Registrar Venda"}
+        {salvando ? "Salvando…" : quantidadeLancar > 1 ? `Registrar ${quantidadeLancar} vendas` : "Registrar Venda"}
       </PrimaryButton>
 
       <SectionTitle icon={ShoppingBasket} style={{ marginTop: 20 }}>Minhas Vendas</SectionTitle>
@@ -6030,7 +6187,7 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
   );
 }
 
-function EntregaVendaForm({ vendaId, initial, venda, transacoes, persistTransacoes, showToast, setRecibo, onDone }) {
+function EntregaVendaForm({ vendaId, vendaIds, initial, venda, transacoes, persistTransacoes, showToast, setRecibo, onDone }) {
   const [placa, setPlaca] = useState(initial?.placa || "");
   const [localEntrega, setLocalEntrega] = useState(initial?.localEntrega || "");
   const [carregador, setCarregador] = useState(initial?.carregador || "");
@@ -6038,8 +6195,9 @@ function EntregaVendaForm({ vendaId, initial, venda, transacoes, persistTransaco
   const [obsCaixas, setObsCaixas] = useState(initial?.obsCaixas || "");
 
   const salvarEntrega = async () => {
+    const idsDaEntrega = vendaIds || [vendaId];
     const nextVendas = transacoes.vendas.map((v) =>
-      v.id === vendaId
+      idsDaEntrega.includes(v.id)
         ? {
             ...v,
             entrega: {
