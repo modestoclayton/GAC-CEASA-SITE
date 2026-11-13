@@ -977,12 +977,12 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
     : null;
 
   // Agregar vendas/compras do mesmo destino
-  // Vale de compra = um por Cliente Destino + Data (cada linha leva o seu Fornecedor)
+  // Vale de compra = específico por Fornecedor + Cliente Destino + Data (um vale = um fornecedor, um dia)
   // Pedido de venda = específico por Cliente + Data
   const itens = isVenda
     ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId && v.data === item.data && !v.cancelada)
     : (transacoes?.compras || []).filter(
-        c => c.clienteDestino === item.clienteDestino && c.data === item.data && !c.cancelada
+        c => c.clienteDestino === item.clienteDestino && c.produtorId === item.produtorId && c.data === item.data && !c.cancelada
       );
 
   const fornecedores = isVenda ? [] : fornecedoresDoGrupo(itens, cadastros);
@@ -3968,6 +3968,15 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
                         </div>
                         );
                       })}
+                      {setRecibo && (
+                        <button
+                          onClick={() => setRecibo({ tipo: "compra", item: comprasProdutor[0] })}
+                          className="text-xs font-bold mt-1.5"
+                          style={{ color: C.amber500 }}
+                        >
+                          🖨️ Ver vale deste fornecedor
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -4419,12 +4428,12 @@ function slugify(texto) {
 }
 
 function gerarPDFVales(compras, dataSelecionada, cadastros) {
-  // Um vale = um Cliente Destino + um Dia. Cada linha leva o seu Fornecedor.
+  // Um vale = um Fornecedor + um Cliente Destino + um Dia.
   // Cada fornecedor continua em sua própria página (quebra de página), mas
   // tudo abre numa aba só, já pronta pra imprimir ou salvar como PDF.
   const grupos = {};
   compras.forEach((c) => {
-    const chave = `${c.clienteDestino}__${c.data}`;
+    const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
     if (!grupos[chave]) grupos[chave] = [];
     grupos[chave].push(c);
   });
@@ -4551,7 +4560,7 @@ function gerarPDFValesPorEmpresa(compras, dataSelecionada, cadastros) {
 
   const gruposPorChave = {};
   comprasValidas.forEach((c) => {
-    const chave = `${c.clienteDestino}__${c.data}`;
+    const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
     if (!gruposPorChave[chave]) gruposPorChave[chave] = [];
     gruposPorChave[chave].push(c);
   });
