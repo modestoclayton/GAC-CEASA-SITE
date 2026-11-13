@@ -488,6 +488,39 @@ export default async function handler(req, res) {
 
     if (req.method === "POST") {
       const { type, data } = req.body || {};
+
+      // Envio por diferença: só as linhas novas/alteradas (upserts) e os ids
+      // apagados (deletes) de cada tabela. Não mexe no que não veio — evita
+      // reescrever o histórico inteiro a cada ação.
+      if (type === "transacoes_delta") {
+        const erros = [];
+        for (const [chaveJS, tabelaDB] of Object.entries(TABELAS_TRANSACOES)) {
+          try {
+            const upserts = Array.isArray(data?.upserts?.[chaveJS]) ? data.upserts[chaveJS] : [];
+            const linhas = upserts.map((r) => paraLinha(chaveJS, empresa.id, r)).filter((l) => l && l.id);
+            for (let i = 0; i < linhas.length; i += 500) {
+              const { error } = await supabase.from(tabelaDB).upsert(linhas.slice(i, i + 500), { onConflict: "id" });
+              if (error) throw new Error(`upsert em "${tabelaDB}": ${error.message}`);
+            }
+            const apagar = Array.isArray(data?.deletes?.[chaveJS]) ? data.deletes[chaveJS].filter(Boolean) : [];
+            for (let i = 0; i < apagar.length; i += 500) {
+              const { error } = await supabase
+                .from(tabelaDB)
+                .delete()
+                .eq("empresa_id", empresa.id)
+                .in("id", apagar.slice(i, i + 500));
+              if (error) throw new Error(`apagar em "${tabelaDB}": ${error.message}`);
+            }
+          } catch (e) {
+            erros.push((e && e.message) || String(e));
+          }
+        }
+        if (erros.length > 0) {
+          return res.status(500).json({ ok: false, erro: erros.join(" | ") });
+        }
+        return res.status(200).json({ ok: true });
+      }
+
       const mapa = type === "cadastros" ? TABELAS_CADASTROS : TABELAS_TRANSACOES;
 
       const erros = [];

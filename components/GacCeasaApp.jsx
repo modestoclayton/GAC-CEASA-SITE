@@ -1771,6 +1771,42 @@ function somenteAtivas(tx) {
 // O resto do app trabalha com a lista já sem os cancelados. Quando ele
 // salva essa lista, os cancelados precisam voltar junto — senão o servidor
 // (que apaga do banco o que não veio na lista) excluiria eles de verdade.
+// Tabelas de transações que vão pro servidor (mesmas chaves do servidor).
+const CHAVES_TRANSACOES_SYNC = [
+  "compras", "vendas", "recebimentos", "pagamentos", "perdas",
+  "diasFinalizados", "comissoesFechadas", "pedidosAumento", "pedidosDistribuidor",
+];
+// Foto do que está salvo no servidor: por tabela, id -> conteúdo da linha.
+function fotoTransacoes(tx) {
+  const foto = {};
+  CHAVES_TRANSACOES_SYNC.forEach((k) => {
+    foto[k] = new Map((tx?.[k] || []).filter((r) => r && r.id).map((r) => [r.id, JSON.stringify(r)]));
+  });
+  return foto;
+}
+// Só o que mudou desde a foto: linhas novas ou alteradas, e ids que sumiram.
+function calcularDeltaTransacoes(foto, tx) {
+  const upserts = {};
+  const deletes = {};
+  CHAVES_TRANSACOES_SYNC.forEach((k) => {
+    const anterior = foto?.[k] || new Map();
+    const idsAtuais = new Set();
+    const mudadas = [];
+    (tx?.[k] || []).forEach((r) => {
+      if (!r || !r.id) return;
+      idsAtuais.add(r.id);
+      if (anterior.get(r.id) !== JSON.stringify(r)) mudadas.push(r);
+    });
+    const apagadas = [...anterior.keys()].filter((id) => !idsAtuais.has(id));
+    if (mudadas.length) upserts[k] = mudadas;
+    if (apagadas.length) deletes[k] = apagadas;
+  });
+  return { upserts, deletes };
+}
+function temMudancaTransacoes(delta) {
+  return Object.keys(delta.upserts).length > 0 || Object.keys(delta.deletes).length > 0;
+}
+
 function reincluirCanceladas(chaveJS, lista, todas) {
   if (chaveJS !== "compras" && chaveJS !== "vendas") return lista;
   const novaLista = lista || [];
@@ -1791,6 +1827,9 @@ export default function GacCeasaApp() {
   // que é o que todo o resto do app enxerga.
   const [transacoesTodas, setTransacoes] = useState(SEED_TRANSACOES);
   const transacoesTodasRef = useRef(transacoesTodas);
+  // Foto do que está salvo no servidor, por tabela: base pra mandar só o que mudou.
+  const fotoSalvaRef = useRef(null);
+  const filaSalvarRef = useRef(Promise.resolve());
   transacoesTodasRef.current = transacoesTodas;
   const transacoes = useMemo(() => somenteAtivas(transacoesTodas), [transacoesTodas]);
   const [toast, setToast] = useState(null);
@@ -1924,6 +1963,7 @@ export default function GacCeasaApp() {
           const tx = { ...SEED_TRANSACOES, ...json.transacoes };
           setCadastros(cad);
           setTransacoes(tx);
+          fotoSalvaRef.current = fotoTransacoes(json.transacoes || {});
           if (silencioso) setErroCarregamento(null); // uma atualização automática que deu certo já limpa um erro antigo
         } else if (json.testeExpirado) {
           setErroCarregamento(json.erro);
@@ -2070,6 +2110,46 @@ export default function GacCeasaApp() {
     [fetchDadosEmpresa]
   );
 
+  // Manda pro servidor só o que mudou desde a foto salva. Uma fila garante que
+  // um salvamento só começa depois do anterior terminar. Se der erro, a foto
+  // não avança: a próxima ação reenvia o que faltou.
+  const agendarSalvarTransacoes = useCallback(
+    (estado) => {
+      filaSalvarRef.current = filaSalvarRef.current.then(async () => {
+        const semFoto = !fotoSalvaRef.current;
+        const delta = calcularDeltaTransacoes(fotoSalvaRef.current, estado);
+        // Sem foto (carga inicial falhou), usa o envio completo de antes, por segurança.
+        if (!semFoto && !temMudancaTransacoes(delta)) return;
+        try {
+          const res = await fetchDadosEmpresa({
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(semFoto ? { type: "transacoes", data: estado } : { type: "transacoes_delta", data: delta }),
+          });
+          const textoBruto = await res.text();
+          let json = null;
+          try {
+            json = JSON.parse(textoBruto);
+          } catch (erroParse) {
+            setErroCarregamento(
+              `DIAGNÓSTICO (salvar transacoes): Status HTTP ${res.status}. Resposta não é JSON. Primeiros 300 caracteres: ${textoBruto.slice(0, 300)}`
+            );
+            return;
+          }
+          if (!res.ok || !json || !json.ok) {
+            setErroCarregamento(`DIAGNÓSTICO (salvar transacoes): HTTP ${res.status} — ${(json && json.erro) || "sem detalhe"}`);
+            return;
+          }
+          fotoSalvaRef.current = fotoTransacoes(estado);
+        } catch (e) {
+          setErroCarregamento(`DIAGNÓSTICO (salvar transacoes, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
+        }
+      });
+      return filaSalvarRef.current;
+    },
+    [fetchDadosEmpresa]
+  );
+
   const persistTransacoes = useCallback(
     async (nextRecebido) => {
       const todas = transacoesTodasRef.current;
@@ -2078,30 +2158,9 @@ export default function GacCeasaApp() {
       if (next.vendas) next.vendas = reincluirCanceladas("vendas", next.vendas, todas);
       transacoesTodasRef.current = next;
       setTransacoes(next);
-      try {
-        const res = await fetchDadosEmpresa({
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "transacoes", data: next }),
-        });
-        const textoBruto = await res.text();
-        let json = null;
-        try {
-          json = JSON.parse(textoBruto);
-        } catch (erroParse) {
-          setErroCarregamento(
-            `DIAGNÓSTICO (salvar transacoes): Status HTTP ${res.status}. Resposta não é JSON. Primeiros 300 caracteres: ${textoBruto.slice(0, 300)}`
-          );
-          return;
-        }
-        if (!res.ok || !json || !json.ok) {
-          setErroCarregamento(`DIAGNÓSTICO (salvar transacoes): HTTP ${res.status} — ${(json && json.erro) || "sem detalhe"}`);
-        }
-      } catch (e) {
-        setErroCarregamento(`DIAGNÓSTICO (salvar transacoes, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
-      }
+      return agendarSalvarTransacoes(next);
     },
-    [fetchDadosEmpresa]
+    [agendarSalvarTransacoes]
   );
 
   // Igual a persistTransacoes, mas manda pro servidor só a tabela que de fato
@@ -2115,30 +2174,9 @@ export default function GacCeasaApp() {
       const arrayAtualizado = reincluirCanceladas(chaveJS, arrayRecebido, transacoesTodasRef.current);
       transacoesTodasRef.current = { ...transacoesTodasRef.current, [chaveJS]: arrayAtualizado };
       setTransacoes((atual) => ({ ...atual, [chaveJS]: arrayAtualizado }));
-      try {
-        const res = await fetchDadosEmpresa({
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "transacoes", data: { [chaveJS]: arrayAtualizado } }),
-        });
-        const textoBruto = await res.text();
-        let json = null;
-        try {
-          json = JSON.parse(textoBruto);
-        } catch (erroParse) {
-          setErroCarregamento(
-            `DIAGNÓSTICO (salvar ${chaveJS}): Status HTTP ${res.status}. Resposta não é JSON. Primeiros 300 caracteres: ${textoBruto.slice(0, 300)}`
-          );
-          return;
-        }
-        if (!res.ok || !json || !json.ok) {
-          setErroCarregamento(`DIAGNÓSTICO (salvar ${chaveJS}): HTTP ${res.status} — ${(json && json.erro) || "sem detalhe"}`);
-        }
-      } catch (e) {
-        setErroCarregamento(`DIAGNÓSTICO (salvar ${chaveJS}, erro de JS): ${(e && e.name) || "?"} — ${(e && e.message) || String(e)}`);
-      }
+      return agendarSalvarTransacoes(transacoesTodasRef.current);
     },
-    [fetchDadosEmpresa]
+    [agendarSalvarTransacoes]
   );
 
   const salvarPerfil = useCallback(
