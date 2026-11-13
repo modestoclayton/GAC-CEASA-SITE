@@ -934,6 +934,13 @@ function ReciboEntregaView({ item, cadastros, onFechar }) {
   );
 }
 
+// Um pedido de venda = um cliente + um dia, com todos os produtos dentro.
+// Só a primeira venda desse grupo mostra o botão de imprimir, pra não sair
+// um documento igual por produto.
+function ehPrimeiraVendaDoPedido(v, vendas) {
+  return (vendas || []).find((x) => !x.cancelada && x.clienteId === v.clienteId && x.data === v.data)?.id === v.id;
+}
+
 function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   const isVenda = tipo === "venda";
 
@@ -951,9 +958,9 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   // Vale de compra = um por Cliente Destino + Data (cada linha leva o seu Fornecedor)
   // Pedido de venda = específico por Cliente + Data
   const itens = isVenda
-    ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId && v.data === item.data)
+    ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId && v.data === item.data && !v.cancelada)
     : (transacoes?.compras || []).filter(
-        c => c.clienteDestino === item.clienteDestino && c.data === item.data
+        c => c.clienteDestino === item.clienteDestino && c.data === item.data && !c.cancelada
       );
 
   const fornecedores = isVenda ? [] : fornecedoresDoGrupo(itens, cadastros);
@@ -6220,8 +6227,8 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
                 {!v.cancelada && (
                 <div className="flex gap-2">
                   <button onClick={() => { setEditandoId(v.id); setEditQtd(String(v.quantidade)); setEditPreco(String(v.precoUnit)); }} className="text-xs font-bold" style={{ color: C.green700 }}>✏️ Editar</button>
-                  {setRecibo && (
-                    <button onClick={() => setRecibo({ tipo: "venda", item: v, quemVe: "vendedor" })} className="text-xs font-bold" style={{ color: C.amber500 }}>🖨️ Vale</button>
+                  {setRecibo && ehPrimeiraVendaDoPedido(v, vendasTodas) && (
+                    <button onClick={() => setRecibo({ tipo: "venda", item: v, quemVe: "vendedor" })} className="text-xs font-bold" style={{ color: C.amber500 }}>🖨️ Pedido do cliente (todos os itens)</button>
                   )}
                   <button onClick={() => cancelarVenda(v)} className="text-xs font-bold" style={{ color: C.rust }}>🚫 Cancelar venda</button>
                 </div>
@@ -6651,6 +6658,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
           </button>
           {setRecibo && (
             <>
+              {ehPrimeiraVendaDoPedido(v, transacoes.vendas) && (
               <button
                 onClick={() => setRecibo({ tipo: "venda", item: v })}
                 className="text-xs font-bold mt-1.5 ml-3"
@@ -6658,6 +6666,7 @@ function EntregasTab({ cadastros, transacoes, persistTransacoes, showToast, soMe
               >
                 Imprimir pedido
               </button>
+              )}
               <button
                 onClick={() => setRecibo({ tipo: "entrega", item: v })}
                 className="text-xs font-bold mt-1.5 ml-3"
