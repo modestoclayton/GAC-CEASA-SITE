@@ -6978,6 +6978,8 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   const [produtoNovoPedido, setProdutoNovoPedido] = useState(cadastros.produtos[0]?.nome || "");
   const [qtdNovoPedido, setQtdNovoPedido] = useState("");
   const [obsNovoPedido, setObsNovoPedido] = useState("");
+  // Produtos já adicionados à lista deste pedido (cada um vira um pedido).
+  const [itensNovoPedido, setItensNovoPedido] = useState([]);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
 
   const minhasCompras = transacoes.compras.filter(
@@ -7010,28 +7012,54 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
         (a.produto || "").localeCompare(b.produto || "", "pt-BR")
     );
 
+  const linhaNovoPedidoValida = (produto, qtd) => !!produto && Number(qtd) > 0;
+  const qtdPedidosLancar = itensNovoPedido.length + (linhaNovoPedidoValida(produtoNovoPedido, qtdNovoPedido) ? 1 : 0);
+
+  const adicionarItemNovoPedido = () => {
+    if (!linhaNovoPedidoValida(produtoNovoPedido, qtdNovoPedido)) {
+      showToast("Escolha o produto e a quantidade");
+      return;
+    }
+    setItensNovoPedido((lista) => [
+      ...lista,
+      { id: uid(), produto: produtoNovoPedido, quantidade: Number(qtdNovoPedido), observacao: obsNovoPedido.trim() },
+    ]);
+    setQtdNovoPedido("");
+    setObsNovoPedido("");
+  };
+
+  const removerItemNovoPedido = (id) => setItensNovoPedido((lista) => lista.filter((l) => l.id !== id));
+
   const enviarPedidoDistribuidor = async () => {
-    if (!produtoNovoPedido || !qtdNovoPedido || Number(qtdNovoPedido) <= 0) {
+    const lista = [...itensNovoPedido];
+    if (linhaNovoPedidoValida(produtoNovoPedido, qtdNovoPedido)) {
+      lista.push({ id: uid(), produto: produtoNovoPedido, quantidade: Number(qtdNovoPedido), observacao: obsNovoPedido.trim() });
+    } else if (qtdNovoPedido || obsNovoPedido.trim()) {
+      showToast("Preencha a quantidade do produto atual, ou apague o que digitou");
+      return;
+    }
+    if (lista.length === 0) {
       showToast("Escolha o produto e a quantidade");
       return;
     }
     setEnviandoPedido(true);
-    const novo = {
+    const novos = lista.map((l) => ({
       id: uid(),
       clienteId: minhasEmpresas[0],
       distribuidorNome: soMeuNome,
-      produto: produtoNovoPedido,
-      quantidade: Number(qtdNovoPedido),
-      observacao: obsNovoPedido.trim(),
+      produto: l.produto,
+      quantidade: l.quantidade,
+      observacao: l.observacao,
       data: dataNovoPedido,
       criadoEm: new Date().toISOString(),
-    };
-    await persistTabelaTransacao("pedidosDistribuidor", [novo, ...(transacoes.pedidosDistribuidor || [])]);
+    }));
+    await persistTabelaTransacao("pedidosDistribuidor", [...novos, ...(transacoes.pedidosDistribuidor || [])]);
+    setItensNovoPedido([]);
     setQtdNovoPedido("");
     setObsNovoPedido("");
     setMostrarFormPedido(false);
     setEnviandoPedido(false);
-    showToast("Pedido enviado!");
+    showToast(novos.length > 1 ? `${novos.length} pedidos enviados!` : "Pedido enviado!");
   };
 
   const removerPedidoDistribuidor = async (id) => {
@@ -7203,11 +7231,28 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
               placeholder="Ex: se tiver bem maduro"
             />
           </Field>
+          <button
+            onClick={adicionarItemNovoPedido}
+            className="w-full mb-3 py-2 rounded-lg text-xs font-bold"
+            style={{ border: `1.5px dashed ${C.green700}`, color: C.green700, opacity: linhaNovoPedidoValida(produtoNovoPedido, qtdNovoPedido) ? 1 : 0.55 }}
+          >
+            ＋ Adicionar outro produto ({itensNovoPedido.length} na lista)
+          </button>
+          <ItensPendentes
+            cabecalho={`Lista do pedido · ${dataNovoPedido === todayISO() ? "hoje" : fmtDate(dataNovoPedido)}`}
+            itens={itensNovoPedido.map((l) => ({
+              id: l.id,
+              titulo: l.produto,
+              detalhe: `${l.quantidade} ${unidadeDoProduto(l.produto, cadastros.produtos)}${l.observacao ? ` · ${l.observacao}` : ""}`,
+              valor: "",
+            }))}
+            onRemover={removerItemNovoPedido}
+          />
           <div className="flex gap-3 mt-1">
-            <PrimaryButton onClick={enviarPedidoDistribuidor} disabled={enviandoPedido} icon={Check} tone="green">
-              {enviandoPedido ? "Enviando..." : "Enviar Pedido"}
+            <PrimaryButton onClick={enviarPedidoDistribuidor} disabled={enviandoPedido || qtdPedidosLancar === 0} icon={Check} tone="green">
+              {enviandoPedido ? "Enviando..." : qtdPedidosLancar > 1 ? `Enviar ${qtdPedidosLancar} pedidos` : "Enviar Pedido"}
             </PrimaryButton>
-            <button onClick={() => setMostrarFormPedido(false)} className="text-xs font-bold" style={{ color: C.inkSoft }}>
+            <button onClick={() => { setItensNovoPedido([]); setMostrarFormPedido(false); }} className="text-xs font-bold" style={{ color: C.inkSoft }}>
               Cancelar
             </button>
           </div>
