@@ -5244,10 +5244,18 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
   };
   const nomeClienteDestino = cadastros.clientes.find((c) => c.id === clienteDestino)?.nome || "";
   const quantidadeLancarCompra = itensLote.length + (atualCompraValida ? 1 : 0);
+  const faltaLinhaCompra = (l) => {
+    if (!l.produtorId) return "escolha o produtor";
+    if (!l.produto) return "escolha o produto";
+    if (!(Number(l.quantidade) > 0)) return "informe a quantidade";
+    if (!l.comissao && !(Number(l.valorUnit) > 0)) return "informe o valor";
+    return avisoConversaoCaixa(l.produto, l.quantidadeCaixas, cadastros.produtos);
+  };
+  const motivoCompra = linhaCompraTocada(linhaAtualCompra) && !atualCompraValida ? faltaLinhaCompra(linhaAtualCompra) : null;
 
   const adicionarItemCompra = () => {
     if (!atualCompraValida) {
-      showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Preencha produto, quantidade e valor");
+      showToast(faltaLinhaCompra(linhaAtualCompra) || "Preencha produto, quantidade e valor");
       return;
     }
     setItensLote((lista) => [
@@ -5272,10 +5280,13 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
       lista.push({ id: uid(), produtorId, comissao: ehComissao, produto, quantidade: Number(quantidade), valorUnit: Number(valorUnit) || 0, quantidadeCaixas: Number(quantidadeCaixas) || 0 });
     } else if (linhaCompraTocada(linhaAtualCompra)) {
       // Antes de salvar, o que está digitado no produto atual precisa estar completo.
-      showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Complete o produto atual ou apague os valores dele");
+      showToast(`Falta ${faltaLinhaCompra(linhaAtualCompra)} (ou apague os valores do produto atual)`);
       return;
     }
-    if (lista.length === 0) return;
+    if (lista.length === 0) {
+      showToast("Escolha o produto, a quantidade e o preço");
+      return;
+    }
     setSalvando(true);
     const novas = lista.map((l) => {
       const v = valoresDaLinhaCompra(l);
@@ -5585,10 +5596,13 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
         onClick={salvar}
         icon={ArrowDownCircle}
         tone="green"
-        disabled={salvando || (itensLote.length === 0 && !atualCompraValida)}
+        disabled={salvando}
       >
         {salvando ? "Salvando…" : quantidadeLancarCompra > 1 ? `Registrar ${quantidadeLancarCompra} compras` : "Registrar Compra"}
       </PrimaryButton>
+      {motivoCompra && (
+        <div className="text-xs mt-2 font-bold" style={{ color: C.rust }}>Falta: {motivoCompra}</div>
+      )}
       {ultimaCompra && setRecibo && (
         <button
           onClick={() => setRecibo({ tipo: "compra", item: ultimaCompra })}
@@ -5837,10 +5851,18 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
     return `${Number(l.quantidade)} ${un}${cx} × ${fmtMoney(l.precoUnit)}`;
   };
   const quantidadeLancar = itensLote.length + (atualVendaValida ? 1 : 0);
+  // Diz o que falta na linha atual, pra não deixar o botão morto sem explicação.
+  const faltaLinhaVenda = (l) => {
+    if (!l.produto) return "escolha o produto";
+    if (!(Number(l.quantidade) > 0)) return "informe a quantidade";
+    if (!(Number(l.precoUnit) > 0)) return "informe o preço";
+    return avisoConversaoCaixa(l.produto, l.quantidadeCaixas, cadastros.produtos);
+  };
+  const motivoVenda = linhaVendaTocada(linhaAtualVenda) && !atualVendaValida ? faltaLinhaVenda(linhaAtualVenda) : null;
 
   const adicionarItemVenda = () => {
     if (!atualVendaValida) {
-      showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Preencha produto, quantidade e preço");
+      showToast(faltaLinhaVenda(linhaAtualVenda) || "Preencha produto, quantidade e preço");
       return;
     }
     setItensLote((lista) => [
@@ -5861,10 +5883,13 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
     if (atualVendaValida) {
       lista.push({ id: uid(), produto, quantidade: Number(quantidade), precoUnit: Number(precoUnit), quantidadeCaixas: Number(quantidadeCaixas) || 0 });
     } else if (linhaVendaTocada(linhaAtualVenda)) {
-      showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Complete o produto atual ou apague os valores dele");
+      showToast(`Falta ${faltaLinhaVenda(linhaAtualVenda)} (ou apague os valores do produto atual)`);
       return;
     }
-    if (lista.length === 0) return;
+    if (lista.length === 0) {
+      showToast("Escolha o produto, a quantidade e o preço");
+      return;
+    }
     setSalvando(true);
     const novas = lista.map((l) => {
       const v = valoresDaLinhaVenda(l);
@@ -6120,10 +6145,13 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
         onClick={salvar}
         icon={ArrowUpCircle}
         tone="blue"
-        disabled={salvando || !clienteId || (itensLote.length === 0 && !atualVendaValida)}
+        disabled={salvando || !clienteId}
       >
         {salvando ? "Salvando…" : quantidadeLancar > 1 ? `Registrar ${quantidadeLancar} vendas` : "Registrar Venda"}
       </PrimaryButton>
+      {motivoVenda && (
+        <div className="text-xs mt-2 font-bold" style={{ color: C.rust }}>Falta: {motivoVenda}</div>
+      )}
 
       <SectionTitle icon={ShoppingBasket} style={{ marginTop: 20 }}>Minhas Vendas</SectionTitle>
 
