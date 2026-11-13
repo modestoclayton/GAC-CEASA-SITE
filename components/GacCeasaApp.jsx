@@ -7042,6 +7042,14 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
       showToast("Escolha o produto e a quantidade");
       return;
     }
+    // Pede confirmação com o resumo, pra não enviar sem querer.
+    const resumoPedido = lista
+      .map((l) => `• ${l.produto} — ${l.quantidade} ${unidadeDoProduto(l.produto, cadastros.produtos)}`)
+      .join("\n");
+    const confirmou = window.confirm(
+      `Está pronto para enviar ${lista.length === 1 ? "o pedido" : `os ${lista.length} pedidos`}?\n\n${resumoPedido}\n\nConfira as quantidades antes de confirmar.`
+    );
+    if (!confirmou) return;
     setEnviandoPedido(true);
     const novos = lista.map((l) => ({
       id: uid(),
