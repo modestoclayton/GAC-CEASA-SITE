@@ -948,14 +948,15 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
     : null;
 
   // Agregar vendas/compras do mesmo destino
-  // Vale de compra = específico por Fornecedor + Cliente Destino + Data (um vale = um fornecedor, um dia)
+  // Vale de compra = um por Cliente Destino + Data (cada linha leva o seu Fornecedor)
   // Pedido de venda = específico por Cliente + Data
   const itens = isVenda
     ? (transacoes?.vendas || []).filter(v => v.clienteId === item.clienteId && v.data === item.data)
     : (transacoes?.compras || []).filter(
-        c => c.clienteDestino === item.clienteDestino && c.produtorId === item.produtorId && c.data === item.data
+        c => c.clienteDestino === item.clienteDestino && c.data === item.data
       );
 
+  const fornecedores = isVenda ? [] : fornecedoresDoGrupo(itens, cadastros);
   // Para compras: agrupar por fornecedor e calcular desconto individual
   let itensAgrupados = itens;
   let totalSubtotal = 0;
@@ -987,7 +988,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
   );
 
   const titulo = isVenda ? "Pedido de Venda" : "Vale de Compra";
-  const rotuloParte = isVenda ? "Cliente" : "Fornecedor";
+  const rotuloParte = isVenda ? "Cliente" : fornecedores.length > 1 ? "Fornecedores" : "Fornecedor";
 
   return (
     <div
@@ -1028,32 +1029,36 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
           <div className="text-xs uppercase font-bold mb-1" style={{ color: "#6E6650" }}>
             {rotuloParte}
           </div>
-          <div className="text-lg font-bold">{parte ? parte.nome : "—"}</div>
-          {parte && parte.cidade && (
-            <div className="text-sm" style={{ color: "#6E6650" }}>
-              {parte.cidade}
-            </div>
-          )}
-          {parte && parte.telefone && (
-            <div className="text-sm" style={{ color: "#6E6650" }}>
-              Tel: {parte.telefone}
-            </div>
-          )}
-          {parte && parte.pagamento && (
-            <div className="mt-2 p-2 rounded" style={{ background: "#EDEAE0" }}>
-              <div className="text-xs uppercase font-bold" style={{ color: "#6E6650" }}>
-                Forma de Pagamento
-              </div>
-              <div className="text-sm font-bold" style={{ color: "#1F4A30" }}>
-                {parte.pagamento}
-              </div>
-              {parte.pagamento !== "BOLETO" && parte.chavePix && (
-                <div className="text-sm mt-1" style={{ color: "#1F4A30" }}>
-                  <span className="font-bold">Chave Pix:</span> {parte.chavePix}
+          {(isVenda ? [parte] : fornecedores).map((p, k) => (
+            <div key={k} className={k > 0 ? "mt-3" : ""}>
+              <div className="text-lg font-bold">{p ? p.nome : "—"}</div>
+              {p && p.cidade && (
+                <div className="text-sm" style={{ color: "#6E6650" }}>
+                  {p.cidade}
+                </div>
+              )}
+              {p && p.telefone && (
+                <div className="text-sm" style={{ color: "#6E6650" }}>
+                  Tel: {p.telefone}
+                </div>
+              )}
+              {p && p.pagamento && (
+                <div className="mt-2 p-2 rounded" style={{ background: "#EDEAE0" }}>
+                  <div className="text-xs uppercase font-bold" style={{ color: "#6E6650" }}>
+                    Forma de Pagamento
+                  </div>
+                  <div className="text-sm font-bold" style={{ color: "#1F4A30" }}>
+                    {p.pagamento}
+                  </div>
+                  {p.pagamento !== "BOLETO" && p.chavePix && (
+                    <div className="text-sm mt-1" style={{ color: "#1F4A30" }}>
+                      <span className="font-bold">Chave Pix:</span> {p.chavePix}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
+          ))}
         </div>
 
         {!isVenda && clienteDestino && (
@@ -1092,7 +1097,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
               const mostrarCaixasItem = unidadeItem !== "CX" && Number(i.quantidadeCaixas) > 0;
               return (
               <tr key={idx} style={{ borderBottom: "1px solid #D8CBA0" }}>
-                <td className="py-2">{i.produto}</td>
+                <td className="py-2">{i.produto}{!isVenda && fornecedores.length > 1 && (<div className="text-xs" style={{ color: "#6E6650" }}>{nomeFornecedor(i.produtorId, cadastros)}</div>)}</td>
                 <td className="text-right py-2">
                   {i.quantidade} {unidadeItem}
                   {mostrarCaixasItem && ` (${i.quantidadeCaixas} CX)`}
@@ -3895,15 +3900,6 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
                         </div>
                         );
                       })}
-                      {setRecibo && (
-                        <button
-                          onClick={() => setRecibo({ tipo: "compra", item: comprasProdutor[0] })}
-                          className="text-xs font-bold mt-1.5"
-                          style={{ color: C.amber500 }}
-                        >
-                          🖨️ Ver vale deste fornecedor
-                        </button>
-                      )}
                     </div>
                   );
                 })}
@@ -3999,14 +3995,63 @@ function gerarPDFFolhaCarga(compras, dataSelecionada, cadastros) {
 }
 
 /* GERADOR DE PDF - VALES */
+// Um vale = uma empresa + um dia. Dentro dele, cada linha leva o seu fornecedor.
+function fornecedoresDoGrupo(itens, cadastros) {
+  const ids = [...new Set(itens.map((i) => i.produtorId))];
+  return ids.map((id) => cadastros.produtores.find((p) => p.id === id)).filter(Boolean);
+}
+const nomeFornecedor = (id, cadastros) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
+// Desconto fundo rural é por fornecedor: soma só o que vem de quem tem o desconto.
+function descontoDoGrupo(itens, cadastros) {
+  return itens.reduce((soma, i) => {
+    const p = cadastros.produtores.find((x) => x.id === i.produtorId);
+    return soma + (p?.temDescontoFundoRural ? Number(i.valorTotal) * 0.0163 : 0);
+  }, 0);
+}
+function blocoFornecedorA4(p) {
+  return `<div style="margin-bottom:10px;">
+        <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
+        <div style="font-size:14px;font-weight:bold;">${p.nome || "—"}</div>
+        ${p.cidade ? `<div style="font-size:11px;color:#6E6650;">${p.cidade}</div>` : ""}
+        ${p.telefone ? `<div style="font-size:11px;color:#6E6650;">Tel: ${p.telefone}</div>` : ""}
+      </div>
+      ${
+        p.pagamento
+          ? `<div style="background:#EDEAE0;border-radius:8px;padding:12px;margin-bottom:16px;">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Forma de Pagamento</div>
+          <div style="font-size:15px;font-weight:bold;color:#1F4A30;">${p.pagamento}</div>
+          ${p.pagamento !== "BOLETO" && p.chavePix ? `<div style="font-size:14px;margin-top:4px;color:#1F4A30;"><b>Chave Pix:</b> ${p.chavePix}</div>` : ""}
+        </div>`
+          : ""
+      }`;
+}
+function blocoFornecedorTermico(p) {
+  return `<div style="margin-bottom:4px;">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Fornecedor</div>
+        <div style="font-size:13px;font-weight:bold;">${p.nome || "—"}</div>
+        ${p.cidade ? `<div style="font-size:11px;">${p.cidade}</div>` : ""}
+        ${p.telefone ? `<div style="font-size:11px;">Tel: ${p.telefone}</div>` : ""}
+      </div>
+      ${
+        p.pagamento
+          ? `<div style="border-top:1px dashed #000;margin:6px 0;"></div>
+         <div style="margin-bottom:4px;">
+           <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Forma de Pagamento</div>
+           <div style="font-size:13px;font-weight:bold;">${p.pagamento}</div>
+           ${p.pagamento !== "BOLETO" && p.chavePix ? `<div style="font-size:11px;margin-top:2px;"><b>Chave Pix:</b> ${p.chavePix}</div>` : ""}
+         </div>`
+          : ""
+      }`;
+}
 function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
   const primeiro = itensGrupo[0];
   const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
+  const fornecedores = fornecedoresDoGrupo(itensGrupo, cadastros);
   const cliente = cadastros.clientes.find((c) => c.id === primeiro.clienteDestino);
   const itensOrdenados = [...itensGrupo].sort((a, b) => a.produto.localeCompare(b.produto, "pt-BR"));
 
   const subtotal = itensGrupo.reduce((s, c) => s + Number(c.valorTotal), 0);
-  const desconto = produtor?.temDescontoFundoRural ? subtotal * 0.0163 : 0;
+  const desconto = descontoDoGrupo(itensGrupo, cadastros);
   const total = subtotal - desconto;
   const totalCx = itensGrupo.reduce((s, c) => s + caixasEquivalentes(c, cadastros.produtos), 0);
 
@@ -4020,7 +4065,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
           : `${i.quantidade} ${unidade}`;
         return `
     <tr>
-      <td style="padding:8px;border-bottom:1px solid #D8CBA0;">${i.produto}</td>
+      <td style="padding:8px;border-bottom:1px solid #D8CBA0;">${i.produto}${fornecedores.length > 1 ? `<div style="font-size:9px;color:#6E6650;">${nomeFornecedor(i.produtorId, cadastros)}</div>` : ""}</td>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">${qtdExibida}</td>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;">R$ ${(i.valorUnit || 0).toFixed(2)}</td>
       <td style="padding:8px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">R$ ${Number(i.valorTotal).toFixed(2)}</td>
@@ -4056,14 +4101,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
         <div style="font-size:10px;color:#6E6650;margin-top:2px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
       </div>
 
-      <div style="margin-bottom:10px;">
-        <div style="font-size:9px;text-transform:uppercase;font-weight:bold;color:#6E6650;">Fornecedor</div>
-        <div style="font-size:14px;font-weight:bold;">${produtor?.nome || "—"}</div>
-        ${produtor?.cidade ? `<div style="font-size:11px;color:#6E6650;">${produtor.cidade}</div>` : ""}
-        ${produtor?.telefone ? `<div style="font-size:11px;color:#6E6650;">Tel: ${produtor.telefone}</div>` : ""}
-      </div>
-
-      ${boxPagamento}
+      ${fornecedores.map(blocoFornecedorA4).join("")}
       ${boxCliente}
 
       <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px;">
@@ -4111,7 +4149,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
         : `${i.quantidade} ${unidade}`;
       return `
         <div style="margin-bottom:6px;">
-          <div style="font-weight:bold;">${i.produto}</div>
+          <div style="font-weight:bold;">${i.produto}</div>${fornecedores.length > 1 ? `<div style="font-size:10px;">${nomeFornecedor(i.produtorId, cadastros)}</div>` : ""}
           <div style="display:flex;justify-content:space-between;font-size:11px;">
             <span>${qtdExibida}</span>
             <span>R$ ${(i.valorUnit || 0).toFixed(2)}</span>
@@ -4145,14 +4183,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
 
       <div style="border-top:1px dashed #000;margin:6px 0;"></div>
 
-      <div style="margin-bottom:4px;">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">Fornecedor</div>
-        <div style="font-size:13px;font-weight:bold;">${produtor?.nome || "—"}</div>
-        ${produtor?.cidade ? `<div style="font-size:11px;">${produtor.cidade}</div>` : ""}
-        ${produtor?.telefone ? `<div style="font-size:11px;">Tel: ${produtor.telefone}</div>` : ""}
-      </div>
-
-      ${boxPagamentoTermico}
+      ${fornecedores.map(blocoFornecedorTermico).join("")}
 
       <div style="border-top:1px dashed #000;margin:6px 0;"></div>
 
@@ -4320,12 +4351,12 @@ function slugify(texto) {
 }
 
 function gerarPDFVales(compras, dataSelecionada, cadastros) {
-  // Agrupa exatamente como o recibo manual: um vale = um Fornecedor + um Cliente Destino + um Dia.
+  // Um vale = um Cliente Destino + um Dia. Cada linha leva o seu Fornecedor.
   // Cada fornecedor continua em sua própria página (quebra de página), mas
   // tudo abre numa aba só, já pronta pra imprimir ou salvar como PDF.
   const grupos = {};
   compras.forEach((c) => {
-    const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
+    const chave = `${c.clienteDestino}__${c.data}`;
     if (!grupos[chave]) grupos[chave] = [];
     grupos[chave].push(c);
   });
@@ -4336,7 +4367,7 @@ function gerarPDFVales(compras, dataSelecionada, cadastros) {
   const primeiro = listaGrupos[0][0];
   const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
   const html = montarDocumentoVales(listaGrupos, dataSelecionada, cadastros);
-  abrirImpressao(html, `Vale-${slugify(produtor?.nome)}-${dataSelecionada}.html`);
+  abrirImpressao(html, `Vale-${slugify(cadastros.clientes.find((c) => c.id === primeiro.clienteDestino)?.nome)}-${dataSelecionada}.html`);
 }
 
 // Mede (em mm) a altura que o HTML de um vale ocupa quando renderizado na
@@ -4452,7 +4483,7 @@ function gerarPDFValesPorEmpresa(compras, dataSelecionada, cadastros) {
 
   const gruposPorChave = {};
   comprasValidas.forEach((c) => {
-    const chave = `${c.produtorId}__${c.clienteDestino}__${c.data}`;
+    const chave = `${c.clienteDestino}__${c.data}`;
     if (!gruposPorChave[chave]) gruposPorChave[chave] = [];
     gruposPorChave[chave].push(c);
   });
@@ -5189,24 +5220,27 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
 
   // Lote da compra: produtor, empresa destino, conferente e Para Estoque valem
   // pra todos os produtos da lista. Cada produto vira uma compra própria.
-  const linhaAtualCompra = { produto, quantidade, valorUnit, quantidadeCaixas };
+  const linhaAtualCompra = { produtorId, produto, quantidade, valorUnit, quantidadeCaixas, comissao: ehComissao };
   const linhaCompraValida = (l) =>
+    !!l.produtorId &&
     !!l.produto &&
     Number(l.quantidade) > 0 &&
-    (ehComissao || Number(l.valorUnit) > 0) &&
+    (l.comissao || Number(l.valorUnit) > 0) &&
     !avisoConversaoCaixa(l.produto, l.quantidadeCaixas, cadastros.produtos);
   const linhaCompraTocada = (l) => !!(l.quantidade || l.valorUnit || l.quantidadeCaixas);
   const atualCompraValida = linhaCompraValida(linhaAtualCompra);
   const valoresDaLinhaCompra = (l) => {
-    const tot = ehComissao ? 0 : (Number(l.quantidade) || 0) * (Number(l.valorUnit) || 0);
-    const desc = ehComissao || !temDesconto ? 0 : tot * 0.0163;
+    const tot = l.comissao ? 0 : (Number(l.quantidade) || 0) * (Number(l.valorUnit) || 0);
+    const produtorDaLinha = cadastros.produtores.find((p) => p.id === l.produtorId);
+    const desc = l.comissao || !produtorDaLinha?.temDescontoFundoRural ? 0 : tot * 0.0163;
     return { total: tot, desconto: desc, valorFinal: tot - desc };
   };
   const detalheLinhaCompra = (l) => {
     const un = unidadeDoProduto(l.produto, cadastros.produtos);
     const cx = un !== "CX" && Number(l.quantidadeCaixas) > 0 ? ` (${l.quantidadeCaixas} CX)` : "";
-    const preco = ehComissao ? "" : ` × ${fmtMoney(l.valorUnit)}`;
-    return `${Number(l.quantidade)} ${un}${cx}${preco}`;
+    const preco = l.comissao ? "" : ` × ${fmtMoney(l.valorUnit)}`;
+    const nomeProd = cadastros.produtores.find((p) => p.id === l.produtorId)?.nome || "—";
+    return `${nomeProd} · ${Number(l.quantidade)} ${un}${cx}${preco}`;
   };
   const nomeClienteDestino = cadastros.clientes.find((c) => c.id === clienteDestino)?.nome || "";
   const quantidadeLancarCompra = itensLote.length + (atualCompraValida ? 1 : 0);
@@ -5218,7 +5252,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
     }
     setItensLote((lista) => [
       ...lista,
-      { id: uid(), produto, quantidade: Number(quantidade), valorUnit: Number(valorUnit) || 0, quantidadeCaixas: Number(quantidadeCaixas) || 0 },
+      { id: uid(), produtorId, comissao: ehComissao, produto, quantidade: Number(quantidade), valorUnit: Number(valorUnit) || 0, quantidadeCaixas: Number(quantidadeCaixas) || 0 },
     ]);
     setQuantidade("");
     setValorUnit("");
@@ -5229,14 +5263,13 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
 
   const salvar = async () => {
     if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
-    if (!produtorId) return;
     if (!isEstoque && !clienteDestino) {
       showToast("Escolha cliente ou marque Para Estoque");
       return;
     }
     const lista = [...itensLote];
     if (atualCompraValida) {
-      lista.push({ id: uid(), produto, quantidade: Number(quantidade), valorUnit: Number(valorUnit) || 0, quantidadeCaixas: Number(quantidadeCaixas) || 0 });
+      lista.push({ id: uid(), produtorId, comissao: ehComissao, produto, quantidade: Number(quantidade), valorUnit: Number(valorUnit) || 0, quantidadeCaixas: Number(quantidadeCaixas) || 0 });
     } else if (linhaCompraTocada(linhaAtualCompra)) {
       // Antes de salvar, o que está digitado no produto atual precisa estar completo.
       showToast(avisoConversaoCaixa(produto, quantidadeCaixas, cadastros.produtos) || "Complete o produto atual ou apague os valores dele");
@@ -5249,14 +5282,14 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
       return {
         id: uid(),
         data: todayISO(),
-        produtorId,
+        produtorId: l.produtorId,
         clienteDestino: isEstoque ? "ESTOQUE" : clienteDestino,
         paraEstoque: isEstoque,
         produto: l.produto,
         cargueiro,
         quantidade: l.quantidade,
         quantidadeCaixas: l.quantidadeCaixas,
-        valorUnit: ehComissao ? 0 : l.valorUnit,
+        valorUnit: l.comissao ? 0 : l.valorUnit,
         valorTotal: v.total,
         desconto: v.desconto,
         valorFinal: v.valorFinal,
@@ -5479,15 +5512,15 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
         ＋ Adicionar outro produto desta compra ({itensLote.length} na lista)
       </button>
       <ItensPendentes
-        cabecalho={`Lista desta compra · ${produtorSelecionado?.nome || "produtor"} · ${isEstoque ? "Para Estoque" : nomeClienteDestino || "sem empresa"}`}
+        cabecalho={`Lista desta compra · ${isEstoque ? "Para Estoque" : nomeClienteDestino || "sem empresa"}`}
         itens={itensLote.map((l) => ({
           id: l.id,
           titulo: l.produto,
           detalhe: detalheLinhaCompra(l),
-          valor: ehComissao ? "—" : fmtMoney(valoresDaLinhaCompra(l).valorFinal),
+          valor: l.comissao ? "—" : fmtMoney(valoresDaLinhaCompra(l).valorFinal),
         }))}
         onRemover={removerItemCompra}
-        totalTexto={!ehComissao && itensLote.length ? `Total da lista: ${fmtMoney(itensLote.reduce((soma, l) => soma + valoresDaLinhaCompra(l).valorFinal, 0))}` : ""}
+        totalTexto={itensLote.length ? `Total da lista: ${fmtMoney(itensLote.reduce((soma, l) => soma + valoresDaLinhaCompra(l).valorFinal, 0))}` : ""}
       />
 
       <button
@@ -5552,7 +5585,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
         onClick={salvar}
         icon={ArrowDownCircle}
         tone="green"
-        disabled={salvando || !produtorId || (itensLote.length === 0 && !atualCompraValida)}
+        disabled={salvando || (itensLote.length === 0 && !atualCompraValida)}
       >
         {salvando ? "Salvando…" : quantidadeLancarCompra > 1 ? `Registrar ${quantidadeLancarCompra} compras` : "Registrar Compra"}
       </PrimaryButton>
