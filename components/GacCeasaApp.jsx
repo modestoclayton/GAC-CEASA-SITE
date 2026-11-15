@@ -63,6 +63,16 @@ const monoFont =
 /* ---------------------------------------------------------------------- */
 const uid = () => Math.random().toString(36).slice(2, 10);
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+// Compra que pertence ao dia escolhido. Hoje também inclui as compras de dias anteriores que ainda não foram
+// finalizadas (ex.: pedido de sábado pra segunda): elas seguem na lista do dia até a finalização.
+const compraNoDiaOuPendente = (c, dia, diasFinalizados = []) =>
+  c.data === dia ||
+  (dia === todayISO() &&
+    c.clienteDestino !== "ESTOQUE" &&
+    !c.cancelada &&
+    c.data < dia &&
+    !diasFinalizados.includes(c.data));
 const fmtMoney = (n) =>
   (Number(n) || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -3905,7 +3915,7 @@ function RequisicaoTab({ cadastros, transacoes, setRecibo }) {
   // recebe por boleto não precisa de vale de compra (mesma regra já usada
   // em ConferenciaTab.finalizarConferencia antes de chamar gerarPDFVales).
   const comprasHoje = transacoes.compras.filter((c) => {
-    if (c.data !== dataSelecionada || c.clienteDestino === "ESTOQUE") return false;
+    if (!compraNoDiaOuPendente(c, dataSelecionada, transacoes.diasFinalizados) || c.clienteDestino === "ESTOQUE") return false;
     const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
     return !produtor?.pagamento || produtor.pagamento !== "BOLETO";
   });
@@ -4852,7 +4862,7 @@ function FolhaDePedidoTab({ cadastros, transacoes }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [clienteSelecionado, setClienteSelecionado] = useState("");
 
-  const comprasHoje = transacoes.compras.filter((c) => c.data === dataSelecionada && c.clienteDestino !== "ESTOQUE");
+  const comprasHoje = transacoes.compras.filter((c) => c.clienteDestino !== "ESTOQUE" && compraNoDiaOuPendente(c, dataSelecionada, transacoes.diasFinalizados));
   const clientesUnicos = [...new Set(comprasHoje.map((c) => c.clienteDestino))];
   
   const comprasDoCliente = clienteSelecionado ? comprasHoje.filter((c) => c.clienteDestino === clienteSelecionado) : [];
@@ -4935,7 +4945,7 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [clienteSelecionado, setClienteSelecionado] = useState("");
 
-  const comprasHoje = transacoes.compras.filter((c) => c.data === dataSelecionada && c.clienteDestino !== "ESTOQUE");
+  const comprasHoje = transacoes.compras.filter((c) => c.clienteDestino !== "ESTOQUE" && compraNoDiaOuPendente(c, dataSelecionada, transacoes.diasFinalizados));
   const clientesUnicos = [...new Set(comprasHoje.map((c) => c.clienteDestino))];
   
   const comprasDoCliente = clienteSelecionado ? comprasHoje.filter((c) => c.clienteDestino === clienteSelecionado) : [];
