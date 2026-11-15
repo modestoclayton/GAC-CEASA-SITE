@@ -7517,6 +7517,25 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
       showToast("Ainda tem compra pendente de conferência");
       return;
     }
+    // Pedidos do distribuidor de dias anteriores que não foram comprados são removidos na finalização (com confirmação)
+    const pedidosParaRemover = (transacoes.pedidosDistribuidor || []).filter((p) => {
+      if (!(p.data < hoje)) return false;
+      const ligadas = (transacoes.compras || []).filter((c) => c.pedidoId === p.id);
+      if (ligadas.length > 0 && ligadas.every((c) => diasFinalizados.includes(c.data))) return false; // já fechado antes
+      return situacaoPedidoDistribuidor(p, transacoes.compras).situacao !== "atendido";
+    });
+    if (pedidosParaRemover.length > 0) {
+      const lista = pedidosParaRemover.map((p) => `• ${p.produto} — ${p.quantidade}`).join("\n");
+      if (!window.confirm(`Remover ${pedidosParaRemover.length} pedido(s) do distribuidor que não foram comprados?\n\n${lista}`)) {
+        showToast("Finalização cancelada");
+        return;
+      }
+      const idsRemover = new Set(pedidosParaRemover.map((p) => p.id));
+      await persistTabelaTransacao(
+        "pedidosDistribuidor",
+        (transacoes.pedidosDistribuidor || []).filter((p) => !idsRemover.has(p.id))
+      );
+    }
     // Compras de dias anteriores (ex.: pedido de sábado) passam a ter a data de hoje, a da finalização
     const idsFinalizar = new Set(comprasParaFinalizar.map((c) => c.id));
     const comprasFinal = comprasParaFinalizar.map((c) => (c.data === hoje ? c : { ...c, data: hoje }));
@@ -7793,7 +7812,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
           )}
           {!jaFinalizadoHoje && (
             <div className="text-xs mt-2" style={{ color: podeFinalizarHoje ? "rgba(255,255,255,0.6)" : C.inkSoft }}>
-              Gera a Folha de Pedido de todos os clientes + os Vales dos clientes que pagam PIX ou Dinheiro (sem boleto). Compras de dias anteriores que ainda não foram finalizadas (ex.: pedido de sábado pra carregar segunda) entram junto, com a data de hoje. Só funciona quando tudo estiver conferido, e só roda uma vez por dia.
+              Gera a Folha de Pedido de todos os clientes + os Vales dos clientes que pagam PIX ou Dinheiro (sem boleto). Compras de dias anteriores que ainda não foram finalizadas (ex.: pedido de sábado pra carregar segunda) entram junto, com a data de hoje. Pedidos do distribuidor de dias anteriores que não foram comprados são removidos (pede confirmação). Só funciona quando tudo estiver conferido, e só roda uma vez por dia.
             </div>
           )}
         </Card>
