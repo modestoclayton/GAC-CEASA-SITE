@@ -2916,8 +2916,19 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   // comparando com o que já foi lançado em compras pra empresa dele, no
   // mesmo dia, com o mesmo nome de produto.
   const norm = (s) => (s || "").trim().toLowerCase();
+  // Pedido de dia anterior (ex.: feito no sábado pra segunda) continua aparecendo em "hoje" até a conferência
+  // dele ser finalizada: enquanto alguma compra ligada a ele estiver fora de um dia já finalizado, segue aberto.
+  const diasFinalizadosDist = transacoes.diasFinalizados || [];
+  const pedidoAindaNaoFinalizado = (p) => {
+    const ligadas = (transacoes.compras || []).filter((c) => c.pedidoId === p.id);
+    return !(ligadas.length > 0 && ligadas.every((c) => diasFinalizadosDist.includes(c.data)));
+  };
   const pedidosDistribuidorDoDia = (transacoes.pedidosDistribuidor || [])
-    .filter((p) => p.data === dataSelecionada)
+    .filter(
+      (p) =>
+        p.data === dataSelecionada ||
+        (dataSelecionada === todayISO() && p.data < dataSelecionada && pedidoAindaNaoFinalizado(p))
+    )
     .map((p) => ({ ...p, ...situacaoPedidoDistribuidor(p, transacoes.compras) }))
     .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR"));
 
