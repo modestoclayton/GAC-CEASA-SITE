@@ -5428,6 +5428,16 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
 
   // Lista completa (inclusive canceladas) — só "Minhas Compras" mostra as canceladas.
   const comprasTodas = (transacoesTodas || transacoes).compras || [];
+  // Lista do dia: as compras do dia escolhido + as de dias anteriores ainda não finalizados (ex.: pedido de sábado
+  // pra segunda). Elas ficam aparecendo em "hoje" até a finalização; depois que finalizam, saem dessa lista.
+  const diasFinalizadosCompras = (transacoesTodas || transacoes).diasFinalizados || [];
+  const compraNaLista = (c) =>
+    c.data === dataFiltro ||
+    (dataFiltro === todayISO() &&
+      c.clienteDestino !== "ESTOQUE" &&
+      !c.cancelada &&
+      c.data < dataFiltro &&
+      !diasFinalizadosCompras.includes(c.data));
 
   const cancelarCompra = async (compra) => {
     // Cancelar NÃO apaga a compra: ela continua aparecendo aqui em "Minhas
@@ -5717,7 +5727,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
         </div>
       </Field>
 
-      {comprasTodas.filter((c) => c.data === dataFiltro && !c.cancelada).length === 0 && comprasTodas.filter((c) => c.data === dataFiltro && c.cancelada).length === 0 ? (
+      {comprasTodas.filter((c) => compraNaLista(c) && !c.cancelada).length === 0 && comprasTodas.filter((c) => c.data === dataFiltro && c.cancelada).length === 0 ? (
         <Card>
           <p className="text-sm" style={{ color: C.inkSoft }}>
             {dataFiltro === todayISO() ? "Nenhuma compra registrada hoje." : `Nenhuma compra registrada em ${fmtDate(dataFiltro)}.`}
@@ -5726,7 +5736,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
       ) : (
         (() => {
           // Cancelados ficam de fora da lista; vão pra seção 'Canceladas' no fim.
-          const comprasHojeTodas = comprasTodas.filter((c) => c.data === dataFiltro && !c.cancelada);
+          const comprasHojeTodas = comprasTodas.filter((c) => compraNaLista(c) && !c.cancelada);
           const canceladasHoje = comprasTodas.filter((c) => c.data === dataFiltro && c.cancelada);
           // Agrupa por destino (ESTOQUE fica sempre em primeiro, depois clientes em ordem alfabética)
           const gruposDestino = [...new Set(comprasHojeTodas.map((c) => c.clienteDestino))].sort((a, b) => {
