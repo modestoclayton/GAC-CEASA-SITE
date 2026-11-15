@@ -7470,39 +7470,49 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
         .sort((a, b) => (a.produto || "").localeCompare(b.produto || "", "pt-BR")),
     }));
 
-  // Dados de hoje pra liberar o "Finalizar Conferência" (sempre olha tudo, não só o filtrado)
+  // Finalização junta TODAS as compras (não de estoque, não canceladas) de dias que ainda não foram finalizados.
+  // Assim um pedido feito no sábado pra carregar na segunda fica na lista até a conferência de segunda ser
+  // finalizada, e entra com a data da finalização.
   const hoje = todayISO();
-  const comprasHoje = transacoes.compras.filter((c) => c.data === hoje && c.clienteDestino !== "ESTOQUE");
-  const pendentesHoje = comprasHoje.filter((c) => !c.entregaConfirmada);
   const diasFinalizados = transacoes.diasFinalizados || [];
   const jaFinalizadoHoje = diasFinalizados.includes(hoje);
-  const podeFinalizarHoje = comprasHoje.length > 0 && pendentesHoje.length === 0 && !jaFinalizadoHoje;
+  const comprasParaFinalizar = transacoes.compras.filter(
+    (c) => c.clienteDestino !== "ESTOQUE" && !c.cancelada && !diasFinalizados.includes(c.data)
+  );
+  const pendentesParaFinalizar = comprasParaFinalizar.filter((c) => !c.entregaConfirmada);
+  const podeFinalizarHoje =
+    comprasParaFinalizar.length > 0 && pendentesParaFinalizar.length === 0 && !jaFinalizadoHoje;
 
   const finalizarConferencia = async () => {
     if (jaFinalizadoHoje) {
       showToast("A conferência de hoje já foi finalizada");
       return;
     }
-    if (comprasHoje.length === 0) {
-      showToast("Nenhuma compra hoje pra finalizar");
+    if (comprasParaFinalizar.length === 0) {
+      showToast("Nenhuma compra pra finalizar");
       return;
     }
-    if (pendentesHoje.length > 0) {
-      showToast("Ainda tem compra pendente de conferência hoje");
+    if (pendentesParaFinalizar.length > 0) {
+      showToast("Ainda tem compra pendente de conferência");
       return;
     }
-    // 1) Folha de Pedido — todos os clientes do dia, agrupados
-    gerarPDFFolhaPedido(comprasHoje, hoje, cadastros);
+    // Compras de dias anteriores (ex.: pedido de sábado) passam a ter a data de hoje, a da finalização
+    const idsFinalizar = new Set(comprasParaFinalizar.map((c) => c.id));
+    const comprasFinal = comprasParaFinalizar.map((c) => (c.data === hoje ? c : { ...c, data: hoje }));
+    // 1) Folha de Pedido — todos os clientes, agrupados
+    gerarPDFFolhaPedido(comprasFinal, hoje, cadastros);
     // 2) Vales só das compras cujo FORNECEDOR (produtor) paga PIX ou Dinheiro (sem boleto).
     // Produtor sem forma de pagamento definida (cadastro antigo) continua gerando vale, por segurança.
-    const comprasSemBoleto = comprasHoje.filter((c) => {
+    const comprasSemBoleto = comprasFinal.filter((c) => {
       const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
       return !produtor?.pagamento || produtor.pagamento !== "BOLETO";
     });
     if (comprasSemBoleto.length > 0) {
       gerarPDFVales(comprasSemBoleto, hoje, cadastros);
     }
-    // Trava: marca o dia como finalizado pra não gerar os documentos de novo
+    // Grava a nova data nas compras que entraram e marca o dia como finalizado (trava pra não gerar de novo)
+    const nextCompras = transacoes.compras.map((c) => (idsFinalizar.has(c.id) ? { ...c, data: hoje } : c));
+    await persistTabelaTransacao("compras", nextCompras);
     await persistTabelaTransacao("diasFinalizados", [...diasFinalizados, hoje]);
     showToast("Conferência finalizada — documentos gerados");
   };
@@ -7732,7 +7742,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
             className="text-sm font-bold mb-1"
             style={{ color: jaFinalizadoHoje ? C.green700 : podeFinalizarHoje ? "#fff" : C.ink }}
           >
-            {jaFinalizadoHoje ? "✅ Conferência de Hoje Finalizada" : "Finalizar Conferência de Hoje"}
+            {jaFinalizadoHoje ? "✅ Conferência de Hoje Finalizada" : "Finalizar Conferência"}
           </div>
           <div
             className="text-xs mb-3"
@@ -7740,11 +7750,11 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
           >
             {jaFinalizadoHoje
               ? "Os documentos já foram gerados hoje. Se excluir ou adicionar compras depois disso, baixe de novo manualmente pela Requisição."
-              : comprasHoje.length === 0
-              ? "Nenhuma compra registrada hoje ainda."
+              : comprasParaFinalizar.length === 0
+              ? "Nenhuma compra pendente de finalizar."
               : podeFinalizarHoje
-              ? `${comprasHoje.length} compra(s) já conferida(s). Pronto pra finalizar.`
-              : `Faltam ${pendentesHoje.length} compra(s) pra conferir hoje.`}
+              ? `${comprasParaFinalizar.length} compra(s) já conferida(s). Pronto pra finalizar.`
+              : `Faltam ${pendentesParaFinalizar.length} compra(s) pra conferir.`}
           </div>
           {!jaFinalizadoHoje && (
             <button
@@ -7762,7 +7772,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
           )}
           {!jaFinalizadoHoje && (
             <div className="text-xs mt-2" style={{ color: podeFinalizarHoje ? "rgba(255,255,255,0.6)" : C.inkSoft }}>
-              Gera a Folha de Pedido de todos os clientes do dia + os Vales dos clientes que pagam PIX ou Dinheiro (sem boleto). Só funciona quando tudo estiver conferido, e só roda uma vez por dia.
+              Gera a Folha de Pedido de todos os clientes + os Vales dos clientes que pagam PIX ou Dinheiro (sem boleto). Compras de dias anteriores que ainda não foram finalizadas (ex.: pedido de sábado pra carregar segunda) entram junto, com a data de hoje. Só funciona quando tudo estiver conferido, e só roda uma vez por dia.
             </div>
           )}
         </Card>
