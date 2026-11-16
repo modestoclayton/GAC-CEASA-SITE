@@ -7478,7 +7478,11 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
   const pendentesTodas = todasMinhas.filter((c) => !c.entregaConfirmada);
   // "Conferidas" só mostra o dia selecionado — o que já foi finalizado não fica
   // acumulando aqui pra sempre; pra revisar um dia anterior, é só trocar a data.
-  const confirmadasTodas = todasMinhas.filter((c) => c.entregaConfirmada && c.data === dataConferidas);
+  // Hoje também mostra as conferidas de dias anteriores que ainda não foram finalizadas (ex.: pedido de sábado),
+  // senão elas somem da lista assim que são conferidas.
+  const confirmadasTodas = todasMinhas.filter(
+    (c) => c.entregaConfirmada && compraNoDiaOuPendente(c, dataConferidas, transacoes.diasFinalizados)
+  );
 
   // Empresas/clientes disponíveis pra filtrar (a partir do que está pendente pra este conferente)
   const empresasDisponiveis = ordenarClientes([...new Set(pendentesTodas.map((c) => c.clienteDestino))]);
