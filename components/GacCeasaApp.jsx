@@ -5020,8 +5020,153 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 /* ====================================================================== */
 /* Relatório de Vendas do Dia - todas as vendas, agrupadas por cliente   */
 /* ====================================================================== */
+// Período do relatório: semana vai de segunda a domingo (da data escolhida); mês é o mês inteiro.
+const isoDeData = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function intervaloPeriodo(modo, dataRef, mesSel) {
+  if (modo === "mes") {
+    const ini = new Date(`${mesSel}-01T00:00:00`);
+    const fim = new Date(ini.getFullYear(), ini.getMonth() + 1, 0);
+    return { inicio: isoDeData(ini), fim: isoDeData(fim), titulo: `Mês de ${nomeDoMes(mesSel)}` };
+  }
+  const d = new Date(`${dataRef}T00:00:00`);
+  const dow = (d.getDay() + 6) % 7; // 0 = segunda
+  const ini = new Date(d);
+  ini.setDate(d.getDate() - dow);
+  const fim = new Date(ini);
+  fim.setDate(ini.getDate() + 6);
+  return {
+    inicio: isoDeData(ini),
+    fim: isoDeData(fim),
+    titulo: `Semana de ${fmtDate(isoDeData(ini))} a ${fmtDate(isoDeData(fim))}`,
+  };
+}
+// Lucro do período = soma do lucro de cada dia com vendas, agrupado por produto e por cliente.
+function calcularLucroPeriodo(transacoes, cadastros, inicio, fim) {
+  const custos = calcularCustoVendas(transacoes, cadastros);
+  const dias = [...new Set((transacoes.vendas || []).filter((v) => v.data >= inicio && v.data <= fim).map((v) => v.data))];
+  const somaGrupo = (mapa, g) => {
+    const x = mapa[g.chave] || (mapa[g.chave] = { chave: g.chave, qtd: 0, caixas: 0, valor: 0, custo: 0, lucro: 0 });
+    x.qtd += g.qtd;
+    x.caixas += g.caixas;
+    x.valor += g.valor;
+    x.custo += g.custo;
+    x.lucro += g.lucro;
+  };
+  const acc = { totalVendido: 0, totalCusto: 0, temSemCusto: false, mapaProduto: {}, mapaCliente: {} };
+  dias.forEach((dia) => {
+    const r = calcularLucroDoDia(transacoes, cadastros, dia, custos);
+    acc.totalVendido += r.totalVendido;
+    acc.totalCusto += r.totalCusto;
+    acc.temSemCusto = acc.temSemCusto || r.temSemCusto;
+    r.porProduto.forEach((g) => somaGrupo(acc.mapaProduto, g));
+    r.porCliente.forEach((g) => somaGrupo(acc.mapaCliente, g));
+  });
+  const lucro = acc.totalVendido - acc.totalCusto;
+  return {
+    totalVendido: acc.totalVendido,
+    totalCusto: acc.totalCusto,
+    lucro,
+    margem: acc.totalVendido > 0 ? (lucro / acc.totalVendido) * 100 : 0,
+    temSemCusto: acc.temSemCusto,
+    porProduto: Object.values(acc.mapaProduto).sort((a, b) => b.lucro - a.lucro),
+    porCliente: Object.values(acc.mapaCliente).sort((a, b) => b.valor - a.valor),
+  };
+}
+function gerarPDFRelatorioPeriodo(titulo, inicio, fim, res, vendas, cadastros) {
+  const nomeCli = (id) => cadastros.clientes.find((c) => c.id === id)?.nome || "—";
+  const corL = (n) => (n >= 0 ? "#1E7A45" : "#C0392B");
+  const totalCaixas = vendas.reduce((s, v) => s + caixasEquivalentes(v, cadastros.produtos), 0);
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório de Vendas</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse;margin-bottom:18px}th{background:#1E4A30;color:white;padding:8px;text-align:left}td{padding:7px;border-bottom:1px solid #ddd}.resumo{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:18px}h2{margin-top:24px}${BARRA_IMPRESSAO_CSS}</style></head><body>${BARRA_IMPRESSAO_HTML}<h1>🧾 RELATÓRIO DE VENDAS</h1><p><b>${titulo}</b></p>`;
+  html += `<div class="resumo"><b>Vendas:</b> ${vendas.length} · <b>Caixas:</b> ${Number(totalCaixas.toFixed(1))} CX<br>
+    <b>Vendido:</b> R$ ${res.totalVendido.toFixed(2)} · <b>Custo:</b> R$ ${res.totalCusto.toFixed(2)} ·
+    <b>Lucro:</b> <span style="color:${corL(res.lucro)}">R$ ${res.lucro.toFixed(2)}</span> (${fmtPct(res.margem)} de margem)</div>`;
+  html += `<h2>Por cliente</h2><table><tr><th>Cliente</th><th>Caixas</th><th>Vendido</th><th>Custo</th><th>Lucro</th></tr>`;
+  res.porCliente.forEach((g) => {
+    html += `<tr><td>${nomeCli(g.chave)}</td><td>${Number(g.caixas.toFixed(1))}</td><td>R$ ${g.valor.toFixed(2)}</td><td>R$ ${g.custo.toFixed(2)}</td><td style="color:${corL(g.lucro)}"><b>R$ ${g.lucro.toFixed(2)}</b></td></tr>`;
+  });
+  html += `</table><h2>Por produto</h2><table><tr><th>Produto</th><th>Qtd</th><th>Vendido</th><th>Custo</th><th>Lucro</th></tr>`;
+  res.porProduto.forEach((g) => {
+    const un = unidadeDoProduto(g.chave, cadastros.produtos);
+    html += `<tr><td>${g.chave}</td><td>${Number(g.qtd.toFixed(2))} ${un}</td><td>R$ ${g.valor.toFixed(2)}</td><td>R$ ${g.custo.toFixed(2)}</td><td style="color:${corL(g.lucro)}"><b>R$ ${g.lucro.toFixed(2)}</b></td></tr>`;
+  });
+  html += `</table>`;
+  if (res.temSemCusto) {
+    html += `<p style="font-size:12px">⚠️ Parte das vendas entrou sem custo (produto sem compra registrada nem custo médio no cadastro).</p>`;
+  }
+  html += `</body></html>`;
+  abrirImpressao(html, `Relatorio-Vendas-${inicio}-a-${fim}.html`);
+}
+function RelatorioPeriodo({ cadastros, transacoes, modo, dataRef, onMudarData, mesSel, onMudarMes }) {
+  const { inicio, fim, titulo } = intervaloPeriodo(modo, dataRef, mesSel);
+  const res = calcularLucroPeriodo(transacoes, cadastros, inicio, fim);
+  const vendasPeriodo = (transacoes.vendas || []).filter((v) => v.data >= inicio && v.data <= fim);
+  const totalCaixas = vendasPeriodo.reduce((s, v) => s + caixasEquivalentes(v, cadastros.produtos), 0);
+  const nomeCli = (id) => cadastros.clientes.find((c) => c.id === id)?.nome || "—";
+  const corL = (n) => (n >= 0 ? "#1E7A45" : C.rust);
+
+  return (
+    <div>
+      {modo === "semana" ? (
+        <Field label="Qualquer dia da semana">
+          <TextInput type="date" value={dataRef} onChange={(e) => onMudarData(e.target.value)} max={todayISO()} />
+        </Field>
+      ) : (
+        <Field label="Mês">
+          <TextInput type="month" value={mesSel} onChange={(e) => onMudarMes(e.target.value)} max={todayISO().slice(0, 7)} />
+        </Field>
+      )}
+
+      <Card className="mb-3">
+        <div className="text-sm font-bold mb-1">{titulo}</div>
+        <div className="text-xs mb-2" style={{ color: C.inkSoft }}>
+          {vendasPeriodo.length} venda(s) · {Number(totalCaixas.toFixed(1))} CX
+        </div>
+        <div className="text-sm">Vendido: <b>{fmtMoney(res.totalVendido)}</b> · Custo: <b>{fmtMoney(res.totalCusto)}</b></div>
+        <div className="text-sm mt-1">
+          Lucro: <b style={{ color: corL(res.lucro) }}>{fmtMoney(res.lucro)}</b> ({fmtPct(res.margem)} de margem)
+        </div>
+      </Card>
+
+      <Card className="mb-3">
+        <div className="text-sm font-bold mb-2">Por cliente</div>
+        {res.porCliente.length === 0 && <p className="text-sm" style={{ color: C.inkSoft }}>Nenhuma venda no período.</p>}
+        {res.porCliente.map((g) => (
+          <div key={g.chave} className="flex justify-between text-sm py-1 border-b" style={{ borderColor: C.line }}>
+            <span>{nomeCli(g.chave)}</span>
+            <span>
+              {Number(g.caixas.toFixed(1))} CX · {fmtMoney(g.valor)} · <b style={{ color: corL(g.lucro) }}>{fmtMoney(g.lucro)}</b>
+            </span>
+          </div>
+        ))}
+      </Card>
+
+      <Card className="mb-3">
+        <div className="text-sm font-bold mb-2">Por produto</div>
+        {res.porProduto.map((g) => (
+          <div key={g.chave} className="flex justify-between text-sm py-1 border-b" style={{ borderColor: C.line }}>
+            <span>{g.chave}</span>
+            <span>{fmtMoney(g.valor)} · <b style={{ color: corL(g.lucro) }}>{fmtMoney(g.lucro)}</b></span>
+          </div>
+        ))}
+      </Card>
+
+      <button
+        onClick={() => gerarPDFRelatorioPeriodo(titulo, inicio, fim, res, vendasPeriodo, cadastros)}
+        disabled={vendasPeriodo.length === 0}
+        className="w-full rounded-lg py-2.5 font-bold text-sm"
+        style={{ background: vendasPeriodo.length > 0 ? C.amber500 : "#3A4A41", color: vendasPeriodo.length > 0 ? C.green900 : C.inkSoft }}
+      >
+        Imprimir / PDF do período
+      </button>
+    </div>
+  );
+}
+
 function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, showToast }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
+  const [modo, setModo] = useState("dia"); // dia | semana | mes
+  const [mesSel, setMesSel] = useState(todayISO().slice(0, 7));
 
   const vendasDoDia = transacoes.vendas.filter((v) => v.data === dataSelecionada);
   const clientesUnicos = [...new Set(vendasDoDia.map((v) => v.clienteId))].sort((a, b) => {
@@ -5084,8 +5229,41 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, sho
     showToast("Vendas finalizadas — relatório gerado");
   };
 
+  const botoesModo = (
+    <div className="flex gap-2 mb-3">
+      {[["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]].map(([k, l]) => (
+        <button
+          key={k}
+          onClick={() => setModo(k)}
+          className="flex-1 rounded-lg py-2 text-sm font-bold"
+          style={{ background: modo === k ? C.amber500 : C.cardAlt, color: modo === k ? C.green900 : C.ink }}
+        >
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (modo !== "dia") {
+    return (
+      <div>
+        {botoesModo}
+        <RelatorioPeriodo
+          cadastros={cadastros}
+          transacoes={transacoes}
+          modo={modo}
+          dataRef={dataSelecionada}
+          onMudarData={setDataSelecionada}
+          mesSel={mesSel}
+          onMudarMes={setMesSel}
+        />
+      </div>
+    );
+  }
+
   return (
     <div>
+      {botoesModo}
       <Card
         className="mb-4"
         style={{ background: jaFinalizouVendasHoje ? C.cardAlt : vendasParaFinalizar.length > 0 ? C.green700 : C.cardAlt }}
