@@ -60,6 +60,7 @@ const TABELAS_TRANSACOES = {
   pagamentos: "pagamentos",
   perdas: "perdas",
   diasFinalizados: "dias_finalizados",
+  diasFinalizadosVendas: "dias_finalizados_vendas",
   comissoesFechadas: "comissoes_fechadas",
   pedidosAumento: "pedidos_aumento",
   pedidosDistribuidor: "pedidos_distribuidor",
@@ -206,7 +207,7 @@ function paraLinha(chaveJS, empresaId, r) {
       valor_perdido: r.valorPerdido || 0,
     };
   }
-  if (chaveJS === "diasFinalizados") {
+  if (chaveJS === "diasFinalizados" || chaveJS === "diasFinalizadosVendas") {
     const dataStr = typeof r === "string" ? r : "";
     return { id: dataStr, empresa_id: empresaId, data_finalizada: dataStr };
   }
@@ -389,7 +390,7 @@ function paraObjeto(chaveJS, linha) {
       valorPerdido: Number(linha.valor_perdido) || 0,
     };
   }
-  if (chaveJS === "diasFinalizados") {
+  if (chaveJS === "diasFinalizados" || chaveJS === "diasFinalizadosVendas") {
     return linha.data_finalizada;
   }
   if (chaveJS === "comissoesFechadas") {

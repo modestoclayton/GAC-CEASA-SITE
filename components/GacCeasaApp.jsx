@@ -524,6 +524,7 @@ const SEED_TRANSACOES = {
   pagamentos: [],
   perdas: [],
   diasFinalizados: [], // datas (YYYY-MM-DD) já finalizadas na Conferência — Finalizar não roda 2x no mesmo dia
+  diasFinalizadosVendas: [], // datas (YYYY-MM-DD) já finalizadas nas Vendas — Finalizar vendas não roda 2x no mesmo dia
   comissoesFechadas: [], // fechamentos (semanais/mensais) de comissão já pagos, por produtor
   pedidosAumento: [], // solicitações de aumento de quantidade feitas pelo Distribuidor
   pedidosDistribuidor: [], // pedido do Distribuidor feito ANTES da compra (o que ele quer que compre pra ele)
@@ -1784,7 +1785,7 @@ function somenteAtivas(tx) {
 // Tabelas de transações que vão pro servidor (mesmas chaves do servidor).
 const CHAVES_TRANSACOES_SYNC = [
   "compras", "vendas", "recebimentos", "pagamentos", "perdas",
-  "diasFinalizados", "comissoesFechadas", "pedidosAumento", "pedidosDistribuidor",
+  "diasFinalizados", "diasFinalizadosVendas", "comissoesFechadas", "pedidosAumento", "pedidosDistribuidor",
 ];
 // Foto do que está salvo no servidor: por tabela, id -> conteúdo da linha.
 function fotoTransacoes(tx) {
@@ -3329,6 +3330,7 @@ function RegistrarTab({ cadastros, transacoes, transacoesTodas, persistCadastros
           persistCadastros={persistCadastros}
           persistTabelaCadastro={persistTabelaCadastro}
           persistTransacoes={persistTransacoes}
+          persistTabelaTransacao={persistTabelaTransacao}
           showToast={showToast}
           setRecibo={setRecibo}
         />
@@ -5018,7 +5020,7 @@ function FolhaDeCargaTab({ cadastros, transacoes }) {
 /* ====================================================================== */
 /* Relatório de Vendas do Dia - todas as vendas, agrupadas por cliente   */
 /* ====================================================================== */
-function RelatorioVendasTab({ cadastros, transacoes }) {
+function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, showToast }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
 
   const vendasDoDia = transacoes.vendas.filter((v) => v.data === dataSelecionada);
@@ -5048,8 +5050,77 @@ function RelatorioVendasTab({ cadastros, transacoes }) {
   );
   const corLucro = (n) => (n >= 0 ? "#6FCF97" : C.rust);
 
+  // Finalizar vendas: junta as vendas de hoje + as de dias anteriores ainda não finalizados (ex.: sábado/domingo
+  // pra segunda). Só puxa dias depois da última finalização, pra não arrastar o histórico antigo.
+  const diasFinalizadosVendas = transacoes.diasFinalizadosVendas || [];
+  const hojeVendas = todayISO();
+  const ultimaFinalizadaVendas = diasFinalizadosVendas.length ? [...diasFinalizadosVendas].sort().pop() : null;
+  const jaFinalizouVendasHoje = diasFinalizadosVendas.includes(hojeVendas);
+  const vendasParaFinalizar = transacoes.vendas.filter(
+    (v) => v.data === hojeVendas || (ultimaFinalizadaVendas && v.data > ultimaFinalizadaVendas && v.data < hojeVendas)
+  );
+
+  const finalizarVendas = async () => {
+    if (jaFinalizouVendasHoje) {
+      showToast("As vendas de hoje já foram finalizadas");
+      return;
+    }
+    if (vendasParaFinalizar.length === 0) {
+      showToast("Nenhuma venda pra finalizar");
+      return;
+    }
+    // As vendas que entram passam a ter a data de hoje (a da finalização)
+    const ids = new Set(vendasParaFinalizar.map((v) => v.id));
+    const nextVendas = transacoes.vendas.map((v) => (ids.has(v.id) ? { ...v, data: hojeVendas } : v));
+    const lucroFinal = calcularLucroDoDia({ ...transacoes, vendas: nextVendas }, cadastros, hojeVendas);
+    gerarPDFRelatorioVendas(
+      nextVendas.filter((v) => v.data === hojeVendas),
+      hojeVendas,
+      cadastros,
+      lucroFinal
+    );
+    await persistTabelaTransacao("vendas", nextVendas);
+    await persistTabelaTransacao("diasFinalizadosVendas", [...diasFinalizadosVendas, hojeVendas]);
+    showToast("Vendas finalizadas — relatório gerado");
+  };
+
   return (
     <div>
+      <Card
+        className="mb-4"
+        style={{ background: jaFinalizouVendasHoje ? C.cardAlt : vendasParaFinalizar.length > 0 ? C.green700 : C.cardAlt }}
+      >
+        <div
+          className="text-sm font-bold mb-1"
+          style={{ color: jaFinalizouVendasHoje ? C.green700 : vendasParaFinalizar.length > 0 ? "#fff" : C.ink }}
+        >
+          {jaFinalizouVendasHoje ? "✅ Vendas de hoje finalizadas" : "Finalizar vendas"}
+        </div>
+        <div
+          className="text-xs mb-3"
+          style={{ color: vendasParaFinalizar.length > 0 && !jaFinalizouVendasHoje ? "rgba(255,255,255,0.75)" : C.inkSoft }}
+        >
+          {jaFinalizouVendasHoje
+            ? "O relatório de hoje já foi gerado. Venda nova lançada depois disso entra na próxima finalização."
+            : vendasParaFinalizar.length === 0
+            ? "Nenhuma venda pendente de finalização."
+            : `${vendasParaFinalizar.length} venda(s) entram nesta finalização (incluindo as de dias anteriores que ainda não foram finalizados).`}
+        </div>
+        {!jaFinalizouVendasHoje && (
+          <button
+            onClick={finalizarVendas}
+            disabled={vendasParaFinalizar.length === 0}
+            className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm"
+            style={{
+              background: vendasParaFinalizar.length > 0 ? C.amber500 : "#3A4A41",
+              color: vendasParaFinalizar.length > 0 ? C.green900 : C.inkSoft,
+            }}
+          >
+            Finalizar vendas e gerar relatório
+          </button>
+        )}
+      </Card>
+
       <Field label="Data">
         <TextInput type="date" value={dataSelecionada} onChange={(e) => setDataSelecionada(e.target.value)} max={todayISO()} />
       </Field>
@@ -5929,7 +6000,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
   );
 }
 
-function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, showToast, setRecibo }) {
+function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, showToast, setRecibo }) {
   const [view, setView] = useState("registrar");
   const [clienteId, setClienteId] = useState(cadastros.clientes[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
@@ -6431,7 +6502,14 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
       )}
           </>
         )}
-        {view === "relatorio" && <RelatorioVendasTab cadastros={cadastros} transacoes={transacoes} />}
+        {view === "relatorio" && (
+          <RelatorioVendasTab
+            cadastros={cadastros}
+            transacoes={transacoes}
+            persistTabelaTransacao={persistTabelaTransacao}
+            showToast={showToast}
+          />
+        )}
       </Card>
     </>
   );
