@@ -2316,7 +2316,7 @@ export default function GacCeasaApp() {
       const debito = transacoes.vendas
         .filter((v) => v.clienteId === cl.id)
         .reduce((s, v) => s + Number(v.valorFinal ?? v.valorTotal), 0);
-      const credito = transacoes.recebimentos
+      const credito = pagamentosValidos(transacoes.recebimentos)
         .filter((r) => r.clienteId === cl.id)
         .reduce((s, r) => s + Number(r.valor), 0);
       const saldo = debito - credito;
@@ -9406,7 +9406,13 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores,
                 </div>
                 {expanded === c.id && (
                   <>
-                    <ExtratoCliente clienteId={c.id} transacoes={transacoes} setRecibo={setRecibo} />
+                    <ExtratoCliente
+                      clienteId={c.id}
+                      transacoes={transacoes}
+                      setRecibo={setRecibo}
+                      persistTabelaTransacao={persistTabelaTransacao}
+                      showToast={showToast}
+                    />
                     {editandoClienteId === c.id ? (
                       <EditarCliente
                         cliente={c}
@@ -9898,7 +9904,7 @@ function ListaPagamentos({ pagamentos, rotuloPagamento, onEstornar, linkadosComi
   );
 }
 
-function ExtratoCliente({ clienteId, transacoes, setRecibo }) {
+function ExtratoCliente({ clienteId, transacoes, setRecibo, persistTabelaTransacao, showToast }) {
   const vendasCliente = transacoes.vendas
     .filter((v) => v.clienteId === clienteId)
     .map((v) => ({ ...v, valor: v.valorFinal ?? v.valorTotal }));
@@ -9912,16 +9918,33 @@ function ExtratoCliente({ clienteId, transacoes, setRecibo }) {
     );
   }
 
-  const debitosComStatus = calcularStatusPagamentos(vendasCliente, recebimentosCliente, todayISO()).sort(
-    (a, b) => (a.data < b.data ? 1 : -1)
-  );
+  const debitosComStatus = calcularStatusPagamentos(
+    vendasCliente,
+    pagamentosValidos(recebimentosCliente),
+    todayISO()
+  ).sort((a, b) => (a.data < b.data ? 1 : -1));
+
+  const estornarRecebimento = async (r) => {
+    const motivo = (window.prompt("Motivo do estorno (ex.: lançado no cliente errado):") || "").trim();
+    if (!motivo) return;
+    if (!window.confirm(`Estornar o recebimento de ${fmtMoney(r.valor)} de ${fmtDate(r.data)}?\n\nEle sai do saldo do cliente, mas continua no histórico.`)) return;
+    const nova = transacoes.recebimentos.map((x) =>
+      x.id === r.id ? { ...x, estornado: true, estornadoEm: new Date().toISOString(), motivoEstorno: motivo } : x
+    );
+    await persistTabelaTransacao("recebimentos", nova);
+    if (showToast) showToast("Recebimento estornado");
+  };
 
   return (
     <div className="mt-2 pt-2 border-t" style={{ borderColor: C.line }}>
       {debitosComStatus.map((d) => (
         <LinhaDebito key={d.id} d={d} rotuloTipo="Venda" tipoRecibo="venda" setRecibo={setRecibo} />
       ))}
-      <ListaPagamentos pagamentos={recebimentosCliente} rotuloPagamento="Recebimentos" />
+      <ListaPagamentos
+        pagamentos={recebimentosCliente}
+        rotuloPagamento="Recebimentos"
+        onEstornar={persistTabelaTransacao ? estornarRecebimento : null}
+      />
     </div>
   );
 }
