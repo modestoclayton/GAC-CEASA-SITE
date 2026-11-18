@@ -62,7 +62,11 @@ const monoFont =
 /* Helpers                                                                 */
 /* ---------------------------------------------------------------------- */
 const uid = () => Math.random().toString(36).slice(2, 10);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Data de hoje no fuso local (Brasília). Antes usava UTC, e depois das 21h já virava o dia seguinte.
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 // Compra que pertence ao dia escolhido. Hoje também inclui as compras de dias anteriores que ainda não foram
 // finalizadas (ex.: pedido de sábado pra segunda): elas seguem na lista do dia até a finalização.
@@ -1788,10 +1792,15 @@ const CHAVES_TRANSACOES_SYNC = [
   "diasFinalizados", "diasFinalizadosVendas", "comissoesFechadas", "pedidosAumento", "pedidosDistribuidor",
 ];
 // Foto do que está salvo no servidor: por tabela, id -> conteúdo da linha.
+// Id de uma linha de transação. Em diasFinalizados (e diasFinalizadosVendas) a linha é a própria data (texto).
+function idLinhaSync(r) {
+  if (typeof r === "string") return r;
+  return r && r.id ? r.id : null;
+}
 function fotoTransacoes(tx) {
   const foto = {};
   CHAVES_TRANSACOES_SYNC.forEach((k) => {
-    foto[k] = new Map((tx?.[k] || []).filter((r) => r && r.id).map((r) => [r.id, JSON.stringify(r)]));
+    foto[k] = new Map((tx?.[k] || []).filter((r) => idLinhaSync(r)).map((r) => [idLinhaSync(r), JSON.stringify(r)]));
   });
   return foto;
 }
@@ -1804,9 +1813,10 @@ function calcularDeltaTransacoes(foto, tx) {
     const idsAtuais = new Set();
     const mudadas = [];
     (tx?.[k] || []).forEach((r) => {
-      if (!r || !r.id) return;
-      idsAtuais.add(r.id);
-      if (anterior.get(r.id) !== JSON.stringify(r)) mudadas.push(r);
+      const id = idLinhaSync(r);
+      if (!id) return;
+      idsAtuais.add(id);
+      if (anterior.get(id) !== JSON.stringify(r)) mudadas.push(r);
     });
     const apagadas = [...anterior.keys()].filter((id) => !idsAtuais.has(id));
     if (mudadas.length) upserts[k] = mudadas;
