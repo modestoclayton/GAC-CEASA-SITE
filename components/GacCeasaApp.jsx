@@ -152,6 +152,20 @@ function normalizarEquipe(lista) {
   });
 }
 
+// Pagamento estornado (lançado por engano) não conta no saldo nem na quitação das compras.
+const pagamentosValidos = (lista) => (lista || []).filter((p) => !p.estornado);
+
+// Saldo do produtor = o que foi comprado − o que foi pago/descontado (sem os estornados).
+function saldoDoProdutor(transacoes, produtorId) {
+  const debito = transacoes.compras
+    .filter((c) => c.produtorId === produtorId)
+    .reduce((s, c) => s + Number(c.valorFinal ?? c.valorTotal), 0);
+  const credito = pagamentosValidos(transacoes.pagamentos)
+    .filter((p) => p.produtorId === produtorId)
+    .reduce((s, p) => s + Number(p.valor), 0);
+  return debito - credito;
+}
+
 // Calcula o status de cada débito (compra ou venda) contra os pagamentos/recebimentos
 // já lançados, usando FIFO: o total pago vai quitando os débitos mais antigos primeiro.
 // "ajuste" (desconto) conta igual pagamento pra fins de quitação, mas é sinalizado à parte.
@@ -2316,7 +2330,7 @@ export default function GacCeasaApp() {
       const debito = transacoes.compras
         .filter((c) => c.produtorId === pr.id)
         .reduce((s, c) => s + Number(c.valorFinal ?? c.valorTotal), 0);
-      const credito = transacoes.pagamentos
+      const credito = pagamentosValidos(transacoes.pagamentos)
         .filter((p) => p.produtorId === pr.id)
         .reduce((s, p) => s + Number(p.valor), 0);
       const saldo = debito - credito;
@@ -6935,6 +6949,21 @@ function FormPagamento({ cadastros, transacoes, persistTransacoes, showToast }) 
   const salvar = async () => {
     if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!produtorId || !valor) return;
+    // Confirmação antes de gravar: mostra para quem vai o dinheiro e como fica o saldo
+    const pr = cadastros.produtores.find((x) => x.id === produtorId);
+    const valorNum = Number(valor);
+    const saldoAntes = saldoDoProdutor(transacoes, produtorId);
+    const resumo = [
+      `${tipo === "pagamento" ? "Pagamento" : "Desconto/Ajuste"} de ${fmtMoney(valorNum)}`,
+      `Produtor: ${pr?.nome || "—"}${pr?.codigo ? ` (código ${pr.codigo})` : ""}`,
+      pr?.chavePix ? `Pix: ${pr.chavePix}` : null,
+      pr?.telefone ? `Telefone: ${pr.telefone}` : null,
+      `Data: ${fmtDate(data)}`,
+      `Saldo do produtor: ${fmtMoney(saldoAntes)} → ${fmtMoney(saldoAntes - valorNum)}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (!window.confirm("Confira antes de salvar:\n\n" + resumo)) return;
     setSalvando(true);
     const novo = {
       id: uid(),
@@ -9500,7 +9529,13 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores,
                 </div>
                 {expanded === p.id && (
                   <>
-                    <ExtratoProdutor produtorId={p.id} transacoes={transacoes} setRecibo={setRecibo} />
+                    <ExtratoProdutor
+                      produtorId={p.id}
+                      transacoes={transacoes}
+                      setRecibo={setRecibo}
+                      persistTabelaTransacao={persistTabelaTransacao}
+                      showToast={showToast}
+                    />
                     {editandoProdutorId === p.id ? (
                       <EditarProdutor
                         produtor={p}
@@ -9809,7 +9844,7 @@ function LinhaDebito({ d, rotuloTipo, tipoRecibo, setRecibo }) {
   );
 }
 
-function ListaPagamentos({ pagamentos, rotuloPagamento }) {
+function ListaPagamentos({ pagamentos, rotuloPagamento, onEstornar, linkadosComissao }) {
   if (pagamentos.length === 0) return null;
   const ordenados = [...pagamentos].sort((a, b) => (a.data < b.data ? 1 : -1));
   return (
@@ -9817,18 +9852,48 @@ function ListaPagamentos({ pagamentos, rotuloPagamento }) {
       <div className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: C.inkSoft }}>
         Histórico de {rotuloPagamento}
       </div>
-      {ordenados.map((p, i) => (
-        <div key={p.id || i} className="flex items-center justify-between text-xs mb-1">
-          <span style={{ color: C.inkSoft }}>
-            {fmtDate(p.data)} ·{" "}
-            {p.tipo === "ajuste" ? "Desconto/Ajuste" : p.formaPagamento || "Pagamento"}
-            {p.obs ? ` · ${p.obs}` : ""}
-          </span>
-          <span style={{ fontFamily: monoFont, fontWeight: 700, color: p.tipo === "ajuste" ? C.amber500 : C.green700 }}>
-            −{fmtMoney(p.valor)}
-          </span>
-        </div>
-      ))}
+      {ordenados.map((p, i) => {
+        const estornado = !!p.estornado;
+        const riscado = estornado ? "line-through" : "none";
+        const podeEstornar = onEstornar && !estornado && !(linkadosComissao || new Set()).has(p.id);
+        return (
+          <div key={p.id || i} className="mb-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <span style={{ color: C.inkSoft, textDecoration: riscado }}>
+                {fmtDate(p.data)} ·{" "}
+                {p.tipo === "ajuste" ? "Desconto/Ajuste" : p.formaPagamento || "Pagamento"}
+                {p.obs ? ` · ${p.obs}` : ""}
+              </span>
+              <span
+                style={{
+                  fontFamily: monoFont,
+                  fontWeight: 700,
+                  color: estornado ? C.inkSoft : p.tipo === "ajuste" ? C.amber500 : C.green700,
+                  textDecoration: riscado,
+                }}
+              >
+                −{fmtMoney(p.valor)}
+              </span>
+            </div>
+            {estornado && (
+              <div style={{ color: C.inkSoft }}>
+                Estornado em {fmtDate(String(p.estornadoEm || "").slice(0, 10))}
+                {p.motivoEstorno ? `: ${p.motivoEstorno}` : ""}
+              </div>
+            )}
+            {podeEstornar && (
+              <button
+                type="button"
+                onClick={() => onEstornar(p)}
+                className="underline"
+                style={{ color: C.amber500 }}
+              >
+                Estornar (lançado por engano)
+              </button>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -9861,11 +9926,15 @@ function ExtratoCliente({ clienteId, transacoes, setRecibo }) {
   );
 }
 
-function ExtratoProdutor({ produtorId, transacoes, setRecibo }) {
+function ExtratoProdutor({ produtorId, transacoes, setRecibo, persistTabelaTransacao, showToast }) {
   const comprasProdutor = transacoes.compras
     .filter((c) => c.produtorId === produtorId)
     .map((c) => ({ ...c, valor: c.valorFinal ?? c.valorTotal }));
   const pagamentosProdutor = transacoes.pagamentos.filter((p) => p.produtorId === produtorId);
+  // Pagamentos ligados a um fechamento de comissão não podem ser estornados aqui
+  const linkadosComissao = new Set(
+    (transacoes.comissoesFechadas || []).map((f) => f.pagamentoId).filter(Boolean)
+  );
 
   if (comprasProdutor.length === 0 && pagamentosProdutor.length === 0) {
     return (
@@ -9875,16 +9944,34 @@ function ExtratoProdutor({ produtorId, transacoes, setRecibo }) {
     );
   }
 
-  const debitosComStatus = calcularStatusPagamentos(comprasProdutor, pagamentosProdutor, todayISO()).sort(
-    (a, b) => (a.data < b.data ? 1 : -1)
-  );
+  const debitosComStatus = calcularStatusPagamentos(
+    comprasProdutor,
+    pagamentosValidos(pagamentosProdutor),
+    todayISO()
+  ).sort((a, b) => (a.data < b.data ? 1 : -1));
+
+  const estornarPagamento = async (p) => {
+    const motivo = (window.prompt("Motivo do estorno (ex.: lançado no produtor errado):") || "").trim();
+    if (!motivo) return;
+    if (!window.confirm(`Estornar o pagamento de ${fmtMoney(p.valor)} de ${fmtDate(p.data)}?\n\nEle sai do saldo do produtor, mas continua no histórico.`)) return;
+    const nova = transacoes.pagamentos.map((x) =>
+      x.id === p.id ? { ...x, estornado: true, estornadoEm: new Date().toISOString(), motivoEstorno: motivo } : x
+    );
+    await persistTabelaTransacao("pagamentos", nova);
+    if (showToast) showToast("Pagamento estornado");
+  };
 
   return (
     <div className="mt-2 pt-2 border-t" style={{ borderColor: C.line }}>
       {debitosComStatus.map((d) => (
         <LinhaDebito key={d.id} d={d} rotuloTipo="Compra" tipoRecibo="compra" setRecibo={setRecibo} />
       ))}
-      <ListaPagamentos pagamentos={pagamentosProdutor} rotuloPagamento="Pagamentos" />
+      <ListaPagamentos
+        pagamentos={pagamentosProdutor}
+        rotuloPagamento="Pagamentos"
+        onEstornar={persistTabelaTransacao ? estornarPagamento : null}
+        linkadosComissao={linkadosComissao}
+      />
     </div>
   );
 }

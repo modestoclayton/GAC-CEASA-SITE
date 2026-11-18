@@ -194,6 +194,9 @@ function paraLinha(chaveJS, empresaId, r) {
       tipo: r.tipo || "pagamento",
       forma_pagamento: r.formaPagamento || null,
       observacao: r.obs || "",
+      estornado: !!r.estornado,
+      estornado_em: r.estornadoEm || null,
+      motivo_estorno: r.motivoEstorno || null,
     };
   }
   if (chaveJS === "perdas") {
@@ -378,6 +381,9 @@ function paraObjeto(chaveJS, linha) {
       tipo: linha.tipo,
       formaPagamento: linha.forma_pagamento,
       obs: linha.observacao,
+      estornado: !!linha.estornado,
+      estornadoEm: linha.estornado_em || null,
+      motivoEstorno: linha.motivo_estorno || null,
     };
   }
   if (chaveJS === "perdas") {
