@@ -5217,6 +5217,14 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, sho
     () => calcularLucroDoDia(transacoes, cadastros, dataSelecionada, custos),
     [custos, dataSelecionada] // eslint-disable-line react-hooks/exhaustive-deps
   );
+  // Total exato das compras do dia (quantidade × valor unitário, sem descontos)
+  const totalComprado = useMemo(
+    () =>
+      transacoes.compras
+        .filter((c) => c.data === dataSelecionada)
+        .reduce((s, c) => s + (Number(c.valorTotal) || 0), 0),
+    [transacoes.compras, dataSelecionada]
+  );
   const corLucro = (n) => (n >= 0 ? "#6FCF97" : C.rust);
 
   // Finalizar vendas: junta as vendas de hoje + as de dias anteriores ainda não finalizados (ex.: sábado/domingo
@@ -5351,13 +5359,17 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, sho
             <div className="text-xs uppercase tracking-widest font-bold mb-3" style={{ color: C.inkSoft }}>
               💰 Lucro do dia · compra × venda
             </div>
+            <div className="mb-3">
+              <div className="text-[11px]" style={{ color: C.inkSoft }}>Total comprado no dia</div>
+              <div className="text-sm font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(totalComprado)}</div>
+            </div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div>
                 <div className="text-[11px]" style={{ color: C.inkSoft }}>Vendido</div>
                 <div className="text-sm font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(lucroDia.totalVendido)}</div>
               </div>
               <div>
-                <div className="text-[11px]" style={{ color: C.inkSoft }}>Custo da compra</div>
+                <div className="text-[11px]" style={{ color: C.inkSoft }}>Custo do que foi vendido (PEPS)</div>
                 <div className="text-sm font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(lucroDia.totalCusto)}</div>
               </div>
               <div>
