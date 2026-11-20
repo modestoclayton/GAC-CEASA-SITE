@@ -905,7 +905,7 @@ function ReciboEntregaView({ item, transacoes, cadastros, onFechar }) {
             Recibo de Entrega
           </div>
           <div className="text-xs mt-1" style={{ color: "#6E6650" }}>
-            Emitido em {fmtDate(todayISO())}
+            Data da venda: <b>{fmtDate(item.data)}</b>
           </div>
         </div>
 
@@ -1088,7 +1088,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
             {titulo}
           </div>
           <div className="text-xs mt-1" style={{ color: "#6E6650" }}>
-            Emitido em {fmtDate(todayISO())}
+            Data da {isVenda ? "venda" : "compra"}: <b>{fmtDate(item.data)}</b>
           </div>
         </div>
 
