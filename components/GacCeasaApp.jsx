@@ -1948,10 +1948,20 @@ export default function GacCeasaApp() {
   const fetchDadosEmpresa = useCallback(
     async (options, tokenForcado) => {
       const token = tokenForcado || sessaoEmpresa?.accessToken;
-      const res = await fetch("/api/dados-empresa", {
-        ...options,
-        headers: { ...(options?.headers || {}), Authorization: `Bearer ${token}` },
-      });
+      // Timeout: sem ele, uma requisição travada prendia a fila de salvamento para sempre
+      // e a tela de Finalizar ficava parada, sem nenhuma mensagem.
+      const controle = new AbortController();
+      const timer = setTimeout(() => controle.abort(), 25000);
+      let res;
+      try {
+        res = await fetch("/api/dados-empresa", {
+          ...options,
+          signal: controle.signal,
+          headers: { ...(options?.headers || {}), Authorization: `Bearer ${token}` },
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (res.status === 401 && !tokenForcado) {
         const renovada = await renovarTokenSessao();
         if (renovada) {
@@ -5246,19 +5256,23 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, sho
       showToast("Nenhuma venda pra finalizar");
       return;
     }
-    // As vendas que entram passam a ter a data de hoje (a da finalização)
-    const ids = new Set(vendasParaFinalizar.map((v) => v.id));
-    const nextVendas = transacoes.vendas.map((v) => (ids.has(v.id) ? { ...v, data: hojeVendas } : v));
-    const lucroFinal = calcularLucroDoDia({ ...transacoes, vendas: nextVendas }, cadastros, hojeVendas);
-    gerarPDFRelatorioVendas(
-      nextVendas.filter((v) => v.data === hojeVendas),
-      hojeVendas,
-      cadastros,
-      lucroFinal
-    );
-    await persistTabelaTransacao("vendas", nextVendas);
-    await persistTabelaTransacao("diasFinalizadosVendas", [...diasFinalizadosVendas, hojeVendas]);
-    showToast("Vendas finalizadas — relatório gerado");
+    try {
+      // As vendas que entram passam a ter a data de hoje (a da finalização)
+      const ids = new Set(vendasParaFinalizar.map((v) => v.id));
+      const nextVendas = transacoes.vendas.map((v) => (ids.has(v.id) ? { ...v, data: hojeVendas } : v));
+      const lucroFinal = calcularLucroDoDia({ ...transacoes, vendas: nextVendas }, cadastros, hojeVendas);
+      gerarPDFRelatorioVendas(
+        nextVendas.filter((v) => v.data === hojeVendas),
+        hojeVendas,
+        cadastros,
+        lucroFinal
+      );
+      await persistTabelaTransacao("vendas", nextVendas);
+      await persistTabelaTransacao("diasFinalizadosVendas", [...diasFinalizadosVendas, hojeVendas]);
+      showToast("Vendas finalizadas — relatório gerado");
+    } catch (erro) {
+      showToast(`Erro ao finalizar vendas: ${(erro && erro.message) || "tente de novo"}`);
+    }
   };
 
   const botoesModo = (
@@ -7835,25 +7849,29 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
       showToast("Ainda tem compra pendente de conferência");
       return;
     }
-    // Compras de dias anteriores (ex.: pedido de sábado) passam a ter a data de hoje, a da finalização
-    const idsFinalizar = new Set(comprasParaFinalizar.map((c) => c.id));
-    const comprasFinal = comprasParaFinalizar.map((c) => (c.data === hoje ? c : { ...c, data: hoje }));
-    // 1) Folha de Pedido — todos os clientes, agrupados
-    gerarPDFFolhaPedido(comprasFinal, hoje, cadastros);
-    // 2) Vales só das compras cujo FORNECEDOR (produtor) paga PIX ou Dinheiro (sem boleto).
-    // Produtor sem forma de pagamento definida (cadastro antigo) continua gerando vale, por segurança.
-    const comprasSemBoleto = comprasFinal.filter((c) => {
-      const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
-      return !produtor?.pagamento || produtor.pagamento !== "BOLETO";
-    });
-    if (comprasSemBoleto.length > 0) {
-      gerarPDFVales(comprasSemBoleto, hoje, cadastros);
+    try {
+      // Compras de dias anteriores (ex.: pedido de sábado) passam a ter a data de hoje, a da finalização
+      const idsFinalizar = new Set(comprasParaFinalizar.map((c) => c.id));
+      const comprasFinal = comprasParaFinalizar.map((c) => (c.data === hoje ? c : { ...c, data: hoje }));
+      // 1) Folha de Pedido — todos os clientes, agrupados
+      gerarPDFFolhaPedido(comprasFinal, hoje, cadastros);
+      // 2) Vales só das compras cujo FORNECEDOR (produtor) paga PIX ou Dinheiro (sem boleto).
+      // Produtor sem forma de pagamento definida (cadastro antigo) continua gerando vale, por segurança.
+      const comprasSemBoleto = comprasFinal.filter((c) => {
+        const produtor = cadastros.produtores.find((p) => p.id === c.produtorId);
+        return !produtor?.pagamento || produtor.pagamento !== "BOLETO";
+      });
+      if (comprasSemBoleto.length > 0) {
+        gerarPDFVales(comprasSemBoleto, hoje, cadastros);
+      }
+      // Grava a nova data nas compras que entraram e marca o dia como finalizado (trava pra não gerar de novo)
+      const nextCompras = transacoes.compras.map((c) => (idsFinalizar.has(c.id) ? { ...c, data: hoje } : c));
+      await persistTabelaTransacao("compras", nextCompras);
+      await persistTabelaTransacao("diasFinalizados", [...diasFinalizados, hoje]);
+      showToast("Conferência finalizada — documentos gerados");
+    } catch (erro) {
+      showToast(`Erro ao finalizar conferência: ${(erro && erro.message) || "tente de novo"}`);
     }
-    // Grava a nova data nas compras que entraram e marca o dia como finalizado (trava pra não gerar de novo)
-    const nextCompras = transacoes.compras.map((c) => (idsFinalizar.has(c.id) ? { ...c, data: hoje } : c));
-    await persistTabelaTransacao("compras", nextCompras);
-    await persistTabelaTransacao("diasFinalizados", [...diasFinalizados, hoje]);
-    showToast("Conferência finalizada — documentos gerados");
   };
 
   const confirmar = async (compraId, quantidadeRecebida) => {
