@@ -4174,6 +4174,14 @@ function blocoFornecedorTermico(p) {
           : ""
       }`;
 }
+// Datas das compras do vale (dd/mm/aaaa), para mostrar no próprio vale
+function datasCompraDoGrupo(itensGrupo) {
+  return [...new Set(itensGrupo.map((c) => c.data))]
+    .sort()
+    .map((d) => new Date(d + "T00:00:00").toLocaleDateString("pt-BR"))
+    .join(", ");
+}
+
 function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
   const primeiro = itensGrupo[0];
   const produtor = cadastros.produtores.find((p) => p.id === primeiro.produtorId);
@@ -4229,6 +4237,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
       <div style="border-bottom:2px solid #1F4A30;padding-bottom:10px;margin-bottom:10px;">
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
         <div style="font-size:19px;font-weight:bold;color:#1F4A30;">Vale de Compra</div>
+        <div style="font-size:11px;color:#1C1B18;margin-top:2px;">Data da compra: <b>${datasCompraDoGrupo(itensGrupo)}</b></div>
         <div style="font-size:10px;color:#6E6650;margin-top:2px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
       </div>
 
@@ -4309,6 +4318,7 @@ function montarCorpoVale(itensGrupo, dataSelecionada, cadastros, quebraPagina) {
       <div style="text-align:center;margin-bottom:6px;">
         <div style="font-size:10px;text-transform:uppercase;font-weight:bold;">${cadastros.nomeEmpresa || "GAC CEASA MANAGER"}</div>
         <div style="font-size:16px;font-weight:bold;">VALE DE COMPRA</div>
+        <div style="font-size:11px;">Data da compra: <b>${datasCompraDoGrupo(itensGrupo)}</b></div>
         <div style="font-size:10px;">Emitido em ${new Date(dataSelecionada + "T00:00:00").toLocaleDateString("pt-BR")}</div>
       </div>
 
@@ -6884,6 +6894,26 @@ function FormRecebimento({ cadastros, transacoes, persistTransacoes, showToast }
   const salvar = async () => {
     if (salvando) return; // trava contra duplo clique enquanto ainda está salvando
     if (!clienteId || !valor) return;
+    // Mesma trava de confirmação do pagamento ao produtor: evita lançar no cliente errado
+    const cli = cadastros.clientes.find((c) => c.id === clienteId);
+    const valorNum = Number(valor);
+    const debitoCli = transacoes.vendas
+      .filter((v) => v.clienteId === clienteId)
+      .reduce((s, v) => s + Number(v.valorFinal ?? v.valorTotal), 0);
+    const creditoCli = pagamentosValidos(transacoes.recebimentos)
+      .filter((r) => r.clienteId === clienteId)
+      .reduce((s, r) => s + Number(r.valor), 0);
+    const saldoAntesCli = debitoCli - creditoCli;
+    const resumo = [
+      `${tipo === "pagamento" ? "Recebimento" : "Desconto/Ajuste"} de ${fmtMoney(valorNum)}`,
+      `Cliente: ${cli?.nome || "—"}`,
+      tipo === "pagamento" ? `Forma: ${formaPagamento}` : null,
+      `Data: ${fmtDate(data)}`,
+      `Saldo do cliente: ${fmtMoney(saldoAntesCli)} → ${fmtMoney(saldoAntesCli - valorNum)}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (!window.confirm("Confira antes de salvar:\n\n" + resumo)) return;
     setSalvando(true);
     const novo = {
       id: uid(),
