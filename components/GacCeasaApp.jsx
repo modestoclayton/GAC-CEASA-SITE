@@ -5276,7 +5276,7 @@ function PainelDespesas({ cadastros, transacoes, dataSelecionada, persistTabelaT
   const totalDia = despesasDoDia.reduce((s, d) => s + (Number(d.valor) || 0), 0);
 
   const adicionarTipo = async () => {
-    const nome = novoTipo.trim();
+    const nome = novoTipo.trim().toUpperCase();
     if (!nome) return;
     if (tipos.some((t) => (t.nome || "").trim().toLowerCase() === nome.toLowerCase())) {
       showToast("Essa despesa já está cadastrada");
@@ -5288,7 +5288,7 @@ function PainelDespesas({ cadastros, transacoes, dataSelecionada, persistTabelaT
   };
 
   const renomearTipo = async (t) => {
-    const nome = (window.prompt("Novo nome da despesa:", t.nome) || "").trim();
+    const nome = (window.prompt("Novo nome da despesa:", t.nome) || "").trim().toUpperCase();
     if (!nome || nome === t.nome) return;
     await persistTabelaCadastro("tiposDespesa", tipos.map((x) => (x.id === t.id ? { ...x, nome } : x)));
   };
@@ -5305,7 +5305,7 @@ function PainelDespesas({ cadastros, transacoes, dataSelecionada, persistTabelaT
     if (!tipo || !(valorNum > 0)) return;
     setSalvando(true);
     await persistTabelaTransacao("despesas", [
-      { id: uid(), data: dataSelecionada, tipoId: tipo.id, nomeTipo: tipo.nome, valor: valorNum, obs },
+      { id: uid(), data: dataSelecionada, tipoId: tipo.id, nomeTipo: tipo.nome.toUpperCase(), valor: valorNum, obs },
       ...(transacoes.despesas || []),
     ]);
     setValor("");
@@ -5336,7 +5336,7 @@ function PainelDespesas({ cadastros, transacoes, dataSelecionada, persistTabelaT
         <div className="flex flex-col mb-4">
           {tipos.map((t) => (
             <div key={t.id} className="flex items-center justify-between py-2 border-b" style={{ borderColor: C.line }}>
-              <span className="text-sm font-bold">{t.nome}</span>
+              <span className="text-sm font-bold">{(t.nome || "").toUpperCase()}</span>
               <span className="flex gap-3 text-xs font-bold">
                 <button onClick={() => renomearTipo(t)} style={{ color: C.ink }}>Renomear</button>
                 <button onClick={() => removerTipo(t)} style={{ color: "#C0392B" }}>Remover</button>
@@ -5357,7 +5357,7 @@ function PainelDespesas({ cadastros, transacoes, dataSelecionada, persistTabelaT
             <Select value={tipoId} onChange={(e) => setTipoId(e.target.value)}>
               <option value="">Escolha…</option>
               {tipos.map((t) => (
-                <option key={t.id} value={t.id}>{t.nome}</option>
+                <option key={t.id} value={t.id}>{(t.nome || "").toUpperCase()}</option>
               ))}
             </Select>
           </Field>
