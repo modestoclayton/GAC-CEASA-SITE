@@ -52,6 +52,7 @@ const TABELAS_CADASTROS = {
   clientes: "clientes",
   produtores: "produtores",
   compradoresVendedores: "equipe",
+  tiposDespesa: "tipos_despesa",
 };
 const TABELAS_TRANSACOES = {
   compras: "compras",
@@ -59,6 +60,7 @@ const TABELAS_TRANSACOES = {
   recebimentos: "recebimentos",
   pagamentos: "pagamentos",
   perdas: "perdas",
+  despesas: "despesas",
   diasFinalizados: "dias_finalizados",
   diasFinalizadosVendas: "dias_finalizados_vendas",
   comissoesFechadas: "comissoes_fechadas",
@@ -200,6 +202,20 @@ function paraLinha(chaveJS, empresaId, r) {
       estornado: !!r.estornado,
       estornado_em: r.estornadoEm || null,
       motivo_estorno: r.motivoEstorno || null,
+    };
+  }
+  if (chaveJS === "tiposDespesa") {
+    return { id: r.id, empresa_id: empresaId, nome: r.nome || "" };
+  }
+  if (chaveJS === "despesas") {
+    return {
+      id: r.id,
+      empresa_id: empresaId,
+      data: r.data,
+      tipo_id: r.tipoId || null,
+      nome_tipo: r.nomeTipo || "",
+      valor: r.valor || 0,
+      obs: r.obs || "",
     };
   }
   if (chaveJS === "perdas") {
@@ -390,6 +406,19 @@ function paraObjeto(chaveJS, linha) {
       estornado: !!linha.estornado,
       estornadoEm: linha.estornado_em || null,
       motivoEstorno: linha.motivo_estorno || null,
+    };
+  }
+  if (chaveJS === "tiposDespesa") {
+    return { id: linha.id, nome: linha.nome };
+  }
+  if (chaveJS === "despesas") {
+    return {
+      id: linha.id,
+      data: linha.data,
+      tipoId: linha.tipo_id,
+      nomeTipo: linha.nome_tipo,
+      valor: Number(linha.valor) || 0,
+      obs: linha.obs,
     };
   }
   if (chaveJS === "perdas") {

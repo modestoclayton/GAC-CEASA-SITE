@@ -398,7 +398,12 @@ function calcularLucroDoDia(transacoes, cadastros, data, custos) {
   };
   const totalVendido = soma(linhas, "valor");
   const totalCusto = soma(linhas, "custo");
-  const lucro = totalVendido - totalCusto;
+  const lucroBruto = totalVendido - totalCusto;
+  // Despesas lançadas no dia (aluguel, energia...) são descontadas do lucro do dia
+  const despesasDoDia = (transacoes.despesas || [])
+    .filter((d) => d.data === data)
+    .reduce((s, d) => s + (Number(d.valor) || 0), 0);
+  const lucro = lucroBruto - despesasDoDia;
   const comprasDoDia = (transacoes.compras || [])
     .filter((c) => c.data === data)
     .reduce((s, c) => s + (Number(c.valorFinal ?? c.valorTotal) || 0), 0);
@@ -408,6 +413,8 @@ function calcularLucroDoDia(transacoes, cadastros, data, custos) {
     porCliente: agrupar((v) => v.clienteId),
     totalVendido,
     totalCusto,
+    lucroBruto,
+    despesasDoDia,
     lucro,
     margem: totalVendido > 0 ? (lucro / totalVendido) * 100 : 0,
     comprasDoDia,
@@ -508,6 +515,7 @@ const SEED_CADASTROS = {
     },
   ],
   compradoresVendedores: [], // nomes autorizados a ter acesso completo (gestor)
+  tiposDespesa: [], // tipos de despesa cadastrados (ex.: aluguel, energia) — usados no lançamento diário
 };
 
 const SEED_TRANSACOES = {
@@ -541,6 +549,7 @@ const SEED_TRANSACOES = {
   recebimentos: [],
   pagamentos: [],
   perdas: [],
+  despesas: [], // despesas lançadas por dia (descontadas do lucro do dia)
   diasFinalizados: [], // datas (YYYY-MM-DD) já finalizadas na Conferência — Finalizar não roda 2x no mesmo dia
   diasFinalizadosVendas: [], // datas (YYYY-MM-DD) já finalizadas nas Vendas — Finalizar vendas não roda 2x no mesmo dia
   comissoesFechadas: [], // fechamentos (semanais/mensais) de comissão já pagos, por produtor
@@ -1802,7 +1811,7 @@ function somenteAtivas(tx) {
 // (que apaga do banco o que não veio na lista) excluiria eles de verdade.
 // Tabelas de transações que vão pro servidor (mesmas chaves do servidor).
 const CHAVES_TRANSACOES_SYNC = [
-  "compras", "vendas", "recebimentos", "pagamentos", "perdas",
+  "compras", "vendas", "recebimentos", "pagamentos", "perdas", "despesas",
   "diasFinalizados", "diasFinalizadosVendas", "comissoesFechadas", "pedidosAumento", "pedidosDistribuidor",
 ];
 // Foto do que está salvo no servidor: por tabela, id -> conteúdo da linha.
@@ -4511,6 +4520,51 @@ function gerarPDFVales(compras, dataSelecionada, cadastros) {
   abrirImpressao(html, `Vale-${slugify(cadastros.clientes.find((c) => c.id === primeiro.clienteDestino)?.nome)}-${dataSelecionada}.html`);
 }
 
+// Relatório do que está em aberto (pendente) de um cliente ou produtor.
+// "debitos" já vem com status/saldoAberto (calcularStatusPagamentos).
+function gerarPDFPendencias(titulo, debitos, nomeEmpresa) {
+  const abertos = debitos
+    .filter((d) => !d.pago && d.saldoAberto > 0.009)
+    .sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  const total = abertos.reduce((s, d) => s + d.saldoAberto, 0);
+  const linhas = abertos
+    .map(
+      (d) => `<tr>
+        <td style="padding:6px;border-bottom:1px solid #D8CBA0;">${fmtDate(d.data)}</td>
+        <td style="padding:6px;border-bottom:1px solid #D8CBA0;">${d.produto || "—"}${d.quantidade ? ` · ${d.quantidade}` : ""}</td>
+        <td style="padding:6px;border-bottom:1px solid #D8CBA0;text-align:right;">${fmtMoney(d.valor)}</td>
+        <td style="padding:6px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">${fmtMoney(d.saldoAberto)}</td>
+        <td style="padding:6px;border-bottom:1px solid #D8CBA0;">${d.status === "vencido" ? "Vencido" : "A vencer"}</td>
+      </tr>`
+    )
+    .join("");
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pendências — ${titulo}</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; margin: 24px; color: #1C1B18; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th { text-align: left; padding: 6px; border-bottom: 2px solid #1F4A30; font-size: 12px; }
+      ${BARRA_IMPRESSAO_CSS}
+      @media print { body { margin: 10mm; } }
+    </style></head><body>
+    ${BARRA_IMPRESSAO_HTML}
+    <div style="border-bottom:2px solid #1F4A30;padding-bottom:10px;margin-bottom:12px;">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:bold;color:#6E6650;">${nomeEmpresa || "GAC CEASA MANAGER"}</div>
+      <div style="font-size:20px;font-weight:bold;color:#1F4A30;">Pendências — ${titulo}</div>
+      <div style="font-size:11px;color:#6E6650;margin-top:2px;">Emitido em ${new Date().toLocaleDateString("pt-BR")}</div>
+    </div>
+    ${
+      abertos.length === 0
+        ? `<p style="font-size:14px;">Nada em aberto. Tudo quitado.</p>`
+        : `<table>
+            <thead><tr><th>Data</th><th>Produto</th><th style="text-align:right;">Valor</th><th style="text-align:right;">Em aberto</th><th>Situação</th></tr></thead>
+            <tbody>${linhas}</tbody>
+            <tfoot><tr><td colspan="3" style="padding:10px 6px;font-weight:bold;">Total em aberto</td><td style="padding:10px 6px;text-align:right;font-weight:bold;color:#1F4A30;font-size:15px;">${fmtMoney(total)}</td><td></td></tr></tfoot>
+          </table>`
+    }
+    </body></html>`;
+  abrirImpressao(html, `Pendencias-${slugify(titulo)}-${todayISO()}.html`);
+}
+
 // Mede (em mm) a altura que o HTML de um vale ocupa quando renderizado na
 // largura de uma coluna da folha (136mm) — usando um iframe isolado, com a
 // mesma largura/padding da folha impressa, só pra medição (não aparece na
@@ -4866,7 +4920,7 @@ function gerarPDFRelatorioVendas(vendas, dataSelecionada, cadastros, lucroDia) {
     const corL = lucroDia.lucro >= 0 ? '#1E7A45' : '#C0392B';
     html += `<div class="resumo" style="background:#E8F4EC"><b>💰 LUCRO DO DIA · COMPRA × VENDA</b><br>
       Vendido: <b>R$ ${lucroDia.totalVendido.toFixed(2)}</b> · Custo da compra: <b>R$ ${lucroDia.totalCusto.toFixed(2)}</b> ·
-      Lucro: <b style="color:${corL}">R$ ${lucroDia.lucro.toFixed(2)}</b> (${fmtPct(lucroDia.margem)} de margem)
+      ${lucroDia.despesasDoDia > 0 ? `Despesas do dia: <b>R$ ${lucroDia.despesasDoDia.toFixed(2)}</b> · ` : ""}Lucro${lucroDia.despesasDoDia > 0 ? " líquido" : ""}: <b style="color:${corL}">R$ ${lucroDia.lucro.toFixed(2)}</b> (${fmtPct(lucroDia.margem)} de margem)
     </div>
     <table><tr><th>Produto</th><th>Qtd</th><th>Venda méd.</th><th>Compra méd.</th><th>Vendido</th><th>Custo</th><th>Lucro</th><th>Margem</th><th>Custo vem de</th></tr>`;
     lucroDia.porProduto.forEach((g) => {
@@ -5207,10 +5261,152 @@ function RelatorioPeriodo({ cadastros, transacoes, modo, dataRef, onMudarData, m
   );
 }
 
-function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, showToast }) {
+// Painel de despesas do dia: cadastra os tipos que a pessoa costuma ter
+// (aluguel, energia...) e lança o valor de cada uma no dia. O total do dia é
+// descontado do lucro do dia (calcularLucroDoDia).
+function PainelDespesas({ cadastros, transacoes, dataSelecionada, persistTabelaTransacao, persistTabelaCadastro, showToast }) {
+  const tipos = [...(cadastros.tiposDespesa || [])].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+  const [novoTipo, setNovoTipo] = useState("");
+  const [tipoId, setTipoId] = useState("");
+  const [valor, setValor] = useState("");
+  const [obs, setObs] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const despesasDoDia = (transacoes.despesas || []).filter((d) => d.data === dataSelecionada);
+  const totalDia = despesasDoDia.reduce((s, d) => s + (Number(d.valor) || 0), 0);
+
+  const adicionarTipo = async () => {
+    const nome = novoTipo.trim();
+    if (!nome) return;
+    if (tipos.some((t) => (t.nome || "").trim().toLowerCase() === nome.toLowerCase())) {
+      showToast("Essa despesa já está cadastrada");
+      return;
+    }
+    await persistTabelaCadastro("tiposDespesa", [...tipos, { id: uid(), nome }]);
+    setNovoTipo("");
+    showToast("Despesa cadastrada");
+  };
+
+  const renomearTipo = async (t) => {
+    const nome = (window.prompt("Novo nome da despesa:", t.nome) || "").trim();
+    if (!nome || nome === t.nome) return;
+    await persistTabelaCadastro("tiposDespesa", tipos.map((x) => (x.id === t.id ? { ...x, nome } : x)));
+  };
+
+  const removerTipo = async (t) => {
+    if (!window.confirm(`Remover "${t.nome}" da lista de despesas?\n\nOs lançamentos que já usaram esse nome continuam no histórico.`)) return;
+    await persistTabelaCadastro("tiposDespesa", tipos.filter((x) => x.id !== t.id));
+  };
+
+  const lancar = async () => {
+    if (salvando) return;
+    const tipo = tipos.find((t) => t.id === tipoId);
+    const valorNum = Number(valor);
+    if (!tipo || !(valorNum > 0)) return;
+    setSalvando(true);
+    await persistTabelaTransacao("despesas", [
+      { id: uid(), data: dataSelecionada, tipoId: tipo.id, nomeTipo: tipo.nome, valor: valorNum, obs },
+      ...(transacoes.despesas || []),
+    ]);
+    setValor("");
+    setObs("");
+    setSalvando(false);
+    showToast("Despesa lançada");
+  };
+
+  const apagar = async (d) => {
+    if (!window.confirm(`Apagar a despesa "${d.nomeTipo}" de ${fmtMoney(d.valor)}?`)) return;
+    await persistTabelaTransacao("despesas", (transacoes.despesas || []).filter((x) => x.id !== d.id));
+    showToast("Despesa apagada");
+  };
+
+  return (
+    <Card className="mb-4">
+      <div className="text-xs uppercase tracking-widest font-bold mb-3" style={{ color: C.inkSoft }}>🧾 Despesas</div>
+
+      <Field label="Cadastrar despesa que você costuma ter">
+        <div className="flex gap-2">
+          <TextInput value={novoTipo} onChange={(e) => setNovoTipo(e.target.value)} placeholder="Ex: Aluguel, Energia, Combustível" />
+          <button onClick={adicionarTipo} className="rounded-lg px-3 text-sm font-bold" style={{ background: C.amber500, color: C.green900 }}>
+            Adicionar
+          </button>
+        </div>
+      </Field>
+      {tipos.length > 0 && (
+        <div className="flex flex-col mb-4">
+          {tipos.map((t) => (
+            <div key={t.id} className="flex items-center justify-between py-2 border-b" style={{ borderColor: C.line }}>
+              <span className="text-sm font-bold">{t.nome}</span>
+              <span className="flex gap-3 text-xs font-bold">
+                <button onClick={() => renomearTipo(t)} style={{ color: C.ink }}>Renomear</button>
+                <button onClick={() => removerTipo(t)} style={{ color: "#C0392B" }}>Remover</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="text-xs uppercase tracking-widest font-bold mb-2" style={{ color: C.inkSoft }}>
+        Lançar despesa de {fmtDate(dataSelecionada)}
+      </div>
+      {tipos.length === 0 ? (
+        <p className="text-xs mb-3" style={{ color: C.inkSoft }}>Cadastre uma despesa acima antes de lançar.</p>
+      ) : (
+        <>
+          <Field label="Despesa">
+            <Select value={tipoId} onChange={(e) => setTipoId(e.target.value)}>
+              <option value="">Escolha…</option>
+              {tipos.map((t) => (
+                <option key={t.id} value={t.id}>{t.nome}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Valor (R$)">
+            <TextInput type="number" inputMode="decimal" min="0" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" />
+          </Field>
+          <Field label="Observação (opcional)">
+            <TextInput value={obs} onChange={(e) => setObs(e.target.value)} />
+          </Field>
+          <PrimaryButton onClick={lancar} icon={HandCoins} tone="blue" disabled={salvando || !tipoId || !(Number(valor) > 0)}>
+            {salvando ? "Salvando…" : "Lançar despesa"}
+          </PrimaryButton>
+        </>
+      )}
+
+      <div className="text-xs uppercase tracking-widest font-bold mt-4 mb-2" style={{ color: C.inkSoft }}>
+        Despesas do dia
+      </div>
+      {despesasDoDia.length === 0 ? (
+        <p className="text-xs" style={{ color: C.inkSoft }}>Nenhuma despesa neste dia.</p>
+      ) : (
+        <>
+          {despesasDoDia.map((d) => (
+            <div key={d.id} className="flex items-center justify-between py-2 border-b" style={{ borderColor: C.line }}>
+              <div>
+                <div className="text-sm font-bold">{d.nomeTipo}</div>
+                {d.obs && <div className="text-[11px]" style={{ color: C.inkSoft }}>{d.obs}</div>}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold" style={{ fontFamily: monoFont }}>{fmtMoney(d.valor)}</span>
+                <button onClick={() => apagar(d)} className="text-xs font-bold" style={{ color: "#C0392B" }}>Apagar</button>
+              </div>
+            </div>
+          ))}
+          <div className="flex justify-between mt-2 text-sm font-bold">
+            <span>Total de despesas do dia</span>
+            <span style={{ fontFamily: monoFont }}>{fmtMoney(totalDia)}</span>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, persistTabelaCadastro, showToast }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [modo, setModo] = useState("dia"); // dia | semana | mes
   const [mesSel, setMesSel] = useState(todayISO().slice(0, 7));
+  const [despesasAbertas, setDespesasAbertas] = useState(false);
 
   const vendasDoDia = transacoes.vendas.filter((v) => v.data === dataSelecionada);
   const clientesUnicos = [...new Set(vendasDoDia.map((v) => v.clienteId))].sort((a, b) => {
@@ -5378,6 +5574,26 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, sho
             </Card>
           </div>
 
+          <div className="flex justify-end mb-3">
+            <button
+              onClick={() => setDespesasAbertas((v) => !v)}
+              className="rounded-lg px-4 py-2 text-sm font-bold"
+              style={{ background: despesasAbertas ? C.cardAlt : C.amber500, color: despesasAbertas ? C.ink : C.green900 }}
+            >
+              {despesasAbertas ? "Fechar despesas" : "🧾 Despesa"}
+            </button>
+          </div>
+          {despesasAbertas && (
+            <PainelDespesas
+              cadastros={cadastros}
+              transacoes={transacoes}
+              dataSelecionada={dataSelecionada}
+              persistTabelaTransacao={persistTabelaTransacao}
+              persistTabelaCadastro={persistTabelaCadastro}
+              showToast={showToast}
+            />
+          )}
+
           {/* ---------- Compra × Venda · Lucro do dia ---------- */}
           <Card style={{ marginBottom: 16 }}>
             <div className="text-xs uppercase tracking-widest font-bold mb-3" style={{ color: C.inkSoft }}>
@@ -5403,6 +5619,11 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, sho
               </div>
             </div>
 
+            {lucroDia.despesasDoDia > 0 && (
+              <div className="text-[11px] mb-3" style={{ color: C.inkSoft }}>
+                Lucro bruto {fmtMoney(lucroDia.lucroBruto)} − despesas do dia {fmtMoney(lucroDia.despesasDoDia)}
+              </div>
+            )}
             <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: C.inkSoft }}>Por produto</div>
             <div className="flex flex-col">
               {lucroDia.porProduto.map((g) => {
@@ -6745,6 +6966,7 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
             cadastros={cadastros}
             transacoes={transacoes}
             persistTabelaTransacao={persistTabelaTransacao}
+            persistTabelaCadastro={persistTabelaCadastro}
             showToast={showToast}
           />
         )}
@@ -9468,6 +9690,7 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores,
                   <>
                     <ExtratoCliente
                       clienteId={c.id}
+                      nome={c.nome}
                       transacoes={transacoes}
                       setRecibo={setRecibo}
                       persistTabelaTransacao={persistTabelaTransacao}
@@ -9597,6 +9820,7 @@ function ContaCorrenteTab({ contaClientes, contaProdutores, comissoesProdutores,
                   <>
                     <ExtratoProdutor
                       produtorId={p.id}
+                      nome={p.nome}
                       transacoes={transacoes}
                       setRecibo={setRecibo}
                       persistTabelaTransacao={persistTabelaTransacao}
@@ -9964,7 +10188,7 @@ function ListaPagamentos({ pagamentos, rotuloPagamento, onEstornar, linkadosComi
   );
 }
 
-function ExtratoCliente({ clienteId, transacoes, setRecibo, persistTabelaTransacao, showToast }) {
+function ExtratoCliente({ clienteId, nome, transacoes, setRecibo, persistTabelaTransacao, showToast }) {
   const vendasCliente = transacoes.vendas
     .filter((v) => v.clienteId === clienteId)
     .map((v) => ({ ...v, valor: v.valorFinal ?? v.valorTotal }));
@@ -9997,6 +10221,13 @@ function ExtratoCliente({ clienteId, transacoes, setRecibo, persistTabelaTransac
 
   return (
     <div className="mt-2 pt-2 border-t" style={{ borderColor: C.line }}>
+      <button
+        onClick={() => gerarPDFPendencias(`Cliente ${nome || ""}`.trim(), debitosComStatus)}
+        className="w-full rounded-lg py-2 text-xs font-bold mb-2"
+        style={{ background: C.cardAlt, color: C.ink }}
+      >
+        📄 Relatório de pendências do cliente
+      </button>
       {debitosComStatus.map((d) => (
         <LinhaDebito key={d.id} d={d} rotuloTipo="Venda" tipoRecibo="venda" setRecibo={setRecibo} />
       ))}
@@ -10009,7 +10240,7 @@ function ExtratoCliente({ clienteId, transacoes, setRecibo, persistTabelaTransac
   );
 }
 
-function ExtratoProdutor({ produtorId, transacoes, setRecibo, persistTabelaTransacao, showToast }) {
+function ExtratoProdutor({ produtorId, nome, transacoes, setRecibo, persistTabelaTransacao, showToast }) {
   const comprasProdutor = transacoes.compras
     .filter((c) => c.produtorId === produtorId)
     .map((c) => ({ ...c, valor: c.valorFinal ?? c.valorTotal }));
@@ -10046,6 +10277,13 @@ function ExtratoProdutor({ produtorId, transacoes, setRecibo, persistTabelaTrans
 
   return (
     <div className="mt-2 pt-2 border-t" style={{ borderColor: C.line }}>
+      <button
+        onClick={() => gerarPDFPendencias(`Produtor ${nome || ""}`.trim(), debitosComStatus)}
+        className="w-full rounded-lg py-2 text-xs font-bold mb-2"
+        style={{ background: C.cardAlt, color: C.ink }}
+      >
+        📄 Relatório de pendências do produtor
+      </button>
       {debitosComStatus.map((d) => (
         <LinhaDebito key={d.id} d={d} rotuloTipo="Compra" tipoRecibo="compra" setRecibo={setRecibo} />
       ))}
