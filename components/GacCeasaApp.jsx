@@ -4531,7 +4531,8 @@ function gerarPDFPendencias(titulo, debitos, nomeEmpresa) {
     .map(
       (d) => `<tr>
         <td style="padding:6px;border-bottom:1px solid #D8CBA0;">${fmtDate(d.data)}</td>
-        <td style="padding:6px;border-bottom:1px solid #D8CBA0;">${d.produto || "—"}${d.quantidade ? ` · ${d.quantidade}` : ""}</td>
+        <td style="padding:6px;border-bottom:1px solid #D8CBA0;">${d.produto || "—"}</td>
+        <td style="padding:6px;border-bottom:1px solid #D8CBA0;text-align:right;">${d.quantidade ?? "—"}</td>
         <td style="padding:6px;border-bottom:1px solid #D8CBA0;text-align:right;">${fmtMoney(d.valor)}</td>
         <td style="padding:6px;border-bottom:1px solid #D8CBA0;text-align:right;font-weight:bold;">${fmtMoney(d.saldoAberto)}</td>
         <td style="padding:6px;border-bottom:1px solid #D8CBA0;">${d.status === "vencido" ? "Vencido" : "A vencer"}</td>
@@ -4556,9 +4557,9 @@ function gerarPDFPendencias(titulo, debitos, nomeEmpresa) {
       abertos.length === 0
         ? `<p style="font-size:14px;">Nada em aberto. Tudo quitado.</p>`
         : `<table>
-            <thead><tr><th>Data</th><th>Produto</th><th style="text-align:right;">Valor</th><th style="text-align:right;">Em aberto</th><th>Situação</th></tr></thead>
+            <thead><tr><th>Data</th><th>Produto</th><th style="text-align:right;">Qtd</th><th style="text-align:right;">Valor</th><th style="text-align:right;">Em aberto</th><th>Situação</th></tr></thead>
             <tbody>${linhas}</tbody>
-            <tfoot><tr><td colspan="3" style="padding:10px 6px;font-weight:bold;">Total em aberto</td><td style="padding:10px 6px;text-align:right;font-weight:bold;color:#1F4A30;font-size:15px;">${fmtMoney(total)}</td><td></td></tr></tfoot>
+            <tfoot><tr><td colspan="4" style="padding:10px 6px;font-weight:bold;">Total em aberto</td><td style="padding:10px 6px;text-align:right;font-weight:bold;color:#1F4A30;font-size:15px;">${fmtMoney(total)}</td><td></td></tr></tfoot>
           </table>`
     }
     </body></html>`;
