@@ -5160,10 +5160,19 @@ function calcularLucroPeriodo(transacoes, cadastros, inicio, fim) {
     r.porProduto.forEach((g) => somaGrupo(acc.mapaProduto, g));
     r.porCliente.forEach((g) => somaGrupo(acc.mapaCliente, g));
   });
-  const lucro = acc.totalVendido - acc.totalCusto;
+  // Despesas do período (todas as datas no intervalo, mesmo em dias sem venda), descontadas só do total
+  const despesasLista = (transacoes.despesas || [])
+    .filter((d) => d.data >= inicio && d.data <= fim)
+    .sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  const despesas = despesasLista.reduce((s, d) => s + (Number(d.valor) || 0), 0);
+  const lucroBruto = acc.totalVendido - acc.totalCusto;
+  const lucro = lucroBruto - despesas;
   return {
     totalVendido: acc.totalVendido,
     totalCusto: acc.totalCusto,
+    lucroBruto,
+    despesas,
+    despesasLista,
     lucro,
     margem: acc.totalVendido > 0 ? (lucro / acc.totalVendido) * 100 : 0,
     temSemCusto: acc.temSemCusto,
@@ -5178,7 +5187,14 @@ function gerarPDFRelatorioPeriodo(titulo, inicio, fim, res, vendas, cadastros) {
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório de Vendas</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse;margin-bottom:18px}th{background:#1E4A30;color:white;padding:8px;text-align:left}td{padding:7px;border-bottom:1px solid #ddd}.resumo{background:#F0ECD8;padding:12px;border-radius:6px;margin-bottom:18px}h2{margin-top:24px}${BARRA_IMPRESSAO_CSS}</style></head><body>${BARRA_IMPRESSAO_HTML}<h1>🧾 RELATÓRIO DE VENDAS</h1><p><b>${titulo}</b></p>`;
   html += `<div class="resumo"><b>Vendas:</b> ${vendas.length} · <b>Caixas:</b> ${Number(totalCaixas.toFixed(1))} CX<br>
     <b>Vendido:</b> R$ ${res.totalVendido.toFixed(2)} · <b>Custo:</b> R$ ${res.totalCusto.toFixed(2)} ·
-    <b>Lucro:</b> <span style="color:${corL(res.lucro)}">R$ ${res.lucro.toFixed(2)}</span> (${fmtPct(res.margem)} de margem)</div>`;
+    ${res.despesas > 0 ? `<b>Lucro bruto:</b> R$ ${res.lucroBruto.toFixed(2)} · <b>Despesas:</b> R$ ${res.despesas.toFixed(2)}<br>` : ""}<b>Lucro${res.despesas > 0 ? " líquido" : ""}:</b> <span style="color:${corL(res.lucro)}">R$ ${res.lucro.toFixed(2)}</span> (${fmtPct(res.margem)} de margem)</div>`;
+  if (res.despesasLista && res.despesasLista.length > 0) {
+    html += `<h2>Despesas do período</h2><table><tr><th>Data</th><th>Despesa</th><th>Observação</th><th>Valor</th></tr>`;
+    res.despesasLista.forEach((d) => {
+      html += `<tr><td>${fmtDate(d.data)}</td><td>${d.nomeTipo || ""}</td><td>${d.obs || ""}</td><td>R$ ${Number(d.valor).toFixed(2)}</td></tr>`;
+    });
+    html += `</table>`;
+  }
   html += `<h2>Por cliente</h2><table><tr><th>Cliente</th><th>Caixas</th><th>Vendido</th><th>Custo</th><th>Lucro</th></tr>`;
   res.porCliente.forEach((g) => {
     html += `<tr><td>${nomeCli(g.chave)}</td><td>${Number(g.caixas.toFixed(1))}</td><td>R$ ${g.valor.toFixed(2)}</td><td>R$ ${g.custo.toFixed(2)}</td><td style="color:${corL(g.lucro)}"><b>R$ ${g.lucro.toFixed(2)}</b></td></tr>`;
@@ -5221,10 +5237,31 @@ function RelatorioPeriodo({ cadastros, transacoes, modo, dataRef, onMudarData, m
           {vendasPeriodo.length} venda(s) · {Number(totalCaixas.toFixed(1))} CX
         </div>
         <div className="text-sm">Vendido: <b>{fmtMoney(res.totalVendido)}</b> · Custo: <b>{fmtMoney(res.totalCusto)}</b></div>
+        {res.despesas > 0 && (
+          <div className="text-sm mt-1" style={{ color: C.inkSoft }}>
+            Lucro bruto {fmtMoney(res.lucroBruto)} − despesas {fmtMoney(res.despesas)}
+          </div>
+        )}
         <div className="text-sm mt-1">
-          Lucro: <b style={{ color: corL(res.lucro) }}>{fmtMoney(res.lucro)}</b> ({fmtPct(res.margem)} de margem)
+          {res.despesas > 0 ? "Lucro líquido" : "Lucro"}: <b style={{ color: corL(res.lucro) }}>{fmtMoney(res.lucro)}</b> ({fmtPct(res.margem)} de margem)
         </div>
       </Card>
+
+      {res.despesasLista.length > 0 && (
+        <Card className="mb-3">
+          <div className="text-xs uppercase tracking-widest font-bold mb-2" style={{ color: C.inkSoft }}>🧾 Despesas do período</div>
+          {res.despesasLista.map((d) => (
+            <div key={d.id} className="flex justify-between py-1 text-sm border-b" style={{ borderColor: C.line }}>
+              <span>{fmtDate(d.data)} · {d.nomeTipo}{d.obs ? ` (${d.obs})` : ""}</span>
+              <b style={{ fontFamily: monoFont }}>{fmtMoney(d.valor)}</b>
+            </div>
+          ))}
+          <div className="flex justify-between mt-2 text-sm font-bold">
+            <span>Total de despesas</span>
+            <span style={{ fontFamily: monoFont }}>{fmtMoney(res.despesas)}</span>
+          </div>
+        </Card>
+      )}
 
       <Card className="mb-3">
         <div className="text-sm font-bold mb-2">Por cliente</div>
