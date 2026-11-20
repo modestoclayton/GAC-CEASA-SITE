@@ -964,7 +964,7 @@ function ReciboEntregaView({ item, transacoes, cadastros, onFechar }) {
         </div>
 
         <div className="text-xs text-center mt-8 pt-4 border-t" style={{ color: "#6E6650", borderColor: "#D8CBA0" }}>
-          Documento gerado pelo GAC CEASA Manager — {fmtDate(todayISO())}
+          Documento gerado pelo GAC CEASA Manager — {fmtDate(item.data)}
         </div>
       </div>
 
@@ -1235,7 +1235,7 @@ function ReciboView({ tipo, item, cadastros, onFechar, transacoes }) {
         )}
 
         <div className="text-xs text-center mt-8 pt-4 border-t" style={{ color: "#6E6650", borderColor: "#D8CBA0" }}>
-          Documento gerado pelo GAC CEASA Manager — {fmtDate(todayISO())}
+          Documento gerado pelo GAC CEASA Manager — {fmtDate(item.data)}
         </div>
       </div>
 
