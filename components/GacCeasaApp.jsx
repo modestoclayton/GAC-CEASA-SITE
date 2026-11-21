@@ -5574,19 +5574,24 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
             ? "Nenhuma venda pendente de finalização."
             : `${vendasParaFinalizar.length} venda(s) entram nesta finalização (incluindo as de dias anteriores que ainda não foram finalizados).`}
         </div>
-        {!jaFinalizouVendasHoje && (
-          <button
-            onClick={finalizarVendas}
-            disabled={vendasParaFinalizar.length === 0}
-            className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm"
-            style={{
-              background: vendasParaFinalizar.length > 0 ? C.amber500 : "#3A4A41",
-              color: vendasParaFinalizar.length > 0 ? C.green900 : C.inkSoft,
-            }}
-          >
-            Finalizar vendas e gerar relatório
-          </button>
-        )}
+        {/* Depois de finalizado, o botão fica visível mas inativo, pra ninguém achar que não fez */}
+        <button
+          onClick={finalizarVendas}
+          disabled={jaFinalizouVendasHoje || vendasParaFinalizar.length === 0}
+          className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm"
+          style={{
+            background: jaFinalizouVendasHoje
+              ? "#3A4A41"
+              : vendasParaFinalizar.length > 0
+              ? C.amber500
+              : "#3A4A41",
+            color: jaFinalizouVendasHoje || vendasParaFinalizar.length === 0 ? C.inkSoft : C.green900,
+            cursor: jaFinalizouVendasHoje ? "not-allowed" : undefined,
+            opacity: jaFinalizouVendasHoje ? 0.7 : 1,
+          }}
+        >
+          {jaFinalizouVendasHoje ? "✅ Finalizado — relatório já gerado" : "Finalizar vendas e gerar relatório"}
+        </button>
       </Card>
 
       <Field label="Data">
@@ -8403,7 +8408,8 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
               ? `${comprasParaFinalizar.length} compra(s) já conferida(s). Pronto pra finalizar.`
               : `Faltam ${pendentesParaFinalizar.length} compra(s) pra conferir.`}
           </div>
-          {!jaFinalizadoHoje && (
+          {/* Depois de finalizado, o botão fica visível mas inativo, pra ninguém achar que não fez */}
+          {(
             <button
               onClick={finalizarConferencia}
               disabled={!podeFinalizarHoje}
@@ -8411,10 +8417,12 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
               style={{
                 background: podeFinalizarHoje ? C.amber500 : "#3A4A41",
                 color: podeFinalizarHoje ? C.green900 : C.inkSoft,
+                cursor: jaFinalizadoHoje ? "not-allowed" : undefined,
+                opacity: jaFinalizadoHoje ? 0.7 : 1,
               }}
             >
               <ClipboardCheck size={16} />
-              Finalizar e Gerar Documentos
+              {jaFinalizadoHoje ? "✅ Finalizado — documentos já gerados" : "Finalizar e Gerar Documentos"}
             </button>
           )}
           {!jaFinalizadoHoje && (
