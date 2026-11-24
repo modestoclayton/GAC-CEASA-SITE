@@ -147,6 +147,7 @@ function paraLinha(chaveJS, empresaId, r) {
       cancelada: !!r.cancelada,
       cancelada_em: r.canceladaEm || null,
       pedido_id: r.pedidoId || null,
+      fechada_em: r.fechadaEm || null,
     };
   }
   if (chaveJS === "vendas") {
@@ -351,6 +352,7 @@ function paraObjeto(chaveJS, linha) {
       cancelada: !!linha.cancelada,
       canceladaEm: linha.cancelada_em || null,
       pedidoId: linha.pedido_id || null,
+      fechadaEm: linha.fechada_em || null,
     };
   }
   if (chaveJS === "vendas") {

@@ -8130,8 +8130,10 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
   const hoje = todayISO();
   const diasFinalizados = transacoes.diasFinalizados || [];
   const jaFinalizadoHoje = diasFinalizados.includes(hoje);
+  // "fechadaEm" marca a compra que já entrou num fechamento. Compra lançada depois do fechamento
+  // (mesmo no mesmo dia) não tem essa marca e entra no próximo fechamento.
   const comprasParaFinalizar = transacoes.compras.filter(
-    (c) => c.clienteDestino !== "ESTOQUE" && !c.cancelada && !diasFinalizados.includes(c.data)
+    (c) => c.clienteDestino !== "ESTOQUE" && !c.cancelada && !c.fechadaEm
   );
   const pendentesParaFinalizar = comprasParaFinalizar.filter((c) => !c.entregaConfirmada);
   const podeFinalizarHoje =
@@ -8166,7 +8168,9 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
         gerarPDFVales(comprasSemBoleto, hoje, cadastros);
       }
       // Grava a nova data nas compras que entraram e marca o dia como finalizado (trava pra não gerar de novo)
-      const nextCompras = transacoes.compras.map((c) => (idsFinalizar.has(c.id) ? { ...c, data: hoje } : c));
+      const nextCompras = transacoes.compras.map((c) =>
+        idsFinalizar.has(c.id) ? { ...c, data: hoje, fechadaEm: hoje } : c
+      );
       await persistTabelaTransacao("compras", nextCompras);
       await persistTabelaTransacao("diasFinalizados", [...diasFinalizados, hoje]);
       showToast("Conferência finalizada — documentos gerados");
