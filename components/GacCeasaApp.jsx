@@ -5485,10 +5485,14 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
   // pra segunda). Só puxa dias depois da última finalização, pra não arrastar o histórico antigo.
   const diasFinalizadosVendas = transacoes.diasFinalizadosVendas || [];
   const hojeVendas = todayISO();
-  const ultimaFinalizadaVendas = diasFinalizadosVendas.length ? [...diasFinalizadosVendas].sort().pop() : null;
   const jaFinalizouVendasHoje = diasFinalizadosVendas.includes(hojeVendas);
+  // Vendas de hoje + vendas de dias anteriores (a partir de 21/11/2026) que ainda não foram finalizadas.
+  // Vendas antigas, antes de 21/11, ficam de fora.
+  const INICIO_VENDAS_PENDENTES = "2026-11-21";
   const vendasParaFinalizar = transacoes.vendas.filter(
-    (v) => v.data === hojeVendas || (ultimaFinalizadaVendas && v.data > ultimaFinalizadaVendas && v.data < hojeVendas)
+    (v) =>
+      v.data === hojeVendas ||
+      (v.data >= INICIO_VENDAS_PENDENTES && v.data < hojeVendas && !diasFinalizadosVendas.includes(v.data))
   );
 
   const finalizarVendas = async () => {
