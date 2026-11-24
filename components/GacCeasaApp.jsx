@@ -5489,10 +5489,12 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
   // Vendas de hoje + vendas de dias anteriores (a partir de 21/11/2026) que ainda não foram finalizadas.
   // Vendas antigas, antes de 21/11, ficam de fora.
   const INICIO_VENDAS_PENDENTES = "2026-11-21";
+  // "fechadaEm" marca a venda que já entrou num fechamento. Venda lançada depois do fechamento
+  // (mesmo no mesmo dia) não tem essa marca, então entra no próximo fechamento.
   const vendasParaFinalizar = transacoes.vendas.filter(
     (v) =>
-      v.data === hojeVendas ||
-      (v.data >= INICIO_VENDAS_PENDENTES && v.data < hojeVendas && !diasFinalizadosVendas.includes(v.data))
+      !v.fechadaEm &&
+      (v.data === hojeVendas || (v.data >= INICIO_VENDAS_PENDENTES && v.data < hojeVendas))
   );
 
   const finalizarVendas = async () => {
@@ -5507,7 +5509,7 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
     try {
       // As vendas que entram passam a ter a data de hoje (a da finalização)
       const ids = new Set(vendasParaFinalizar.map((v) => v.id));
-      const nextVendas = transacoes.vendas.map((v) => (ids.has(v.id) ? { ...v, data: hojeVendas } : v));
+      const nextVendas = transacoes.vendas.map((v) => (ids.has(v.id) ? { ...v, data: hojeVendas, fechadaEm: hojeVendas } : v));
       const lucroFinal = calcularLucroDoDia({ ...transacoes, vendas: nextVendas }, cadastros, hojeVendas);
       gerarPDFRelatorioVendas(
         nextVendas.filter((v) => v.data === hojeVendas),
