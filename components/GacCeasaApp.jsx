@@ -75,6 +75,7 @@ const compraNoDiaOuPendente = (c, dia, diasFinalizados = []) =>
   (dia === todayISO() &&
     c.clienteDestino !== "ESTOQUE" &&
     !c.cancelada &&
+    !c.fechadaEm && // compra já fechada num fechamento nunca volta como pendente
     c.data < dia &&
     !diasFinalizados.includes(c.data));
 const fmtMoney = (n) =>
@@ -7689,8 +7690,16 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
   // ninguém, é calculado batendo a quantidade pedida com a soma do que já
   // foi lançado em compras pra essa empresa, nesse dia, com o mesmo nome de
   // produto (sem diferenciar maiúscula/minúscula).
+  // Pedido de um dia já finalizado (conferência fechada) não aparece mais na notificação.
+  const diasFechadosPedidos = [
+    ...new Set([
+      ...(transacoes.diasFinalizados || []),
+      ...(transacoes.compras || []).map((c) => c.fechadaEm).filter(Boolean),
+    ]),
+  ];
   const meusPedidosDistribuidor = (transacoes.pedidosDistribuidor || [])
     .filter((p) => minhasEmpresas.includes(p.clienteId))
+    .filter((p) => !diasFechadosPedidos.some((d) => d >= p.data))
     .map((p) => ({ ...p, ...situacaoPedidoDistribuidor(p, transacoes.compras) }))
     .sort(
       (a, b) =>
