@@ -2233,6 +2233,24 @@ export default function GacCeasaApp() {
     [agendarSalvarTransacoes]
   );
 
+  // Várias tabelas numa única ida ao servidor (ex.: compras + dias finalizados),
+  // pra que a marcação do dia nunca fique pra trás da compra que ela fecha.
+  const persistVariasTabelasTransacao = useCallback(
+    async (mapa) => {
+      const base = transacoesTodasRef.current;
+      const novo = { ...base };
+      const porChave = {};
+      Object.entries(mapa).forEach(([chaveJS, arr]) => {
+        novo[chaveJS] = reincluirCanceladas(chaveJS, arr, base);
+        porChave[chaveJS] = novo[chaveJS];
+      });
+      transacoesTodasRef.current = novo;
+      setTransacoes((atual) => ({ ...atual, ...porChave }));
+      return agendarSalvarTransacoes(novo);
+    },
+    [agendarSalvarTransacoes]
+  );
+
   const salvarPerfil = useCallback(
     async (novoPerfil) => {
       const nomeNorm = novoPerfil.nome.trim().toLowerCase();
@@ -2484,6 +2502,7 @@ export default function GacCeasaApp() {
             transacoes={transacoes}
             persistTransacoes={persistTransacoes}
             persistTabelaTransacao={persistTabelaTransacao}
+            persistVariasTabelasTransacao={persistVariasTabelasTransacao}
             showToast={showToast}
             soMeuNome={perfil.nome}
           />
@@ -2972,7 +2991,14 @@ function DashboardTab({ dashboard, estoquePorProduto, contaClientes, contaProdut
   const norm = (s) => (s || "").trim().toLowerCase();
   // Pedido de dia anterior (ex.: feito no sábado pra segunda) continua aparecendo em "hoje" até a próxima
   // finalização da conferência. Se algum não for comprado, é removido à mão. Depois de finalizado, não carrega mais.
-  const diasFinalizadosDist = transacoes.diasFinalizados || [];
+  // Dia finalizado = está na lista de dias OU alguma compra dele já foi fechada (fechadaEm),
+  // que é gravada na mesma ação de finalizar. Assim o pedido não volta se a lista de dias falhar.
+  const diasFinalizadosDist = [
+    ...new Set([
+      ...(transacoes.diasFinalizados || []),
+      ...(transacoes.compras || []).map((c) => c.fechadaEm).filter(Boolean),
+    ]),
+  ];
   const pedidoAindaNaoFinalizado = (p) => !diasFinalizadosDist.some((d) => d >= p.data);
   const pedidosDistribuidorDoDia = (transacoes.pedidosDistribuidor || [])
     .filter(
@@ -3409,6 +3435,7 @@ function RegistrarTab({ cadastros, transacoes, transacoesTodas, persistCadastros
           transacoes={transacoes}
           persistTransacoes={persistTransacoes}
           persistTabelaTransacao={persistTabelaTransacao}
+          persistVariasTabelasTransacao={persistVariasTabelasTransacao}
           showToast={showToast}
           setRecibo={setRecibo}
         />
@@ -8050,7 +8077,7 @@ function MeusPedidosDistribuidorTab({ cadastros, transacoes, persistTabelaTransa
 /* ---------------------------------------------------------------------- */
 /* Conferência de Compras (cargueiro tica recebimento)                    */
 /* ---------------------------------------------------------------------- */
-function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persistTabelaTransacao, showToast, setRecibo, soMeuNome }) {
+function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persistTabelaTransacao, persistVariasTabelasTransacao, showToast, setRecibo, soMeuNome }) {
   const produtorNome = (id) => cadastros.produtores.find((p) => p.id === id)?.nome || "—";
   const [conferindoId, setConferindoId] = useState(null);
   const [filtroCliente, setFiltroCliente] = useState(""); // "" = mostrar todas as empresas
@@ -8129,7 +8156,7 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
   // finalizada, e entra com a data da finalização.
   const hoje = todayISO();
   const diasFinalizados = transacoes.diasFinalizados || [];
-  const jaFinalizadoHoje = diasFinalizados.includes(hoje);
+  const jaFinalizadoHoje = diasFinalizados.includes(hoje) || (transacoes.compras || []).some((c) => c.fechadaEm === hoje);
   // "fechadaEm" marca a compra que já entrou num fechamento. Compra lançada depois do fechamento
   // (mesmo no mesmo dia) não tem essa marca e entra no próximo fechamento.
   // Só compras a partir de 21/11/2026. Compras antigas que nunca foram fechadas (ex.: de setembro)
@@ -8173,8 +8200,10 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
       const nextCompras = transacoes.compras.map((c) =>
         idsFinalizar.has(c.id) ? { ...c, data: hoje, fechadaEm: hoje } : c
       );
-      await persistTabelaTransacao("compras", nextCompras);
-      await persistTabelaTransacao("diasFinalizados", [...diasFinalizados, hoje]);
+      await persistVariasTabelasTransacao({
+        compras: nextCompras,
+        diasFinalizados: [...new Set([...diasFinalizados, hoje])],
+      });
       showToast("Conferência finalizada — documentos gerados");
     } catch (erro) {
       showToast(`Erro ao finalizar conferência: ${(erro && erro.message) || "tente de novo"}`);
