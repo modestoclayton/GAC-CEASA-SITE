@@ -2673,6 +2673,7 @@ export default function GacCeasaApp() {
             persistTabelaCadastro={persistTabelaCadastro}
             persistTransacoes={persistTransacoes}
             persistTabelaTransacao={persistTabelaTransacao}
+            persistVariasTabelasTransacao={persistVariasTabelasTransacao}
             showToast={showToast}
             setRecibo={setRecibo}
           />
@@ -3311,7 +3312,7 @@ function BlocoGrandeMovimento({ label, sub, icon: Icon, corA, corB, onClick }) {
   );
 }
 
-function RegistrarTab({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, showToast, setRecibo }) {
+function RegistrarTab({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, persistVariasTabelasTransacao, showToast, setRecibo }) {
   const [tipo, setTipo] = useState(null); // null = menu inicial
 
   if (!tipo) {
