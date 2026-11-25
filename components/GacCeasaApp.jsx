@@ -6061,6 +6061,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
     (dataFiltro === todayISO() &&
       c.clienteDestino !== "ESTOQUE" &&
       !c.cancelada &&
+      !c.fechadaEm && // compra já fechada num fechamento nunca volta como pendente
       c.data < dataFiltro &&
       !diasFinalizadosCompras.includes(c.data));
 
