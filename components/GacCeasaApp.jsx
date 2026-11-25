@@ -8132,8 +8132,10 @@ function ConferenciaComprasTab({ cadastros, transacoes, persistTransacoes, persi
   const jaFinalizadoHoje = diasFinalizados.includes(hoje);
   // "fechadaEm" marca a compra que já entrou num fechamento. Compra lançada depois do fechamento
   // (mesmo no mesmo dia) não tem essa marca e entra no próximo fechamento.
+  // Só compras a partir de 21/11/2026. Compras antigas que nunca foram fechadas (ex.: de setembro)
+  // não voltam para a conferência de hoje.
   const comprasParaFinalizar = transacoes.compras.filter(
-    (c) => c.clienteDestino !== "ESTOQUE" && !c.cancelada && !c.fechadaEm
+    (c) => c.clienteDestino !== "ESTOQUE" && !c.cancelada && !c.fechadaEm && c.data >= "2026-11-21"
   );
   const pendentesParaFinalizar = comprasParaFinalizar.filter((c) => !c.entregaConfirmada);
   const podeFinalizarHoje =
