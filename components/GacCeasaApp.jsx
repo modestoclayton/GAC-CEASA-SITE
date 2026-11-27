@@ -1370,6 +1370,39 @@ function CadastroPerfil({ onSalvar }) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Mensalidade: dados de pagamento e aviso do dia 30 do teste               */
+/* ---------------------------------------------------------------------- */
+const VALOR_MENSALIDADE = "R$ 169,90";
+const CHAVE_PIX = "05564849914";
+const WHATSAPP_NUMERO = "5544998942726"; // com código do país (55) + DDD, sem espaço/traço
+
+// Aparece no último dia do teste (dia 30). A empresa paga pelo Pix e clica em
+// "Já paguei", que abre o WhatsApp com a mensagem pronta pra você.
+function AvisoMensalidade({ empresa }) {
+  const mensagem = encodeURIComponent(
+    `Olá! Já paguei a mensalidade do GAC CEASA Manager.\nEmpresa: ${empresa.nomeEmpresa}\nCódigo de acesso: ${empresa.codigoAcesso}\nPode confirmar minha liberação?`
+  );
+  return (
+    <Card className="mb-3" style={{ borderColor: C.amber500 }}>
+      <div className="font-bold text-sm">Seu teste grátis termina hoje</div>
+      <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
+        Pra continuar usando sem interrupção, faça o pagamento da mensalidade de {VALOR_MENSALIDADE} pelo Pix:
+      </div>
+      <div className="font-bold text-sm mt-2 break-all">Chave Pix: {CHAVE_PIX}</div>
+      <a
+        href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagem}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block text-center w-full px-4 py-3 rounded-lg font-bold text-sm mt-3"
+        style={{ background: C.green700, color: "#fff" }}
+      >
+        ✅ Já paguei
+      </a>
+    </Card>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /* Login/Cadastro de Empresa                                              */
 /* ---------------------------------------------------------------------- */
 function EmpresaLoginView({ onEntrar }) {
@@ -1453,9 +1486,6 @@ function EmpresaLoginView({ onEntrar }) {
     }
   };
 
-  const VALOR_MENSALIDADE = "R$ 169,90";
-  const CHAVE_PIX = "05564849914";
-  const WHATSAPP_NUMERO = "5544998942726"; // com código do país (55) + DDD, sem espaço/traço
 
   const solicitarRecuperacao = async () => {
     if (!codigoRecuperacao.trim()) return;
@@ -2652,6 +2682,9 @@ export default function GacCeasaApp() {
 
       {/* Content */}
       <main className="flex-1 px-4 py-4 pb-24 overflow-y-auto">
+        {sessaoEmpresa?.empresa && !sessaoEmpresa.empresa.ehPago && sessaoEmpresa.empresa.diasRestantesTeste === 0 && (
+          <AvisoMensalidade empresa={sessaoEmpresa.empresa} />
+        )}
         {tab === "dashboard" && (
           <DashboardTab
             dashboard={dashboard}
