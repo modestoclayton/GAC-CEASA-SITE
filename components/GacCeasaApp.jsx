@@ -5631,8 +5631,11 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
         cadastros,
         lucroFinal
       );
-      await persistTabelaTransacao("vendas", nextVendas);
-      await persistTabelaTransacao("diasFinalizadosVendas", [...diasFinalizadosVendas, hojeVendas]);
+      // Uma gravação só: vendas e dia fechado juntos (mesmo padrão da conferência)
+      await persistVariasTabelasTransacao({
+        vendas: nextVendas,
+        diasFinalizadosVendas: [...new Set([...diasFinalizadosVendas, hojeVendas])],
+      });
       showToast("Vendas finalizadas — relatório gerado");
     } catch (erro) {
       showToast(`Erro ao finalizar vendas: ${(erro && erro.message) || "tente de novo"}`);
