@@ -49,6 +49,7 @@ export default async function handler(req, res) {
       googleSheetId: empresa.google_sheet_id,
       ehPago: empresa.eh_pago,
       diasRestantesTeste: empresa.eh_pago ? null : Math.max(diasRestantes, 0),
+      trialIniciadoEm: empresa.trial_iniciado_em,
     };
 
     if (!empresa.eh_pago && diasRestantes < 0) {

@@ -1376,29 +1376,63 @@ const VALOR_MENSALIDADE = "R$ 169,90";
 const CHAVE_PIX = "05564849914";
 const WHATSAPP_NUMERO = "5544998942726"; // com código do país (55) + DDD, sem espaço/traço
 
-// Aparece no último dia do teste (dia 30). A empresa paga pelo Pix e clica em
-// "Já paguei", que abre o WhatsApp com a mensagem pronta pra você.
-function AvisoMensalidade({ empresa }) {
+// Dia de cobrança: dia 30 do teste (empresa em teste) e dia 30 de cada mês (empresa paga).
+function ehDiaDeCobranca(empresa) {
+  const hoje = new Date();
+  if (empresa.ehPago) return hoje.getDate() === 30;
+  if (!empresa.trialIniciadoEm) return empresa.diasRestantesTeste === 0; // sessão antiga, sem a data do início
+  const dias = Math.floor((hoje.getTime() - new Date(empresa.trialIniciadoEm).getTime()) / 86400000);
+  return dias === 30;
+}
+
+function avisoMensalidadeFechadoHoje(codigoAcesso) {
+  try {
+    return localStorage.getItem(`avisoMensalidade:${codigoAcesso}:${todayISO()}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function fecharAvisoMensalidadeHoje(codigoAcesso) {
+  try {
+    localStorage.setItem(`avisoMensalidade:${codigoAcesso}:${todayISO()}`, "1");
+  } catch {
+    /* localStorage indisponível: o aviso volta na próxima vez que o app for atualizado */
+  }
+}
+
+// Pop-up de cobrança. A empresa paga pelo Pix e clica em "Já paguei", que abre o
+// WhatsApp com a mensagem pronta pra você.
+function AvisoMensalidade({ empresa, onFechar }) {
   const mensagem = encodeURIComponent(
     `Olá! Já paguei a mensalidade do GAC CEASA Manager.\nEmpresa: ${empresa.nomeEmpresa}\nCódigo de acesso: ${empresa.codigoAcesso}\nPode confirmar minha liberação?`
   );
+  const titulo = empresa.ehPago ? "Hoje é dia da mensalidade" : "Seu teste grátis termina hoje";
   return (
-    <Card className="mb-3" style={{ borderColor: C.amber500 }}>
-      <div className="font-bold text-sm">Seu teste grátis termina hoje</div>
-      <div className="text-xs mt-1" style={{ color: C.inkSoft }}>
-        Pra continuar usando sem interrupção, faça o pagamento da mensalidade de {VALOR_MENSALIDADE} pelo Pix:
-      </div>
-      <div className="font-bold text-sm mt-2 break-all">Chave Pix: {CHAVE_PIX}</div>
-      <a
-        href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagem}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block text-center w-full px-4 py-3 rounded-lg font-bold text-sm mt-3"
-        style={{ background: C.green700, color: "#fff" }}
-      >
-        ✅ Já paguei
-      </a>
-    </Card>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: "rgba(0,0,0,0.6)" }}
+    >
+      <Card className="w-full max-w-sm" style={{ borderColor: C.amber500 }}>
+        <div className="font-bold text-base">{titulo}</div>
+        <div className="text-sm mt-2" style={{ color: C.inkSoft }}>
+          Pra continuar usando sem interrupção, faça o pagamento da mensalidade de {VALOR_MENSALIDADE} pelo Pix:
+        </div>
+        <div className="font-bold text-sm mt-3 break-all">Chave Pix: {CHAVE_PIX}</div>
+        <a
+          href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagem}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-center w-full px-4 py-3 rounded-lg font-bold text-sm mt-4"
+          style={{ background: C.green700, color: "#fff" }}
+        >
+          ✅ Já paguei
+        </a>
+        <button onClick={onFechar} className="block w-full text-center text-xs font-bold mt-3" style={{ color: C.inkSoft }}>
+          Fechar por hoje
+        </button>
+      </Card>
+    </div>
   );
 }
 
@@ -2282,6 +2316,20 @@ export default function GacCeasaApp() {
     [agendarSalvarTransacoes]
   );
 
+  // Reavalia o aviso de cobrança a cada minuto e ao voltar pro app, pra aparecer no dia 30 mesmo com o app aberto.
+  const [agoraAviso, setAgoraAviso] = useState(() => Date.now());
+  useEffect(() => {
+    const atualizar = () => setAgoraAviso(Date.now());
+    const timer = setInterval(atualizar, 60000);
+    document.addEventListener("visibilitychange", atualizar);
+    window.addEventListener("focus", atualizar);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", atualizar);
+      window.removeEventListener("focus", atualizar);
+    };
+  }, []);
+
   const salvarPerfil = useCallback(
     async (novoPerfil) => {
       const nomeNorm = novoPerfil.nome.trim().toLowerCase();
@@ -2682,8 +2730,14 @@ export default function GacCeasaApp() {
 
       {/* Content */}
       <main className="flex-1 px-4 py-4 pb-24 overflow-y-auto">
-        {sessaoEmpresa?.empresa && !sessaoEmpresa.empresa.ehPago && sessaoEmpresa.empresa.diasRestantesTeste === 0 && (
-          <AvisoMensalidade empresa={sessaoEmpresa.empresa} />
+        {sessaoEmpresa?.empresa && ehDiaDeCobranca(sessaoEmpresa.empresa) && !avisoMensalidadeFechadoHoje(sessaoEmpresa.empresa.codigoAcesso) && (
+          <AvisoMensalidade
+            empresa={sessaoEmpresa.empresa}
+            onFechar={() => {
+              fecharAvisoMensalidadeHoje(sessaoEmpresa.empresa.codigoAcesso);
+              setAgoraAviso(Date.now());
+            }}
+          />
         )}
         {tab === "dashboard" && (
           <DashboardTab
