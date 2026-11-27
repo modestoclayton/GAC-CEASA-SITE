@@ -1401,9 +1401,9 @@ function fecharAvisoMensalidadeHoje(codigoAcesso) {
   }
 }
 
-// Pop-up de cobrança. A empresa paga pelo Pix e clica em "Já paguei", que abre o
-// WhatsApp com a mensagem pronta pra você.
-function AvisoMensalidade({ empresa, onFechar }) {
+// Pop-up de cobrança. Fica na tela até a empresa clicar em "Já paguei", que abre o
+// WhatsApp com a mensagem pronta pra você e tira o aviso da tela.
+function AvisoMensalidade({ empresa, onJaPaguei }) {
   const mensagem = encodeURIComponent(
     `Olá! Já paguei a mensalidade do GAC CEASA Manager.\nEmpresa: ${empresa.nomeEmpresa}\nCódigo de acesso: ${empresa.codigoAcesso}\nPode confirmar minha liberação?`
   );
@@ -1423,14 +1423,12 @@ function AvisoMensalidade({ empresa, onFechar }) {
           href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagem}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={onJaPaguei}
           className="block text-center w-full px-4 py-3 rounded-lg font-bold text-sm mt-4"
           style={{ background: C.green700, color: "#fff" }}
         >
           ✅ Já paguei
         </a>
-        <button onClick={onFechar} className="block w-full text-center text-xs font-bold mt-3" style={{ color: C.inkSoft }}>
-          Fechar por hoje
-        </button>
       </Card>
     </div>
   );
@@ -2733,7 +2731,7 @@ export default function GacCeasaApp() {
         {sessaoEmpresa?.empresa && ehDiaDeCobranca(sessaoEmpresa.empresa) && !avisoMensalidadeFechadoHoje(sessaoEmpresa.empresa.codigoAcesso) && (
           <AvisoMensalidade
             empresa={sessaoEmpresa.empresa}
-            onFechar={() => {
+            onJaPaguei={() => {
               fecharAvisoMensalidadeHoje(sessaoEmpresa.empresa.codigoAcesso);
               setAgoraAviso(Date.now());
             }}
