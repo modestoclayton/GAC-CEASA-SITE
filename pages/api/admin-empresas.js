@@ -21,6 +21,18 @@ export default async function handler(req, res) {
 
       if (error) return res.status(500).json({ ok: false, erro: error.message });
 
+      const ano = Number(req.query.ano) || new Date().getFullYear();
+      const { data: mensalidades, error: erroMens } = await admin
+        .from("mensalidades")
+        .select("empresa_id, mes")
+        .eq("ano", ano);
+      if (erroMens) return res.status(500).json({ ok: false, erro: erroMens.message });
+
+      const mesesPagosPorEmpresa = {};
+      (mensalidades || []).forEach((m) => {
+        (mesesPagosPorEmpresa[m.empresa_id] ||= []).push(m.mes);
+      });
+
       const DIAS_TESTE_GRATIS = 30;
       const empresas = (data || []).map((e) => {
         const diasDesdeInicio = Math.floor((Date.now() - new Date(e.trial_iniciado_em).getTime()) / 86400000);
@@ -28,15 +40,40 @@ export default async function handler(req, res) {
           ...e,
           diasRestantesTeste: e.eh_pago ? null : Math.max(DIAS_TESTE_GRATIS - diasDesdeInicio, 0),
           testeExpirado: !e.eh_pago && diasDesdeInicio > DIAS_TESTE_GRATIS,
+          mesesPagos: mesesPagosPorEmpresa[e.id] || [],
         };
       });
 
-      return res.status(200).json({ ok: true, empresas });
+      return res.status(200).json({ ok: true, ano, empresas });
     }
 
     if (req.method === "POST") {
-      const { empresaId, ehPago, nomeEmpresa, email } = req.body || {};
+      const { empresaId, ehPago, nomeEmpresa, email, mensalidade } = req.body || {};
       if (!empresaId) return res.status(400).json({ ok: false, erro: "empresaId é obrigatório." });
+
+      if (mensalidade) {
+        // Marca (ou desmarca) um mês de mensalidade pago.
+        const ano = Number(mensalidade.ano);
+        const mes = Number(mensalidade.mes);
+        if (!ano || !(mes >= 1 && mes <= 12)) {
+          return res.status(400).json({ ok: false, erro: "Mês ou ano inválido." });
+        }
+        if (mensalidade.pago) {
+          const { error } = await admin
+            .from("mensalidades")
+            .upsert({ empresa_id: empresaId, ano, mes, pago_em: new Date().toISOString() });
+          if (error) return res.status(500).json({ ok: false, erro: error.message });
+        } else {
+          const { error } = await admin
+            .from("mensalidades")
+            .delete()
+            .eq("empresa_id", empresaId)
+            .eq("ano", ano)
+            .eq("mes", mes);
+          if (error) return res.status(500).json({ ok: false, erro: error.message });
+        }
+        return res.status(200).json({ ok: true });
+      }
 
       const atualizacoes = {};
 

@@ -18,12 +18,14 @@ export default function AdminEmpresas() {
   const [empresas, setEmpresas] = useState([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
+  const [ano, setAno] = useState(new Date().getFullYear());
+  const NOMES_MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
-  const carregar = async (senhaUsada) => {
+  const carregar = async (senhaUsada, anoUsado = ano) => {
     setCarregando(true);
     setErro("");
     try {
-      const r = await fetch("/api/admin-empresas", {
+      const r = await fetch(`/api/admin-empresas?ano=${anoUsado}`, {
         headers: { "x-admin-secret": senhaUsada },
       });
       const j = await r.json();
@@ -56,6 +58,29 @@ export default function AdminEmpresas() {
     } catch (e) {
       alert("Erro: " + ((e && e.message) || String(e)));
     }
+  };
+
+  const alternarMes = async (empresaId, mes, pagoAgora) => {
+    try {
+      const r = await fetch("/api/admin-empresas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": senha },
+        body: JSON.stringify({ empresaId, mensalidade: { ano, mes, pago: !pagoAgora } }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        alert("Erro: " + j.erro);
+        return;
+      }
+      carregar(senha);
+    } catch (e) {
+      alert("Erro: " + ((e && e.message) || String(e)));
+    }
+  };
+
+  const mudarAno = (novoAno) => {
+    setAno(novoAno);
+    carregar(senha, novoAno);
   };
 
   const editarNome = async (empresaId, nomeAtual) => {
@@ -137,6 +162,15 @@ export default function AdminEmpresas() {
   return (
     <div style={est.pagina}>
       <h1 style={{ fontSize: 20, marginBottom: 16 }}>📋 Empresas Cadastradas ({empresas.length})</h1>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <button style={{ ...est.botaoAcao, background: "#2A3B4D", color: "#fff" }} onClick={() => mudarAno(ano - 1)}>
+          ‹
+        </button>
+        <span style={{ fontWeight: "bold", fontSize: 16 }}>{ano}</span>
+        <button style={{ ...est.botaoAcao, background: "#2A3B4D", color: "#fff" }} onClick={() => mudarAno(ano + 1)}>
+          ›
+        </button>
+      </div>
       {empresas.map((e) => (
         <div key={e.id} style={est.card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -158,6 +192,31 @@ export default function AdminEmpresas() {
                 <span style={est.badgeTeste}>{e.diasRestantesTeste} DIA(S) DE TESTE</span>
               )}
             </div>
+          </div>
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+            {NOMES_MESES.map((nome, i) => {
+              const mes = i + 1;
+              const pago = (e.mesesPagos || []).includes(mes);
+              return (
+                <button
+                  key={mes}
+                  onClick={() => alternarMes(e.id, mes, pago)}
+                  style={{
+                    padding: "8px 0",
+                    borderRadius: 8,
+                    border: "none",
+                    fontWeight: "bold",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    background: pago ? "#1F4A30" : "#2A3B4D",
+                    color: pago ? "#fff" : "#94A3B8",
+                  }}
+                >
+                  {pago ? "✓ " : ""}
+                  {nome}
+                </button>
+              );
+            })}
           </div>
           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
             {e.eh_pago ? (
