@@ -3487,6 +3487,7 @@ function RegistrarTab({ cadastros, transacoes, transacoesTodas, persistCadastros
           persistTabelaCadastro={persistTabelaCadastro}
           persistTransacoes={persistTransacoes}
           persistTabelaTransacao={persistTabelaTransacao}
+          persistVariasTabelasTransacao={persistVariasTabelasTransacao}
           showToast={showToast}
           setRecibo={setRecibo}
         />
@@ -6631,7 +6632,7 @@ function FormCompra({ cadastros, transacoes, transacoesTodas, persistCadastros, 
   );
 }
 
-function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, showToast, setRecibo }) {
+function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, persistTabelaCadastro, persistTransacoes, persistTabelaTransacao, persistVariasTabelasTransacao, showToast, setRecibo }) {
   const [view, setView] = useState("registrar");
   const [clienteId, setClienteId] = useState(cadastros.clientes[0]?.id || "");
   const [produto, setProduto] = useState(cadastros.produtos[0]?.nome || "");
