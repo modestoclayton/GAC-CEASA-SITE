@@ -540,7 +540,14 @@ export default async function handler(req, res) {
       // reescrever o histórico inteiro a cada ação.
       if (type === "transacoes_delta") {
         const erros = [];
-        for (const [chaveJS, tabelaDB] of Object.entries(TABELAS_TRANSACOES)) {
+        // Os dias fechados vêm primeiro: são pequenos e precisam ser gravados mesmo que
+        // a gravação das tabelas grandes (vendas, compras) seja interrompida.
+        const ORDEM_PRIORITARIA = ["diasFinalizados", "diasFinalizadosVendas"];
+        const entradasDelta = [
+          ...ORDEM_PRIORITARIA.map((k) => [k, TABELAS_TRANSACOES[k]]),
+          ...Object.entries(TABELAS_TRANSACOES).filter(([k]) => !ORDEM_PRIORITARIA.includes(k)),
+        ];
+        for (const [chaveJS, tabelaDB] of entradasDelta) {
           try {
             const upserts = Array.isArray(data?.upserts?.[chaveJS]) ? data.upserts[chaveJS] : [];
             const linhas = upserts.map((r) => paraLinha(chaveJS, empresa.id, r)).filter((l) => l && l.id);

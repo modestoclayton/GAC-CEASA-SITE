@@ -2778,6 +2778,8 @@ export default function GacCeasaApp() {
           if (ehDiaDeCobranca(sessaoEmpresa.empresa) && !avisoMensalidadeFechadoHoje(sessaoEmpresa.empresa.codigoAcesso)) return null;
           const hojeAviso = todayISO();
           if (!ehDiaFechamentoVendas(hojeAviso)) return null;
+          // Dia já finalizado: não avisa mais.
+          if ((transacoes.diasFinalizadosVendas || []).includes(hojeAviso)) return null;
           const pendentesAviso = transacoes.vendas.filter(
             (v) => !v.fechadaEm && v.data >= "2026-11-21" && v.data <= hojeAviso
           );
