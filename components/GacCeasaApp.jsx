@@ -1434,39 +1434,6 @@ function AvisoMensalidade({ empresa, onJaPaguei }) {
   );
 }
 
-// Fechamento de vendas só na segunda (1), quarta (3) e sexta (5).
-const DIAS_FECHAMENTO_VENDAS = [1, 3, 5];
-function ehDiaFechamentoVendas(isoData) {
-  const [ano, mes, dia] = isoData.split("-").map(Number);
-  return DIAS_FECHAMENTO_VENDAS.includes(new Date(ano, mes - 1, dia).getDay());
-}
-
-// Lembrete de fechamento de vendas (seg/qua/sex, com vendas pendentes). Some ao clicar em "Entendi"
-// e volta na próxima vez que o app for aberto, até as vendas serem finalizadas.
-function AvisoFechamentoVendas({ quantidade, desde, onFechar }) {
-  const desdeBR = desde ? desde.split("-").reverse().join("/") : "";
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4"
-      style={{ background: "rgba(0,0,0,0.6)" }}
-    >
-      <Card className="w-full max-w-sm" style={{ borderColor: C.amber500 }}>
-        <div className="font-bold text-base">Hoje é dia de fechar as vendas</div>
-        <div className="text-sm mt-2" style={{ color: C.inkSoft }}>
-          {quantidade} venda(s) pendente(s) desde {desdeBR}. Abra o relatório de vendas e clique em "Finalizar vendas e gerar relatório".
-        </div>
-        <button
-          onClick={onFechar}
-          className="w-full px-4 py-3 rounded-lg font-bold text-sm mt-4"
-          style={{ background: C.amber500, color: C.green900 }}
-        >
-          Entendi
-        </button>
-      </Card>
-    </div>
-  );
-}
-
 /* ---------------------------------------------------------------------- */
 /* Login/Cadastro de Empresa                                              */
 /* ---------------------------------------------------------------------- */
@@ -2349,8 +2316,6 @@ export default function GacCeasaApp() {
 
   // Reavalia o aviso de cobrança a cada minuto e ao voltar pro app, pra aparecer no dia 30 mesmo com o app aberto.
   const [agoraAviso, setAgoraAviso] = useState(() => Date.now());
-  // Lembrete de fechamento de vendas: some ao clicar em "Entendi" e volta ao abrir o app de novo.
-  const [avisoFechamentoFechado, setAvisoFechamentoFechado] = useState(false);
   useEffect(() => {
     const atualizar = () => setAgoraAviso(Date.now());
     const timer = setInterval(atualizar, 60000);
@@ -2772,27 +2737,6 @@ export default function GacCeasaApp() {
             }}
           />
         )}
-        {(() => {
-          // Lembrete seg/qua/sex, com vendas pendentes. Não aparece junto com o aviso de mensalidade.
-          if (!sessaoEmpresa?.empresa || avisoFechamentoFechado) return null;
-          if (ehDiaDeCobranca(sessaoEmpresa.empresa) && !avisoMensalidadeFechadoHoje(sessaoEmpresa.empresa.codigoAcesso)) return null;
-          const hojeAviso = todayISO();
-          if (!ehDiaFechamentoVendas(hojeAviso)) return null;
-          // Dia já finalizado: não avisa mais.
-          if ((transacoes.diasFinalizadosVendas || []).includes(hojeAviso)) return null;
-          const pendentesAviso = transacoes.vendas.filter(
-            (v) => !v.fechadaEm && v.data >= "2026-11-21" && v.data <= hojeAviso
-          );
-          if (pendentesAviso.length === 0) return null;
-          const desdeAviso = pendentesAviso.reduce((min, v) => (v.data < min ? v.data : min), pendentesAviso[0].data);
-          return (
-            <AvisoFechamentoVendas
-              quantidade={pendentesAviso.length}
-              desde={desdeAviso}
-              onFechar={() => setAvisoFechamentoFechado(true)}
-            />
-          );
-        })()}
         {tab === "dashboard" && (
           <DashboardTab
             dashboard={dashboard}
@@ -5656,8 +5600,6 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
   const diasFinalizadosVendas = transacoes.diasFinalizadosVendas || [];
   const hojeVendas = todayISO();
   const jaFinalizouVendasHoje = diasFinalizadosVendas.includes(hojeVendas);
-  // Fechamento só segunda, quarta e sexta.
-  const ehDiaFechamento = ehDiaFechamentoVendas(hojeVendas);
   // Vendas de hoje + vendas de dias anteriores (a partir de 21/11/2026) que ainda não foram finalizadas.
   // Vendas antigas, antes de 21/11, ficam de fora.
   const INICIO_VENDAS_PENDENTES = "2026-11-21";
@@ -5672,10 +5614,6 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
   const finalizarVendas = async () => {
     if (jaFinalizouVendasHoje) {
       showToast("As vendas de hoje já foram finalizadas");
-      return;
-    }
-    if (!ehDiaFechamento) {
-      showToast("O fechamento de vendas é feito só na segunda, quarta e sexta");
       return;
     }
     if (vendasParaFinalizar.length === 0) {
@@ -5760,8 +5698,6 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
         >
           {jaFinalizouVendasHoje
             ? "O relatório de hoje já foi gerado. Venda nova lançada depois disso entra na próxima finalização."
-            : !ehDiaFechamento
-            ? "O fechamento de vendas é feito só na segunda, quarta e sexta. As vendas pendentes ficam guardadas até lá."
             : vendasParaFinalizar.length === 0
             ? "Nenhuma venda pendente de finalização."
             : `${vendasParaFinalizar.length} venda(s) entram nesta finalização (incluindo as de dias anteriores que ainda não foram finalizados).`}
@@ -5769,22 +5705,20 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
         {/* Depois de finalizado, o botão fica visível mas inativo, pra ninguém achar que não fez */}
         <button
           onClick={finalizarVendas}
-          disabled={jaFinalizouVendasHoje || !ehDiaFechamento || vendasParaFinalizar.length === 0}
+          disabled={jaFinalizouVendasHoje || vendasParaFinalizar.length === 0}
           className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 font-bold text-sm"
           style={{
-            background:
-              !jaFinalizouVendasHoje && ehDiaFechamento && vendasParaFinalizar.length > 0 ? C.amber500 : "#3A4A41",
-            color:
-              !jaFinalizouVendasHoje && ehDiaFechamento && vendasParaFinalizar.length > 0 ? C.green900 : C.inkSoft,
-            cursor: jaFinalizouVendasHoje || !ehDiaFechamento ? "not-allowed" : undefined,
-            opacity: jaFinalizouVendasHoje || !ehDiaFechamento ? 0.7 : 1,
+            background: jaFinalizouVendasHoje
+              ? "#3A4A41"
+              : vendasParaFinalizar.length > 0
+              ? C.amber500
+              : "#3A4A41",
+            color: jaFinalizouVendasHoje || vendasParaFinalizar.length === 0 ? C.inkSoft : C.green900,
+            cursor: jaFinalizouVendasHoje ? "not-allowed" : undefined,
+            opacity: jaFinalizouVendasHoje ? 0.7 : 1,
           }}
         >
-          {jaFinalizouVendasHoje
-            ? "✅ Finalizado — relatório já gerado"
-            : !ehDiaFechamento
-            ? "Fechamento só seg., qua. e sex."
-            : "Finalizar vendas e gerar relatório"}
+          {jaFinalizouVendasHoje ? "✅ Finalizado — relatório já gerado" : "Finalizar vendas e gerar relatório"}
         </button>
       </Card>
 
