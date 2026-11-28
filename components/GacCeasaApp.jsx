@@ -5686,19 +5686,24 @@ function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, per
       // As vendas que entram passam a ter a data de hoje (a da finalização)
       const ids = new Set(vendasParaFinalizar.map((v) => v.id));
       const nextVendas = transacoes.vendas.map((v) => (ids.has(v.id) ? { ...v, data: hojeVendas, fechadaEm: hojeVendas } : v));
-      const lucroFinal = calcularLucroDoDia({ ...transacoes, vendas: nextVendas }, cadastros, hojeVendas);
-      gerarPDFRelatorioVendas(
-        nextVendas.filter((v) => v.data === hojeVendas),
-        hojeVendas,
-        cadastros,
-        lucroFinal
-      );
-      // Uma gravação só: vendas e dia fechado juntos (mesmo padrão da conferência)
+      // Grava primeiro (vendas e dia fechado numa operação só, igual à conferência),
+      // pra o fechamento não se perder se o relatório falhar.
       await persistVariasTabelasTransacao({
         vendas: nextVendas,
         diasFinalizadosVendas: [...new Set([...diasFinalizadosVendas, hojeVendas])],
       });
-      showToast("Vendas finalizadas — relatório gerado");
+      try {
+        const lucroFinal = calcularLucroDoDia({ ...transacoes, vendas: nextVendas }, cadastros, hojeVendas);
+        gerarPDFRelatorioVendas(
+          nextVendas.filter((v) => v.data === hojeVendas),
+          hojeVendas,
+          cadastros,
+          lucroFinal
+        );
+        showToast("Vendas finalizadas — relatório gerado");
+      } catch (erroPDF) {
+        showToast(`Vendas finalizadas, mas o relatório falhou: ${(erroPDF && erroPDF.message) || "tente gerar de novo"}`);
+      }
     } catch (erro) {
       showToast(`Erro ao finalizar vendas: ${(erro && erro.message) || "tente de novo"}`);
     }
