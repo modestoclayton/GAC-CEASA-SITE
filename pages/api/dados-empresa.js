@@ -54,6 +54,11 @@ const TABELAS_CADASTROS = {
   compradoresVendedores: "equipe",
   tiposDespesa: "tipos_despesa",
 };
+// Dias fechados: a identificação é empresa + data (cada empresa fecha o seu dia).
+const CHAVE_CONFLITO_DIAS = "empresa_id,id";
+function chaveConflito(tabelaDB) {
+  return tabelaDB === "dias_finalizados" || tabelaDB === "dias_finalizados_vendas" ? CHAVE_CONFLITO_DIAS : "id";
+}
 const TABELAS_TRANSACOES = {
   compras: "compras",
   vendas: "vendas",
@@ -490,7 +495,7 @@ async function sincronizarTabela(supabase, tabelaDB, empresaId, chaveJS, registr
     .filter((l) => l && l.id);
 
   if (linhas.length > 0) {
-    const { error } = await supabase.from(tabelaDB).upsert(linhas, { onConflict: "id" });
+    const { error } = await supabase.from(tabelaDB).upsert(linhas, { onConflict: chaveConflito(tabelaDB) });
     if (error) throw new Error(`upsert em "${tabelaDB}": ${error.message}`);
   }
 
@@ -552,7 +557,7 @@ export default async function handler(req, res) {
             const upserts = Array.isArray(data?.upserts?.[chaveJS]) ? data.upserts[chaveJS] : [];
             const linhas = upserts.map((r) => paraLinha(chaveJS, empresa.id, r)).filter((l) => l && l.id);
             for (let i = 0; i < linhas.length; i += 500) {
-              const { error } = await supabase.from(tabelaDB).upsert(linhas.slice(i, i + 500), { onConflict: "id" });
+              const { error } = await supabase.from(tabelaDB).upsert(linhas.slice(i, i + 500), { onConflict: chaveConflito(tabelaDB) });
               if (error) throw new Error(`upsert em "${tabelaDB}": ${error.message}`);
             }
             const apagar = Array.isArray(data?.deletes?.[chaveJS]) ? data.deletes[chaveJS].filter(Boolean) : [];
