@@ -5610,7 +5610,7 @@ function PainelDespesas({ cadastros, transacoes, dataSelecionada, persistTabelaT
   );
 }
 
-function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, persistTabelaCadastro, showToast }) {
+function RelatorioVendasTab({ cadastros, transacoes, persistTabelaTransacao, persistVariasTabelasTransacao, persistTabelaCadastro, showToast }) {
   const [dataSelecionada, setDataSelecionada] = useState(todayISO());
   const [modo, setModo] = useState("dia"); // dia | semana | mes
   const [mesSel, setMesSel] = useState(todayISO().slice(0, 7));
@@ -7204,6 +7204,7 @@ function FormVenda({ cadastros, transacoes, transacoesTodas, persistCadastros, p
             cadastros={cadastros}
             transacoes={transacoes}
             persistTabelaTransacao={persistTabelaTransacao}
+            persistVariasTabelasTransacao={persistVariasTabelasTransacao}
             persistTabelaCadastro={persistTabelaCadastro}
             showToast={showToast}
           />
